@@ -2006,7 +2006,7 @@ function ckSave(o){ try{ localStorage.setItem('prog_checklist', JSON.stringify(o
 function ckVals(){ var ps=window.__PROG_PEDSEL||[]; var peds={},pecas=0,valor=0; ps.forEach(function(r){ if(r.pedido)peds[r.pedido]=1; pecas+=r.qtd||0; valor+=r.valor||0; }); return {loaded:ps.length>0, pedidos:Object.keys(peds).length, pecas:pecas, valor:valor}; }
 function _kc(o){ return o?Object.keys(o).length:0; }
 function ckApplyAutos(s){ if(!s.dates)s.dates={}; CKL_STEPS.forEach(function(x){ if(x.auto && !(s.manual&&s.manual[x.id])){ var v=x.auto()||''; if(v)s.dates[x.id]=v; } }); }
-var CKL_DAYS=[['qua','Quarta-feira','#2eab86'],['qui','Quinta-feira','#4aa3e0'],['sex','Sexta-feira','#e0962d'],['seg','Segunda-feira','#b06ad0'],['ter','Terça-feira','#d9607e']];
+var CKL_DAYS=[['qua','Quarta-feira','#2eab86'],['qui','Quinta-feira','#4aa3e0'],['sex','Sexta-feira','#e0962d'],['seg','Segunda-feira','#b06ad0']];
 var CKL_STEPS=[
   {day:'qua',id:'in_pedsel',type:'input',label:'Fazer o input do arquivo Pedidos Selecionados Quarta',accept:'.xls,.xlsx',
     loaded:function(){return (window.__PROG_PEDSEL||[]).length>0;}, info:function(){return (window.__PROG_PEDSEL||[]).length+' pedidos';},
@@ -2076,8 +2076,7 @@ var CKL_STEPS=[
     loaded:function(){return (window.__PROG_REPROG||[]).length>0;}, info:function(){return (window.__PROG_REPROG||[]).length+' linhas';},
     load:function(f,cb){ readXlsx(f,function(aoa){ var r=parse02(aoa); window.__PROG_REPROG=r; try{localStorage.setItem('prog_reprog',JSON.stringify(r));}catch(e){} cb(); },cb); }},
   {day:'seg',id:'seg_reprog',type:'report',label:'Reprogramação',btn:'Ver relatório',action:function(){ openReprogModal(); }},
-  {day:'seg',id:'seg_historico',type:'report',label:'Salvar o histórico do checklist',btn:'Gerar PDF',action:function(){ printChecklistHistory(); }},
-  {day:'ter',id:'ter_baixar_pedsel',type:'check',label:'Baixar os pedidos selecionados'}
+  {day:'seg',id:'seg_historico',type:'report',label:'Salvar o histórico do checklist',btn:'Gerar PDF',action:function(){ printChecklistHistory(); }}
 ];
 function renderChecklist(){
   loadProgOps(); loadProgExtra();
