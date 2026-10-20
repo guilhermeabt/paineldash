@@ -1097,15 +1097,19 @@ async function fcRun(){
       var somaR=R.items.reduce(function(a,x){return a+x.valor;},0);
       if(R.total!==null&&Math.abs(somaR-R.total)>=0.01) avisos.push('OS '+R.os+': a soma das OPs lidas (R$ '+_brl(somaR)+') não bate com o total impresso (R$ '+_brl(R.total)+').');
       R.items.filter(function(x){return x.bad;}).forEach(function(x){ avisos.push('OS '+R.os+', OP '+x.op+': não consegui ler a quantidade/valor.'); });
-      oss[R.os]={os:R.os,total:R.total||0,file:f.name,n:R.items.length}; osOrd.push(R.os);
+      var oOps={}; R.items.forEach(function(x){ var q=oOps[x.op]||(oOps[x.op]={op:x.op,ref:x.ref,qtd:0,valor:0}); q.qtd+=x.qtd; q.valor+=x.valor; });
+      oss[R.os]={os:R.os,total:R.total||0,file:f.name,n:Object.keys(oOps).length,ops:oOps}; osOrd.push(R.os);
       R.items.forEach(function(x){ var o=romOps[x.op]||(romOps[x.op]={op:x.op,ref:x.ref,os:[],qtd:0,valor:0,cores:[]}); if(o.os.indexOf(R.os)<0)o.os.push(R.os); o.qtd+=x.qtd; o.valor+=x.valor; if(x.cor&&o.cores.indexOf(x.cor)<0)o.cores.push(x.cor); });
     }
     var totRom=osOrd.reduce(function(a,k){return a+oss[k].total;},0), totFech=F.total||0;
     var dif=totRom-totFech, bateu=Math.abs(dif)<0.01;
-    var falta=Object.keys(romOps).filter(function(k){return !F.ops[k];}).map(function(k){return romOps[k];});
-    var sobra=Object.keys(F.ops).filter(function(k){return !romOps[k];}).map(function(k){return F.ops[k];});
+    // faltando: por OS do romaneio (a mesma OP em duas OS aparece em cada uma com a sua quantidade)
+    var falta=[]; osOrd.forEach(function(k){ Object.keys(oss[k].ops).forEach(function(op){ if(!F.ops[op]){ var q=oss[k].ops[op]; falta.push({os:[k],op:op,ref:q.ref,qtd:q.qtd,valor:q.valor}); } }); });
+    // sobrando: linhas do fechamento sem romaneio, agrupadas pela OS do fechamento
+    var sobraM={}; F.rows.forEach(function(r){ if(romOps[r.op])return; var key=r.os+'|'+r.op; var s=sobraM[key]||(sobraM[key]={os:[r.os],op:r.op,ref:r.ref,qtd:0,valor:0}); s.qtd+=r.qtd; s.valor+=r.valor; });
+    var sobra=Object.keys(sobraM).map(function(k){return sobraM[k];});
     var qdif=Object.keys(romOps).filter(function(k){return F.ops[k]&&F.ops[k].qtd!==romOps[k].qtd;}).map(function(k){return {op:k,ref:romOps[k].ref,os:romOps[k].os,qR:romOps[k].qtd,qF:F.ops[k].qtd,vR:romOps[k].valor,vF:F.ops[k].valor};});
-    var byOp=function(a,b){return (+a.op)-(+b.op);}; falta.sort(byOp); sobra.sort(byOp); qdif.sort(byOp);
+    var byOp=function(a,b){return (+a.op)-(+b.op);}; var byOsOp=function(a,b){return ((+a.os[0])-(+b.os[0]))||byOp(a,b);}; falta.sort(byOsOp); sobra.sort(byOsOp); qdif.sort(byOp);
     var R0={fechName:FC.fech.name,oss:osOrd.map(function(k){return oss[k];}),totRom:totRom,totFech:totFech,dif:dif,bateu:bateu,falta:falta,sobra:sobra,qdif:qdif,avisos:avisos,nFech:F.rows.length};
     window.__FC_LAST=R0;
     stat('');
@@ -1116,22 +1120,29 @@ async function fcRun(){
 function fcHtml(R,pr){
   var red=pr?'#b00000':'var(--danger)', green=pr?'#0a7a3d':'var(--f-green)', amber=pr?'#8a5a00':'var(--f-amber)', ink=pr?'#111':'var(--ink)', mut=pr?'#555':'var(--muted)';
   var tb='width:100%;border-collapse:collapse;font-size:'+(pr?'10.5px':'13px')+';margin:6px 0 4px', td='border:1px solid '+(pr?'#bbb':'var(--line)')+';padding:4px 8px;text-align:left', tdr=td+';text-align:right', th=td+';background:'+(pr?'#eee':'var(--surface2)')+';font-weight:600';
-  function tabOps(list,col){ var sq=0,sv=0;
-    var h='<table style="'+tb+'"><thead><tr><th style="'+th+'">OS</th><th style="'+th+'">OP</th><th style="'+th+'">Referência</th><th style="'+th+';text-align:right">Qtde</th><th style="'+th+';text-align:right">Valor</th></tr></thead><tbody>';
-    list.forEach(function(o){ sq+=o.qtd; sv+=o.valor; h+='<tr style="color:'+col+'"><td style="'+td+'">'+_e0(o.os.join(', '))+'</td><td style="'+td+'"><b>'+_e0(o.op)+'</b></td><td style="'+td+'">'+_e0(o.ref)+'</td><td style="'+tdr+'">'+o.qtd+'</td><td style="'+tdr+'">R$ '+_brl(o.valor)+'</td></tr>'; });
-    return h+'<tr style="font-weight:700;color:'+col+'"><td style="'+td+'" colspan="3">Subtotal ('+list.length+' OP'+(list.length===1?'':'s')+')</td><td style="'+tdr+'">'+sq+'</td><td style="'+tdr+'">R$ '+_brl(sv)+'</td></tr></tbody></table>'; }
+  // tabela agrupada por OS: cabeçalho de cada OS com quantas OPs e subtotal; OS inteira em destaque
+  function tabOps(list,col,osInfo){ var sq=0,sv=0, grp=[], cur=null;
+    list.forEach(function(o){ var k=o.os[0]; if(!cur||cur.os!==k){ cur={os:k,its:[],q:0,v:0}; grp.push(cur); } cur.its.push(o); cur.q+=o.qtd; cur.v+=o.valor; });
+    var h='<table style="'+tb+'"><thead><tr><th style="'+th+'">OS / OP</th><th style="'+th+'">Referência</th><th style="'+th+';text-align:right">Qtde</th><th style="'+th+';text-align:right">Valor</th></tr></thead><tbody>';
+    grp.forEach(function(g){ var inf=osInfo&&osInfo[g.os], whole=inf&&g.its.length>=inf.n;
+      var lbl='OS '+_e0(g.os)+(inf?(whole?' — <span style="text-transform:uppercase">OS inteira não cobrada</span> ('+inf.n+' OP'+(inf.n===1?'':'s')+')':' — '+g.its.length+' de '+inf.n+' OPs'):' — '+g.its.length+' OP'+(g.its.length===1?'':'s'));
+      h+='<tr style="color:'+col+';font-weight:700;background:'+(pr?(whole?'#f6dede':'#f3f3f3'):(whole?'rgba(220,80,80,.16)':'var(--surface2)'))+'"><td style="'+td+'" colspan="2">'+(whole?'&#10060; ':'')+lbl+'</td><td style="'+tdr+'">'+g.q+'</td><td style="'+tdr+'">R$ '+_brl(g.v)+'</td></tr>';
+      g.its.forEach(function(o){ sq+=o.qtd; sv+=o.valor; h+='<tr style="color:'+col+'"><td style="'+td+';padding-left:22px">OP <b>'+_e0(o.op)+'</b></td><td style="'+td+'">'+_e0(o.ref)+'</td><td style="'+tdr+'">'+o.qtd+'</td><td style="'+tdr+'">R$ '+_brl(o.valor)+'</td></tr>'; }); });
+    return h+'<tr style="font-weight:700;color:'+col+'"><td style="'+td+'" colspan="2">Total ('+list.length+' OP'+(list.length===1?'':'s')+' em '+grp.length+' OS)</td><td style="'+tdr+'">'+sq+'</td><td style="'+tdr+'">R$ '+_brl(sv)+'</td></tr></tbody></table>'; }
+  var osInfo={}; R.oss.forEach(function(o){ osInfo[o.os]={n:o.n}; });
+  var faltaOS={}; R.falta.forEach(function(o){ faltaOS[o.os[0]]=(faltaOS[o.os[0]]||0)+1; });
   var h='<h1 style="margin:0 0 2px;font-size:'+(pr?'16px':'20px')+';color:'+ink+'">Fechamento da Facção — conciliação</h1>'
     +'<div style="color:'+mut+';font-size:12px;margin-bottom:14px">Fechamento: '+_e0(R.fechName)+' ('+R.nFech+' linhas) · '+R.oss.length+' romaneio(s) · gerado em '+_dstamp()+'</div>';
   h+='<div style="font-size:'+(pr?'13px':'16px')+';font-weight:700;padding:10px 14px;border-radius:9px;margin-bottom:14px;border:2px solid '+(R.bateu?green:red)+';color:'+(R.bateu?green:red)+'">'+(R.bateu?'&#9989; Bateu':'&#10060; Não bateu — diferença de R$ '+_brl(Math.abs(R.dif))+(R.dif>0?' (romaneios acima do fechamento)':' (fechamento acima dos romaneios)'))+'</div>';
   h+='<table style="'+tb+'"><tbody>'
     +'<tr><td style="'+td+'"><b>Total dos romaneios</b></td><td style="'+tdr+'"><b>R$ '+_brl(R.totRom)+'</b></td></tr>'
-    +R.oss.map(function(o){ return '<tr style="color:'+mut+'"><td style="'+td+';padding-left:22px">OS '+_e0(o.os)+' <span style="font-size:11px">('+o.n+' OP'+(o.n===1?'':'s')+')</span></td><td style="'+tdr+'">R$ '+_brl(o.total)+'</td></tr>'; }).join('')
+    +R.oss.map(function(o){ var fo=faltaOS[o.os]||0, tag=!fo?'':(fo>=o.n?' <b style="color:'+red+'">&#10060; OS inteira não cobrada</b>':' <b style="color:'+red+'">&#9888; '+fo+' OP'+(fo===1?'':'s')+' não cobrada'+(fo===1?'':'s')+'</b>'); return '<tr style="color:'+mut+'"><td style="'+td+';padding-left:22px">OS '+_e0(o.os)+' <span style="font-size:11px">('+o.n+' OP'+(o.n===1?'':'s')+')</span>'+tag+'</td><td style="'+tdr+'">R$ '+_brl(o.total)+'</td></tr>'; }).join('')
     +'<tr><td style="'+td+'"><b>Total do fechamento</b></td><td style="'+tdr+'"><b>R$ '+_brl(R.totFech)+'</b></td></tr>'
     +'<tr style="color:'+(R.bateu?green:red)+'"><td style="'+td+'"><b>Diferença (romaneios − fechamento)</b></td><td style="'+tdr+'"><b>R$ '+_brl(R.dif)+'</b></td></tr></tbody></table>';
   h+='<h2 style="font-size:'+(pr?'12px':'15px')+';margin:18px 0 2px;color:'+(R.falta.length?red:ink)+'">OPs enviadas que NÃO foram cobradas no fechamento</h2>';
-  h+=R.falta.length?tabOps(R.falta,red):'<div style="color:'+green+';font-size:13px">Nenhuma — todas as OPs dos romaneios aparecem no fechamento.</div>';
+  h+=R.falta.length?tabOps(R.falta,red,osInfo):'<div style="color:'+green+';font-size:13px">Nenhuma — todas as OPs dos romaneios aparecem no fechamento.</div>';
   if(R.falta.length){ var sf=R.falta.reduce(function(a,o){return a+o.valor;},0); if(!R.bateu&&Math.abs(sf-R.dif)<0.01) h+='<div style="color:'+mut+';font-size:12px">A soma dessas OPs (R$ '+_brl(sf)+') explica toda a diferença.</div>'; }
-  if(R.sobra.length){ h+='<h2 style="font-size:'+(pr?'12px':'15px')+';margin:18px 0 2px;color:'+amber+'">OPs cobradas no fechamento que não estão nos romaneios</h2><div style="color:'+mut+';font-size:12px">Podem ser de romaneios que não foram adicionados aqui.</div>'+tabOps(R.sobra,amber); }
+  if(R.sobra.length){ h+='<h2 style="font-size:'+(pr?'12px':'15px')+';margin:18px 0 2px;color:'+amber+'">OPs cobradas no fechamento que não estão nos romaneios</h2><div style="color:'+mut+';font-size:12px">Podem ser de romaneios que não foram adicionados aqui.</div>'+tabOps(R.sobra,amber,null); }
   if(R.qdif.length){ h+='<h2 style="font-size:'+(pr?'12px':'15px')+';margin:18px 0 2px;color:'+amber+'">OPs com quantidade diferente</h2><table style="'+tb+'"><thead><tr><th style="'+th+'">OS</th><th style="'+th+'">OP</th><th style="'+th+'">Referência</th><th style="'+th+';text-align:right">Enviado</th><th style="'+th+';text-align:right">Cobrado</th><th style="'+th+';text-align:right">Valor enviado</th><th style="'+th+';text-align:right">Valor cobrado</th></tr></thead><tbody>'
     +R.qdif.map(function(o){ return '<tr style="color:'+amber+'"><td style="'+td+'">'+_e0(o.os.join(', '))+'</td><td style="'+td+'"><b>'+_e0(o.op)+'</b></td><td style="'+td+'">'+_e0(o.ref)+'</td><td style="'+tdr+'">'+o.qR+'</td><td style="'+tdr+'">'+o.qF+'</td><td style="'+tdr+'">R$ '+_brl(o.vR)+'</td><td style="'+tdr+'">R$ '+_brl(o.vF)+'</td></tr>'; }).join('')+'</tbody></table>'; }
   if(R.avisos.length) h+='<h2 style="font-size:'+(pr?'12px':'14px')+';margin:18px 0 4px;color:'+amber+'">Avisos da leitura</h2><ul style="margin:0;padding-left:18px;color:'+amber+';font-size:12.5px">'+R.avisos.map(function(a){return '<li>'+_e0(a)+'</li>';}).join('')+'</ul>';
