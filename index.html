@@ -258,9 +258,20 @@
     <div style="width:320px" id="userForm"></div>
   </div>
   <div style="margin-top:22px;border-top:1px solid var(--line);padding-top:16px">
-    <button id="saveFileBtn" style="background:var(--f-green);border:none;color:#0c241a;font-weight:600;padding:10px 18px;border-radius:9px;cursor:pointer">&#11015; Baixar painel com usuários atualizados</button>
-    <span id="uDirty" style="display:none;color:var(--f-amber);margin-left:12px;font-size:13px">há alterações não gravadas no arquivo</span>
-    <div style="color:var(--muted);font-size:12px;margin-top:8px">As mudanças valem nesta sessão. Para gravar de vez, baixe e substitua o Painel_Operacional.html na pasta.</div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <button id="publishUsersBtn" style="background:var(--f-green);border:none;color:#0c241a;font-weight:600;padding:10px 18px;border-radius:9px;cursor:pointer">&#9729; Publicar alterações</button>
+      <span id="uDirty" style="display:none;color:var(--f-amber);font-size:13px">há alterações ainda não publicadas — os outros usuários só veem depois de publicar</span>
+    </div>
+    <div id="publishStatus" style="font-size:13px;margin-top:10px;min-height:16px"></div>
+    <details id="ghTokenBox" style="margin-top:14px;color:var(--muted);font-size:13px">
+      <summary style="cursor:pointer">Configuração da publicação (token do GitHub)</summary>
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;max-width:560px">
+        <div id="ghTokenState"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="ghTokenInp" type="password" placeholder="cole o token aqui (github_pat_...)" autocomplete="off" style="flex:1;min-width:240px"><button id="ghTokenSave" class="ubtn">Salvar token</button><button id="ghTokenDel" class="ubtn danger">Remover token</button></div>
+        <div style="font-size:12px;line-height:1.5">O token fica guardado só neste navegador. Para criar: GitHub &rarr; Settings &rarr; Developer settings &rarr; Personal access tokens &rarr; Fine-grained tokens &rarr; Generate new token. Em <i>Repository access</i> escolha só o repositório <b>paineldash</b>; em <i>Permissions</i> &rarr; <i>Contents</i>, marque <b>Read and write</b>.</div>
+        <button id="saveFileBtn" class="ubtn" style="align-self:flex-start">&#11015; Baixar o arquivo do painel (alternativa manual)</button>
+      </div>
+    </details>
   </div>
 </div>
 
@@ -781,6 +792,7 @@ function renderUsers(){
   tb.querySelectorAll('[data-edit]').forEach(function(b){b.onclick=function(){openUserForm(b.getAttribute('data-edit'));};});
   tb.querySelectorAll('[data-del]').forEach(function(b){b.onclick=function(){delUser(b.getAttribute('data-del'));};});
   var d=$('uDirty'); if(d)d.style.display=USERS_DIRTY?'inline':'none';
+  ghTokenUI();
 }
 function openUserForm(key){
   editingUser=key||null;
@@ -837,6 +849,53 @@ function delUser(k){
   if(isAdmin(USERS[k])&&admins.length<=1){ alert('Não dá para remover o único administrador.'); return; }
   if(!confirm('Remover o usuário "'+k+'"?')) return;
   delete USERS[k]; USERS_DIRTY=true; renderUsers();
+}
+/* ---- publicação direta no GitHub ---- */
+var GH_REPO=(function(){ var h=location.hostname, p=location.pathname.split('/').filter(Boolean); if(/\.github\.io$/i.test(h)&&p.length) return {owner:h.split('.')[0], repo:p[0]}; return {owner:'guilhermeabt', repo:'paineldash'}; })();
+var GH_BRANCH='main', GH_FILE='index.html';
+function ghToken(){ try{ return localStorage.getItem('painelop_ghtoken')||''; }catch(e){ return ''; } }
+function ghTokenUI(){ var s=$('ghTokenState'); if(!s)return; var t=ghToken();
+  s.innerHTML=t?'<span style="color:var(--f-green)">&#10003; Token configurado neste navegador.</span>':'<span style="color:var(--f-amber)">Nenhum token configurado — necessário para publicar.</span>';
+  var b=$('ghTokenBox'); if(b&&!t)b.open=true; }
+async function gh(path,opts){
+  opts=opts||{}; var hd={'Authorization':'Bearer '+ghToken(),'Accept':opts.accept||'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
+  if(opts.body)hd['Content-Type']='application/json';
+  var r=await fetch('https://api.github.com/repos/'+GH_REPO.owner+'/'+GH_REPO.repo+path,{method:opts.method||'GET',headers:hd,body:opts.body?JSON.stringify(opts.body):undefined,cache:'no-store'});
+  if(!r.ok){ var msg=''; try{ msg=(await r.json()).message||''; }catch(e){}
+    var err=new Error(msg||('HTTP '+r.status)); err.status=r.status; throw err; }
+  return opts.accept?r.text():r.json();
+}
+function pubStatus(html,color){ var s=$('publishStatus'); if(s){ s.style.color=color||'var(--muted)'; s.innerHTML=html; } }
+async function publishUsers(){
+  if(!isAdmin(current)){ alert('Só administradores podem publicar.'); return; }
+  if(!ghToken()){ pubStatus('Configure o token do GitHub abaixo antes de publicar.','var(--f-amber)'); var b=$('ghTokenBox'); if(b)b.open=true; return; }
+  var btn=$('publishUsersBtn'); if(btn)btn.disabled=true;
+  try{
+    pubStatus('Buscando a versão atual do painel no GitHub…');
+    var ref=await gh('/git/ref/heads/'+GH_BRANCH); var headSha=ref.object.sha;
+    var commit=await gh('/git/commits/'+headSha);
+    var src=await gh('/contents/'+GH_FILE+'?ref='+headSha,{accept:'application/vnd.github.raw+json'});
+    var re=/const USERS\s*=\s*[\s\S]*?\/\*__USERS__\*\//;
+    if(!re.test(src)) throw new Error('não encontrei a lista de usuários no arquivo do GitHub.');
+    var json=JSON.stringify(USERS).replace(/</g,'\\u003c');
+    var out=src.replace(re,function(){ return 'const USERS  = '+json+';/*__USERS__*/'; });
+    if(out===src){ USERS_DIRTY=false; renderUsers(); pubStatus('Nada a publicar — o GitHub já está com esta lista de usuários.','var(--f-green)'); return; }
+    pubStatus('Enviando…');
+    var blob=await gh('/git/blobs',{method:'POST',body:{content:out,encoding:'utf-8'}});
+    var tree=await gh('/git/trees',{method:'POST',body:{base_tree:commit.tree.sha,tree:[{path:GH_FILE,mode:'100644',type:'blob',sha:blob.sha}]}});
+    var who=(current&&current.name)||currentUserKey||'admin';
+    var nc=await gh('/git/commits',{method:'POST',body:{message:'Atualiza usuários pelo painel ('+who+')',tree:tree.sha,parents:[headSha]}});
+    await gh('/git/refs/heads/'+GH_BRANCH,{method:'PATCH',body:{sha:nc.sha,force:false}});
+    USERS_DIRTY=false; renderUsers();
+    pubStatus('&#10003; Publicado! O link atualiza para todos em 1 a 2 minutos (se alguém já estiver com o painel aberto, é só recarregar).','var(--f-green)');
+  }catch(e){
+    var m=e&&e.message||String(e);
+    if(e&&e.status===401) m='token inválido ou expirado. Gere um novo e salve abaixo.';
+    else if(e&&(e.status===403||e.status===404)) m='o token não tem permissão de escrita no repositório '+GH_REPO.repo+' (Contents: Read and write).';
+    else if(e&&e.status===422) m='o arquivo mudou no GitHub enquanto publicava. Clique em Publicar de novo.';
+    else if(e instanceof TypeError) m='sem conexão com o GitHub. Verifique a internet e tente de novo.';
+    pubStatus('Não consegui publicar: '+uEsc(m),'var(--danger)');
+  }finally{ if(btn)btn.disabled=false; }
 }
 function downloadUsersFile(){
   try{
@@ -2162,6 +2221,9 @@ function startApp(user){ current=user; if(typeof SNAP_MODE!=='undefined'&&SNAP_M
 (function(){
   var nb=document.getElementById('newUserBtn'); if(nb)nb.onclick=function(){ openUserForm(null); };
   var sf=document.getElementById('saveFileBtn'); if(sf)sf.onclick=downloadUsersFile;
+  var pb=document.getElementById('publishUsersBtn'); if(pb)pb.onclick=publishUsers;
+  var ts=document.getElementById('ghTokenSave'); if(ts)ts.onclick=function(){ var v=($('ghTokenInp').value||'').trim(); if(!v){ alert('Cole o token primeiro.'); return; } try{ localStorage.setItem('painelop_ghtoken',v); }catch(e){} $('ghTokenInp').value=''; ghTokenUI(); pubStatus(''); };
+  var td=document.getElementById('ghTokenDel'); if(td)td.onclick=function(){ try{ localStorage.removeItem('painelop_ghtoken'); }catch(e){} ghTokenUI(); };
   var ml=document.getElementById('modLogout'); if(ml)ml.onclick=function(){ $('modules').style.display='none'; var lb=document.getElementById('logoutBtn'); if(lb)lb.click(); };
   var tm=document.getElementById('toModules'); if(tm)tm.onclick=showModules;
   var pl=document.getElementById('prodLogout'); if(pl)pl.onclick=function(){ $('modProd').style.display='none'; var lb=document.getElementById('logoutBtn'); if(lb)lb.click(); };
