@@ -765,6 +765,7 @@ function renderBase(){
   const man=PUB.manifest;
   html+='<div class="update-bar" style="border-left:3px solid var(--f-green);flex-direction:column;align-items:stretch;gap:8px">'+
     '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><button class="apply-btn big" id="pubDataBtn">☁ Publicar dados'+(nLoaded?' ('+nLoaded+')':'')+'</button>'+
+    (man?'<button class="linkbtn" id="notifyBtn">✉ Avisar o pessoal</button>':'')+
     '<div class="folder-info">'+(man?('Última publicação: <b>'+fmtTs(man.ts)+'</b>'+(man.by?' por <b>'+escapeHtml(man.by)+'</b>':'')):'Nenhuma publicação ainda.')+
     (USERS_DIRTY&&isAdmin(current)?'<div style="color:var(--f-amber)">Há alterações de usuários/chaves ainda não publicadas — publique em Controle de Usuários.</div>':'')+
     (!cryptoOn()?'<div style="color:var(--f-amber)">A proteção dos dados ainda não foi ativada (Controle de Usuários).</div>':'')+'</div></div>'+
@@ -797,6 +798,7 @@ function renderBase(){
   const cf=$('changeFolder'); if(cf) cf.addEventListener('click',pickFolder);
   const ex=$('exportFilled'); if(ex) ex.addEventListener('click',exportFilled);
   const pb=$('pubDataBtn'); if(pb) pb.addEventListener('click',publishData);
+  const nb=$('notifyBtn'); if(nb) nb.addEventListener('click',()=>openNotify(PUB.manifest));
   const ts=$('baseTokenSave'); if(ts) ts.addEventListener('click',()=>{ const v=($('baseTokenInp').value||'').trim(); if(!v)return; try{localStorage.setItem('painelop_ghtoken',v);}catch(e){} renderBase(); });
 }
 
@@ -925,7 +927,7 @@ function showRecoveryCode(code,myPass){
 function renderUsers(){
   var tb=$('usersTbody'); if(!tb)return;
   tb.innerHTML=Object.keys(USERS).map(function(k){var u=USERS[k];
-    return '<tr><td>'+uEsc(k)+'</td><td>'+uEsc(u.name||'')+'</td><td style="color:var(--muted)">'+uEsc(modulesLabel(u))+'</td><td style="color:var(--muted)">'+uEsc(accessLabel(u))+'</td><td style="font-size:12px;white-space:nowrap">'+pwLabel(u)+'</td>'
+    return '<tr><td>'+uEsc(k)+'</td><td>'+uEsc(u.name||'')+(CONTACTS[k]?'<div style="font-size:11px;color:var(--muted)">'+uEsc(CONTACTS[k])+'</div>':'')+'</td><td style="color:var(--muted)">'+uEsc(modulesLabel(u))+'</td><td style="color:var(--muted)">'+uEsc(accessLabel(u))+'</td><td style="font-size:12px;white-space:nowrap">'+pwLabel(u)+'</td>'
       +'<td style="text-align:right;white-space:nowrap"><button class="ubtn" data-edit="'+uEsc(k)+'">Editar</button> <button class="ubtn danger" data-del="'+uEsc(k)+'">Remover</button></td></tr>';
   }).join('');
   tb.querySelectorAll('[data-edit]').forEach(function(b){b.onclick=function(){openUserForm(b.getAttribute('data-edit'));};});
@@ -943,7 +945,8 @@ function openUserForm(key){
   var html='<div style="background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px">'
    +'<div style="font-weight:600;color:var(--ink)">'+(key?'Editar usuário':'Novo usuário')+'</div>'
    +'<label style="font-size:12px;color:var(--muted)">Login<br><input id="ufLogin" '+(key?'disabled':'')+' value="'+uEsc(key||'')+'" style="width:100%"></label>'
-   +'<label style="font-size:12px;color:var(--muted)">Nome<br><input id="ufName" value="'+uEsc(u.name||'')+'" style="width:100%"></label>'
+   +(cryptoOn()?'<label style="font-size:12px;color:var(--muted)">E-mail (para avisos de atualização)<br><input id="ufEmail" type="email" value="'+uEsc(key&&CONTACTS[key]||'')+'" placeholder="nome@dashuniformes.com.br" style="width:100%"></label>':'')
+   +'<label style="font-size:12px;color:var(--muted)">Nome<br><input id="ufName"value="'+uEsc(u.name||'')+'" style="width:100%"></label>'
    +'<label style="font-size:12px;color:var(--muted)">'+(hasPw?'Nova senha':'Senha')+pwInputHtml('ufPass',hasPw?'deixe em branco para manter':'mínimo 12 caracteres')+'</label>'
    +(key&&cryptoOn()&&!(u.k&&u.k.wk)?'<div style="font-size:11.5px;color:var(--f-amber)">&#9888; Este usuário ainda usa a senha antiga. Defina uma nova.</div>':'')
    +'<label style="font-size:13px;color:var(--ink)"><input type="checkbox" id="ufAdmin" '+(adm?'checked':'')+'> Administrador (acesso total + gestão)</label>'
@@ -989,6 +992,8 @@ async function saveUserForm(){
   else if(mods.indexOf('relatorios')<0){ panels=[]; }
   else { panels=[].slice.call(document.querySelectorAll('#ufPanels .ufp:checked')).map(function(c){return c.value;}); if(!panels.length) return fail('Selecione ao menos um relatório, ou marque Admin / Todos.'); }
   if(editingUser===currentUserKey&&!adm&&isAdmin(prev)) return fail('Você não pode tirar o seu próprio acesso de administrador.');
+  var email=$('ufEmail')?($('ufEmail').value||'').trim().toLowerCase():null;
+  if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail('E-mail inválido.');
   var obj={name:name,panels:panels,modules:mods}; if(adm)obj.admin=true;
   $('ufSave').disabled=true; err.style.color='var(--muted)'; err.textContent=cryptoOn()?'Gerando chaves…':'';
   try{
@@ -998,6 +1003,8 @@ async function saveUserForm(){
     } else { obj.pass=pass||prev.pass; }
   }catch(e){ $('ufSave').disabled=false; return fail('Erro ao gerar as chaves: '+(e&&e.message||e)); }
   USERS[login]=obj; if(login===currentUserKey) current=obj;
+  if(email!==null&&(CONTACTS[login]||'')!==email){ if(email)CONTACTS[login]=email; else delete CONTACTS[login];
+    try{ await saveContacts(); }catch(e){ $('ufSave').disabled=false; return fail('Usuário salvo, mas o e-mail não: '+(e&&e.message||e)); } }
   USERS_DIRTY=true; editingUser=null;
   $('userForm').innerHTML=pass?('<div style="background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:16px;font-size:13px;color:var(--ink);line-height:1.5">&#10003; <b>'+uEsc(name||login)+'</b> salvo.<br>Senha: <b style="user-select:all">'+uEsc(pass)+'</b><br><span style="color:var(--muted);font-size:12px">Passe a senha para a pessoa por um canal privado. Ela só vale depois de clicar em <b>Publicar alterações</b>.</span></div>'):'';
   renderUsers();
@@ -1007,7 +1014,9 @@ function delUser(k){
   var admins=Object.keys(USERS).filter(function(x){return isAdmin(USERS[x]);});
   if(isAdmin(USERS[k])&&admins.length<=1){ alert('Não dá para remover o único administrador.'); return; }
   if(!confirm('Remover o usuário "'+k+'"?')) return;
-  delete USERS[k]; USERS_DIRTY=true; renderUsers();
+  delete USERS[k]; USERS_DIRTY=true;
+  if(CONTACTS[k]){ delete CONTACTS[k]; saveContacts().catch(function(){}); }
+  renderUsers();
 }
 /* ===== FECHAMENTO DA FACÇÃO (fechamento do beneficiador × romaneios) ===== */
 var FC={fech:null,roms:[]};
@@ -1178,8 +1187,12 @@ async function pwKey(pass,saltB64,it){ var base=await crypto.subtle.importKey('r
 function cryptoOn(){ return !!KEYS; }
 function userCanBase(u){ return isAdmin(u)||(Array.isArray(u&&u.modules)&&u.modules.indexOf('base')>=0); }
 // slots cujas chaves o usuário recebe (não depende do modo da tela)
+var CONTACTS_KEY='__contatos', CONTACTS={};
+// e-mails dos usuários: KEYS.ct cifrado com a chave CONTACTS_KEY (só quem tem a Base de Dados lê)
+async function loadContacts(){ CONTACTS={}; try{ if(KEYS&&KEYS.ct&&SESSION.slots[CONTACTS_KEY]) CONTACTS=await decJSON(b64d(SESSION.slots[CONTACTS_KEY]),KEYS.ct)||{}; }catch(e){ CONTACTS={}; } }
+async function saveContacts(){ if(SESSION.m&&SESSION.sk&&!SESSION.sk[CONTACTS_KEY]) await adminMaintain(); if(!SESSION.sk||!SESSION.sk[CONTACTS_KEY]) throw new Error('sem a chave dos contatos — entre de novo como administrador.'); KEYS.ct=await encJSON(b64d(SESSION.sk[CONTACTS_KEY]),CONTACTS); USERS_DIRTY=true; }
 function userSlotList(u){
-  if(userCanBase(u)) return SLOTS.map(function(s){return s.key;}).sort();
+  if(userCanBase(u)) return SLOTS.map(function(s){return s.key;}).concat([CONTACTS_KEY]).sort();
   var m=Array.isArray(u.modules)?u.modules:['relatorios']; if(m.indexOf('relatorios')<0) return [];
   var pks=(u.panels==='*')?Object.keys(PANELS):(u.panels||[]);
   return SLOTS.filter(function(s){return s.panels.some(function(p){return pks.indexOf(p)>=0;});}).map(function(s){return s.key;}).sort();
@@ -1190,6 +1203,7 @@ async function openSession(u,ku){
   if(!u.k||!u.k.bd) return;
   var bd=await decJSON(ku,u.k.bd); SESSION.slots=bd.slots||{};
   if(bd.m&&KEYS){ SESSION.m=b64d(bd.m); SESSION.sk=await decJSON(SESSION.m,KEYS.sk); SESSION.slots=Object.assign({},SESSION.sk); await adminMaintain(); }
+  await loadContacts();
 }
 async function rebuildBundle(u){
   var ku=await decObj(SESSION.m,u.k.ek); var sl=userSlotList(u); var slots={};
@@ -1206,7 +1220,7 @@ async function setUserPassword(u,pass){
 // admin: cria chaves de slots novos e refaz pacotes desatualizados
 async function adminMaintain(){
   if(!SESSION.m||!KEYS) return false; var changed=false;
-  SLOTS.forEach(function(s){ if(!SESSION.sk[s.key]){ SESSION.sk[s.key]=b64e(rnd(32)); changed=true; } });
+  SLOTS.map(function(s){return s.key;}).concat([CONTACTS_KEY]).forEach(function(k){ if(!SESSION.sk[k]){ SESSION.sk[k]=b64e(rnd(32)); changed=true; } });
   if(changed) KEYS.sk=await encJSON(SESSION.m,SESSION.sk);
   var ks=Object.keys(USERS);
   for(var i=0;i<ks.length;i++){ var u=USERS[ks[i]]; if(!u.k||!u.k.ek)continue;
@@ -1221,7 +1235,7 @@ function normCode(c){ return String(c||'').toUpperCase().replace(/[^A-Z0-9]/g,''
 function pwProblem(p){ if(!p||p.length<12) return 'A senha precisa ter pelo menos 12 caracteres (use o botão Gerar para uma senha forte e fácil de lembrar).'; return ''; }
 async function activateProtection(myPass){
   var me=USERS[currentUserKey]; if(!me||!isAdmin(me)) throw new Error('só o administrador logado pode ativar.');
-  var M=rnd(32), SK={}; SLOTS.forEach(function(s){ SK[s.key]=b64e(rnd(32)); });
+  var M=rnd(32), SK={}; SLOTS.forEach(function(s){ SK[s.key]=b64e(rnd(32)); }); SK[CONTACTS_KEY]=b64e(rnd(32));
   var code=genRecoveryCode(), rs=b64e(rnd(16));
   KEYS={v:1,sk:await encJSON(M,SK),rc:{s:rs,it:PBKDF2_IT,wm:await encObj(await pwKey(normCode(code),rs,PBKDF2_IT),M)}};
   SESSION={ku:null,slots:Object.assign({},SK),m:M,sk:SK};
@@ -1321,7 +1335,7 @@ async function publishData(){
       if(meta.length) slots[s.key]={ts:Date.now(),n:meta.length,ps:meta.map(function(x){return x.p;}),m:await encJSON(raw,{files:meta})}; }
     if(miss.length) throw new Error('não consegui ler: '+miss.join(', ')+'. Se estiverem só na nuvem (OneDrive), baixe para o computador e tente de novo.');
     var who=(current&&current.name)||currentUserKey;
-    var man={v:1,ts:Date.now(),by:who,slots:slots};
+    var man={v:1,ts:Date.now(),by:who,slots:slots,up:loaded.map(function(s){return s.key;})};
     var tree=[{path:'manifest.json',mode:'100644',type:'blob',content:JSON.stringify(man)}];
     Object.keys(slots).forEach(function(k){ (slots[k].ps||[]).forEach(function(p){ var sha=newBlobs[p]||prevSha[p]; if(sha)tree.push({path:p,mode:'100644',type:'blob',sha:sha}); }); });
     pubDataStatus('Gravando a publicação…');
@@ -1332,6 +1346,7 @@ async function publishData(){
     else await gh('/git/refs',{method:'POST',body:{ref:'refs/heads/'+GH_DATA_BRANCH,sha:nc.sha}});
     PUB.manifest=man; renderBase();
     pubDataStatus('&#10003; Dados publicados ('+nUp+' arquivo(s) enviado(s)'+(nSame?', '+nSame+' sem mudança':'')+'). Avise o pessoal: é só dar F5 no painel (ou clicar em "Buscar dados novos").','var(--f-green)');
+    openNotify(man);
   }catch(e){
     var m=e&&e.message||String(e);
     if(e&&e.status===401) m='token inválido ou expirado. Gere um novo e salve abaixo.';
@@ -1340,6 +1355,48 @@ async function publishData(){
     else if(e instanceof TypeError) m='sem conexão com o GitHub. Verifique a internet e tente de novo.';
     pubDataStatus('Não consegui publicar: '+uEsc(m),'var(--danger)');
   }finally{ if(btn)btn.disabled=false; }
+}
+/* ---- aviso por e-mail depois de publicar (abre o e-mail pronto; quem envia é a pessoa) ---- */
+function siteURL(){ return location.href.split('#')[0].split('?')[0]; }
+function notifyText(man){
+  var d=new Date(man&&man.ts||Date.now()), dia=d.toLocaleDateString('pt-BR'), hr=('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
+  var labs=((man&&man.up)||[]).map(slotLabel);
+  var body='Olá!\n\nOs dados do Painel Operacional foram atualizados em '+dia+' às '+hr+'.\n'
+    +(labs.length?'\nArquivos atualizados:\n'+labs.map(function(l){return '• '+l;}).join('\n')+'\n':'')
+    +'\nAcesse: '+siteURL()+'\n(Se o painel já estiver aberto, aperte F5 para carregar os dados novos.)\n\n'+((current&&current.name)||'');
+  return {subj:'Painel Operacional atualizado — '+dia+' '+hr, body:body};
+}
+function openNotify(man){
+  var logins=Object.keys(CONTACTS).filter(function(k){return USERS[k]&&CONTACTS[k];});
+  var saved=null; try{ saved=JSON.parse(localStorage.getItem('painelop_notify_sel')||'null'); }catch(e){}
+  var t=notifyText(man);
+  var rows=logins.length?logins.map(function(k){ var on=saved?saved.indexOf(k)>=0:(k!==currentUserKey);
+      return '<label style="display:flex;gap:10px;align-items:center;padding:5px 0;font-size:13.5px;color:var(--ink)"><input type="checkbox" class="ntf" value="'+uEsc(k)+'"'+(on?' checked':'')+'> <b>'+uEsc(USERS[k].name||k)+'</b> <span style="color:var(--muted)">'+uEsc(CONTACTS[k])+'</span></label>'; }).join('')
+    :'<div style="color:var(--f-amber);font-size:13px">Nenhum e-mail cadastrado ainda.'+(isAdmin(current)?' Cadastre em Controle de Usuários → Editar → E-mail (e publique).':' Peça ao administrador para cadastrar.')+'</div>';
+  var inp='width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:7px;padding:7px 9px;font-family:inherit;font-size:13px';
+  var body='<h2 style="margin:0 0 4px;color:var(--ink)">✉ Avisar quem?</h2><div style="color:var(--muted);font-size:13px;margin-bottom:12px">Marque as pessoas. O e-mail abre pronto na sua conta — é só conferir e clicar em Enviar.</div>'
+    +(logins.length?'<div style="display:flex;gap:12px;margin-bottom:4px;font-size:12px"><button class="linkbtn" id="ntAll">marcar todos</button><button class="linkbtn" id="ntNone">desmarcar todos</button></div>':'')
+    +'<div style="border:1px solid var(--line);border-radius:9px;padding:6px 12px;max-height:260px;overflow:auto">'+rows+'</div>'
+    +'<label style="display:block;margin-top:10px;font-size:12px;color:var(--muted)">Outros e-mails (separados por vírgula)<input id="ntExtra" style="'+inp+';margin-top:4px" placeholder="fulano@empresa.com.br"></label>'
+    +'<label style="display:block;margin-top:10px;font-size:12px;color:var(--muted)">Assunto<input id="ntSubj" style="'+inp+';margin-top:4px" value="'+uEsc(t.subj)+'"></label>'
+    +'<label style="display:block;margin-top:10px;font-size:12px;color:var(--muted)">Mensagem<textarea id="ntBody" rows="10" style="'+inp+';margin-top:4px;resize:vertical">'+uEsc(t.body)+'</textarea></label>'
+    +'<div id="ntErr" style="color:var(--f-amber);font-size:12.5px;min-height:16px;margin-top:8px"></div>'
+    +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px"><button class="ubtn" id="ntGmail" style="background:var(--f-green);color:#0c241a;border:none;font-weight:600;padding:9px 16px">Abrir no Gmail</button><button class="ubtn" id="ntMailto" style="padding:9px 16px">Abrir no Outlook / app de e-mail</button><button class="ubtn" id="ntCopy" style="padding:9px 16px">Copiar e-mails</button></div>';
+  var m=openProgModal(body,null);
+  function sel(){ return [].slice.call(m.querySelectorAll('.ntf:checked')).map(function(c){return c.value;}); }
+  function recips(){ var to=sel().map(function(k){return CONTACTS[k];});
+    ($('ntExtra').value||'').split(/[,;\s]+/).forEach(function(e){ e=e.trim(); if(e&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)&&to.indexOf(e)<0)to.push(e); });
+    if(!to.length){ $('ntErr').textContent='Marque pelo menos uma pessoa (ou digite um e-mail).'; return null; }
+    try{ localStorage.setItem('painelop_notify_sel',JSON.stringify(sel())); }catch(e){} $('ntErr').textContent=''; return to; }
+  var a=$('ntAll'), n=$('ntNone');
+  if(a)a.onclick=function(){ m.querySelectorAll('.ntf').forEach(function(c){c.checked=true;}); };
+  if(n)n.onclick=function(){ m.querySelectorAll('.ntf').forEach(function(c){c.checked=false;}); };
+  $('ntGmail').onclick=function(){ var to=recips(); if(!to)return; var e=encodeURIComponent;
+    window.open('https://mail.google.com/mail/?view=cm&fs=1&to='+e(to.join(','))+'&su='+e($('ntSubj').value)+'&body='+e($('ntBody').value),'_blank'); };
+  $('ntMailto').onclick=function(){ var to=recips(); if(!to)return; var e=encodeURIComponent;
+    location.href='mailto:'+to.map(e).join(',')+'?subject='+e($('ntSubj').value)+'&body='+e($('ntBody').value); };
+  $('ntCopy').onclick=function(){ var to=recips(); if(!to)return; var s=to.join(', ');
+    (navigator.clipboard&&navigator.clipboard.writeText?navigator.clipboard.writeText(s):Promise.reject()).then(function(){ $('ntErr').style.color='var(--f-green)'; $('ntErr').textContent='E-mails copiados.'; },function(){ $('ntErr').textContent=s; }); };
 }
 async function refreshManifestInfo(){ try{ PUB.manifest=await fetchManifest(); }catch(e){} if(APPMODE==='base'&&activeView==='base')renderBase(); }
 
@@ -2798,7 +2855,7 @@ $('recForm').addEventListener('submit',async function(e){
   pubStatus('Senha redefinida neste navegador. Clique em <b>Publicar alterações</b> para ela valer (anote a nova senha: '+uEsc(np)+').','var(--f-amber)');
 });
 document.getElementById('logoutBtn').addEventListener('click',function(){
-  current=null; currentUserKey=''; APPMODE=''; BASE_STASH=null; REL_STASH=null; FC={fech:null,roms:[]}; fcRender();
+  current=null; currentUserKey=''; APPMODE=''; BASE_STASH=null; REL_STASH=null; FC={fech:null,roms:[]}; fcRender(); CONTACTS={};
   SESSION={ku:null,slots:{},m:null,sk:null}; PUB={manifest:null,loading:false,prog:'',err:'',noKey:[],fetchedAt:0};
   Object.keys(FILES).forEach(k=>delete FILES[k]); Object.keys(applied).forEach(k=>delete applied[k]);
   try{ localStorage.removeItem('painelop_user'); localStorage.removeItem('painelop_ku'); }catch(e){}
