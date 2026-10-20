@@ -514,14 +514,49 @@ function idbSet(k,v){ return idbReq('readwrite',(st,res,tx)=>{ try{st.put(v,k);}
 function idbGet(k){ return idbReq('readonly',(st,res)=>{ const g=st.get(k); g.onsuccess=()=>res(g.result||null); g.onerror=()=>res(null); }); }
 async function collectFiles(handle,acc,depth){
   for await (const e of handle.values()){
-    if(e.kind==='file'){ if(/\.(xlsx|xls|csv)$/i.test(e.name)){ try{ acc.push(await e.getFile()); }catch(_){}} }
+    if(e.kind==='file'){ if(/\.(xlsx|xls|csv)$/i.test(e.name)||SHOP_ZIPS.some(z=>z.re.test(e.name))){ try{ acc.push(await e.getFile()); }catch(_){}} }
   }
+}
+/* Zips baixados do Shopify: o painel abre o zip e usa o CSV de dentro, com o nome da Base.
+   O zip mais recente ganha do CSV antigo (o scanFolder fica com o arquivo de data mais nova). */
+const SHOP_ZIPS=[
+  {re:/^orders_export.*\.zip$/i,   name:'08_Shopify — Exportação de Pedidos.csv'},
+  {re:/^products_export.*\.zip$/i, name:'19_Produtos Cadastrados Shopfy.csv'}
+];
+async function unzipFirstCsv(zip){
+  const buf=new Uint8Array(await zip.arrayBuffer()), dv=new DataView(buf.buffer);
+  let eo=-1; for(let i=buf.length-22;i>=Math.max(0,buf.length-65557);i--){ if(dv.getUint32(i,true)===0x06054b50){eo=i;break;} }
+  if(eo<0) throw new Error('não parece ser um arquivo zip');
+  let p=dv.getUint32(eo+16,true); const n=dv.getUint16(eo+10,true);
+  for(let k=0;k<n;k++){
+    if(dv.getUint32(p,true)!==0x02014b50) break;
+    const meth=dv.getUint16(p+10,true), csz=dv.getUint32(p+20,true), nl=dv.getUint16(p+28,true), xl=dv.getUint16(p+30,true), cl=dv.getUint16(p+32,true), lo=dv.getUint32(p+42,true);
+    const nm=new TextDecoder().decode(buf.subarray(p+46,p+46+nl)); p+=46+nl+xl+cl;
+    if(!/\.csv$/i.test(nm)||/(^|\/)__MACOSX\//.test(nm)) continue;
+    const ds=lo+30+dv.getUint16(lo+26,true)+dv.getUint16(lo+28,true), raw=buf.subarray(ds,ds+csz);
+    if(meth===0) return new Uint8Array(raw);
+    if(meth!==8) throw new Error('compressão não suportada');
+    if(typeof DecompressionStream==='undefined') throw new Error('este navegador não abre zip — use o Chrome ou o Edge atualizado');
+    return new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+  }
+  throw new Error('nenhum CSV dentro do zip');
+}
+async function expandShopZips(list){
+  const out=[], bad=[];
+  for(const f of list){
+    const z=SHOP_ZIPS.find(z=>z.re.test(f.name)); if(!z){ out.push(f); continue; }
+    try{ out.push(new File([await unzipFirstCsv(f)],z.name,{type:'text/csv',lastModified:f.lastModified})); }
+    catch(e){ bad.push(f.name+' ('+(e&&e.message||e)+')'); }
+  }
+  if(bad.length) toast('Não consegui abrir: '+bad.join(', '));
+  return out;
 }
 async function readDirHandle(h){
   toast('Lendo a pasta…');
-  const files=[];
+  let files=[];
   try{ await collectFiles(h,files,0); }
   catch(err){ toast('Não consegui ler a pasta: '+(err&&err.message||err)); return; }
+  files=await expandShopZips(files);
   if(!files.length){ toast('Nenhuma planilha (.xlsx/.xls/.csv) encontrada na pasta.'); return; }
   scanFolder(files);
 }
@@ -791,7 +826,7 @@ function renderBase(){
   const bv=$('baseView'); bv.innerHTML=''; bv.appendChild(wrap);
 
   wrap.querySelectorAll('input[type=file][data-slot]').forEach(inp=>{ inp.addEventListener('change',e=>{ const key=inp.dataset.slot; const fs=[...e.target.files]; if(!fs.length)return; fs.forEach(f=>addFile(key,f)); applyAll(); }); });
-  const fi=wrap.querySelector('#folderInp'); if(fi) fi.addEventListener('change',e=>scanFolder(e.target.files));
+  const fi=wrap.querySelector('#folderInp'); if(fi) fi.addEventListener('change',async e=>{ const top=[...e.target.files].filter(f=>{const rp=f.webkitRelativePath||'';return !rp||rp.split('/').length<=2;}); scanFolder(await expandShopZips(top)); });
   wrap.querySelectorAll('[data-rm]').forEach(el=>{ el.addEventListener('click',()=>{ delete FILES[el.dataset.rm]; computeStates(); renderNav(); renderBase(); }); });
   wrap.querySelectorAll('[data-clearslot]').forEach(el=>{ el.addEventListener('click',()=>{ delete FILES[el.dataset.clearslot]; computeStates(); renderNav(); renderBase(); }); });
   const ub=$('updateBtn'); if(ub) ub.addEventListener('click',updateFromFolder);
