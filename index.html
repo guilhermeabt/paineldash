@@ -1397,8 +1397,8 @@ function openNotify(man){
     var from=($('ntFrom').value||'').trim().toLowerCase();
     if(from&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(from)){ $('ntErr').textContent='A conta de envio não é um e-mail válido.'; return; }
     try{ if(from)localStorage.setItem('painelop_notify_from',from); else localStorage.removeItem('painelop_notify_from'); }catch(_){}
-    // authuser escolhe a conta Google (entre as logadas neste perfil do Chrome)
-    window.open('https://mail.google.com/mail/'+(from?'?authuser='+e(from)+'&':'?')+'view=cm&fs=1&to='+e(to.join(','))+'&su='+e($('ntSubj').value)+'&body='+e($('ntBody').value),'_blank'); };
+    // /mail/u/<email>/ escolhe a conta Google entre as logadas neste perfil do Chrome (authuser sozinho era ignorado)
+    window.open('https://mail.google.com/mail/'+(from?'u/'+from.replace(/[^a-z0-9@._+-]/g,'')+'/?authuser='+e(from)+'&':'?')+'view=cm&fs=1&to='+e(to.join(','))+'&su='+e($('ntSubj').value)+'&body='+e($('ntBody').value),'_blank'); };
   $('ntMailto').onclick=function(){ var to=recips(); if(!to)return; var e=encodeURIComponent;
     location.href='mailto:'+to.map(e).join(',')+'?subject='+e($('ntSubj').value)+'&body='+e($('ntBody').value); };
   $('ntCopy').onclick=function(){ var to=recips(); if(!to)return; var s=to.join(', ');
