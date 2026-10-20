@@ -285,6 +285,33 @@
   </div>
 </div>
 
+<div id="modFaccao" style="display:none;min-height:100vh;padding:28px;max-width:1000px;margin:0 auto">
+  <div style="display:flex;align-items:center;gap:14px;margin-bottom:8px">
+    <button class="backMod" style="background:none;border:1px solid var(--line);color:var(--muted);padding:8px 14px;border-radius:8px;cursor:pointer">&larr; Módulos</button>
+    <h2 style="margin:0;color:var(--ink);font-weight:600">Fechamento da Facção</h2>
+  </div>
+  <p style="color:var(--muted);margin:0 0 20px;font-size:13.5px">Confere o fechamento do beneficiador contra os romaneios (Ordens de Serviço) enviados: totais e OPs enviadas que não foram cobradas.</p>
+  <div style="display:flex;gap:18px;flex-wrap:wrap">
+    <div style="flex:1;min-width:280px;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:16px">
+      <div style="font-weight:600;color:var(--ink);margin-bottom:4px">1. Fechamento do beneficiador</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">1 PDF (“Fechamento de Beneficiador”)</div>
+      <label class="ubtn" style="cursor:pointer;display:inline-block">Selecionar PDF<input type="file" id="fcFech" accept=".pdf,application/pdf" style="display:none"></label>
+      <div id="fcFechList" style="margin-top:12px;font-size:13px"></div>
+    </div>
+    <div style="flex:1;min-width:280px;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:16px">
+      <div style="font-weight:600;color:var(--ink);margin-bottom:4px">2. Romaneios (Ordem de Serviço)</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Um ou vários PDFs — pode selecionar várias vezes</div>
+      <label class="ubtn" style="cursor:pointer;display:inline-block">Adicionar PDFs<input type="file" id="fcRom" multiple accept=".pdf,application/pdf" style="display:none"></label>
+      <div id="fcRomList" style="margin-top:12px;font-size:13px"></div>
+    </div>
+  </div>
+  <div style="margin-top:20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    <button id="fcGo" style="background:var(--f-green);border:none;color:#0c241a;font-weight:600;padding:11px 22px;border-radius:9px;cursor:pointer;font-size:14px">Conciliar</button>
+    <button id="fcClear" class="ubtn">Limpar tudo</button>
+    <span id="fcStat" style="font-size:13px;color:var(--muted)"></span>
+  </div>
+</div>
+
 <div id="app">
   <header>
     <button class="navtoggle" id="navToggle" aria-label="Menu">☰</button>
@@ -805,16 +832,17 @@ function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('sho
 var editingUser=null, USERS_DIRTY=false;
 function uEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function isAdmin(u){ return !!(u&&u.admin); }
-var USER_MODS=['relatorios','producao','base'];
-function userModules(u){ if(!u)return []; if(isAdmin(u))return ['relatorios','producao','base','usuarios']; var m=Array.isArray(u.modules)?u.modules:['relatorios']; return USER_MODS.filter(function(k){return m.indexOf(k)>=0;}); }
+var USER_MODS=['relatorios','producao','faccao','base'];
+function userModules(u){ if(!u)return []; if(isAdmin(u))return ['relatorios','producao','faccao','base','usuarios']; var m=Array.isArray(u.modules)?u.modules:['relatorios']; return USER_MODS.filter(function(k){return m.indexOf(k)>=0;}); }
 var MODMETA={
  relatorios:{name:'Relatórios',desc:'Vendas, expedição, produção, conciliação, DRE e mais.',icon:'&#128202;'},
  producao:{name:'Programação da Produção',desc:'Planejamento e sequenciamento da produção.',icon:'&#127981;'},
+ faccao:{name:'Fechamento da Facção',desc:'Conferir o fechamento do beneficiador contra os romaneios enviados.',icon:'&#129534;'},
  base:{name:'Base de Dados',desc:'Subir os arquivos e publicar os dados para todos os relatórios.',icon:'&#128451;'},
  usuarios:{name:'Controle de Usuários',desc:'Cadastrar usuários, senhas e permissões.',icon:'&#128100;'}
 };
 var APPMODE='', BASE_STASH=null;
-function hideAllScreens(){ ['login','app','modules','modProd','modUsers'].forEach(function(id){var e=$(id); if(e)e.style.display='none';}); }
+function hideAllScreens(){ ['login','app','modules','modProd','modUsers','modFaccao'].forEach(function(id){var e=$(id); if(e)e.style.display='none';}); }
 function showModules(){
   if(APPMODE==='base') BASE_STASH=Object.assign({},FILES); else if(APPMODE==='rel') REL_STASH=Object.assign({},FILES);
   APPMODE='';
@@ -840,6 +868,7 @@ function openModule(k){
   if(k==='relatorios'){ enterRelatorios(current); }
   else if(k==='producao'){ $('modProd').style.display='flex'; enterProd(); }
   else if(k==='base'){ enterBase(current); }
+  else if(k==='faccao'){ fcRender(); $('modFaccao').style.display='block'; }
   else if(k==='usuarios'){ if(!isAdmin(current)){ showModules(); return; } editingUser=null; $('userForm').innerHTML=''; renderUsers(); $('modUsers').style.display='block'; }
 }
 function panelName(pk){ return (typeof PANELCFG!=='undefined'&&PANELCFG[pk]&&PANELCFG[pk].name)||pk; }
@@ -980,6 +1009,142 @@ function delUser(k){
   if(!confirm('Remover o usuário "'+k+'"?')) return;
   delete USERS[k]; USERS_DIRTY=true; renderUsers();
 }
+/* ===== FECHAMENTO DA FACÇÃO (fechamento do beneficiador × romaneios) ===== */
+var FC={fech:null,roms:[]};
+function _money(s){ return parseFloat(String(s).replace(/\./g,'').replace(',','.'))||0; }
+function _brl(n){ return Number(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+// texto do PDF em linhas (mesma reconstrução por y/x do ckParseOpsPdf)
+function _pdfLines(file){ return new Promise(function(resolve,reject){
+  ensurePdfjs(function(){
+    var rd=new FileReader();
+    rd.onerror=function(){ reject(new Error('não consegui abrir '+file.name)); };
+    rd.onload=function(e){
+      window.pdfjsLib.getDocument({data:new Uint8Array(e.target.result)}).promise.then(function(pdf){
+        var N=pdf.numPages, pages=new Array(N);
+        function getPage(i){ return pdf.getPage(i).then(function(pg){ return pg.getTextContent().then(function(tc){
+          var its=tc.items.map(function(it){return {x:it.transform[4],y:it.transform[5],s:(it.str||'')};});
+          its.sort(function(a,b){return b.y-a.y;});
+          var ls=[],curL=null,cy=null;
+          its.forEach(function(z){ if(cy===null||(cy-z.y)>2.5){ curL=[]; ls.push(curL); cy=z.y; } curL.push(z); });
+          ls.forEach(function(a){ a.sort(function(p,q){return p.x-q.x;}); });
+          pages[i-1]=ls.map(function(a){ return a.map(function(z){return z.s;}).join(' ').replace(/\s+/g,' ').trim(); });
+        }); }); }
+        var chain=Promise.resolve();
+        for(var i=1;i<=N;i++){ (function(i){ chain=chain.then(function(){return getPage(i);}); })(i); }
+        return chain.then(function(){ resolve([].concat.apply([],pages)); });
+      }).catch(function(err){ reject(new Error(file.name+': '+(err&&err.message||err))); });
+    };
+    rd.readAsArrayBuffer(file);
+  });
+}); }
+function fcParseFech(lines){
+  var txt=lines.join('\n');
+  var mt=/Total Geral\s+([\d.,]+)/.exec(txt)||/Valor Total:\s*([\d.,]+)/.exec(txt);
+  var re=/^(\d{5,6})\s+\d{2}\/\d{2}\/\d{4}\s+\d{2}\/\d{2}\/\d{4}\s+(\d{4,6})\s+(\S+)\s+(\S+)\s+(\w+)\s+([\d.,]+)\s+(\d+)\s+([\d.,]+)$/;
+  var rows=[], ops={};
+  lines.forEach(function(l){ var m=re.exec(l); if(!m)return;
+    var r={os:m[1],op:m[2],ref:m[3],cor:m[4],fase:m[5],custo:_money(m[6]),qtd:parseInt(m[7],10)||0,valor:_money(m[8])}; rows.push(r);
+    var o=ops[r.op]||(ops[r.op]={op:r.op,ref:r.ref,os:[],qtd:0,valor:0}); if(o.os.indexOf(r.os)<0)o.os.push(r.os); o.qtd+=r.qtd; o.valor+=r.valor; });
+  return {total:mt?_money(mt[1]):null, rows:rows, ops:ops, isFech:/Fechamento de Beneficiador/i.test(txt)};
+}
+// usa só a Via da Empresa (o PDF repete tudo na Via do Beneficiador)
+function fcParseRom(lines){
+  var all=lines.join('\n'), cut=all.indexOf('Via do Beneficiador'); var via=cut>=0?all.slice(0,cut):all;
+  var L=via.split('\n');
+  var mo=/OS N[ºo°:]+\s*(\d+)/.exec(via), mt=/Vr\.?\s*Total da Ordem de Servi[çc]o:?\s*([\d.,]+)/.exec(via);
+  var reA=/^(\d{4,6})\s+([A-Z]{2,4}\d{3,4})\s+(.+)$/, reB=/Qtde\b.*?([\d.,]+)\s+([\d.,]+)$/;
+  // linha A abre a OP; cada linha "COR Qtde ... unit total" + a linha seguinte (grade) é um item.
+  // OP com várias cores: só a 1ª cor vem com a linha A; as demais vêm só com Qtde + grade.
+  var items=[], cur=null, curHas=false;
+  for(var i=0;i<L.length;i++){
+    var a=reA.exec(L[i]);
+    if(a){ if(cur&&!curHas) items.push({op:cur[1],ref:cur[2],desc:cur[3],cor:'',unit:0,valor:0,qtd:0,bad:true}); cur=a; curHas=false; continue; }
+    if(!cur||!/\bQtde\b/.test(L[i])) continue;
+    var b=reB.exec(L[i]); if(!b) continue;
+    var c=/^\s*(\d+)/.exec(L[i+1]||'');
+    items.push({op:cur[1],ref:cur[2],desc:cur[3],cor:L[i].split(/\s*\bQtde\b/)[0].trim(),unit:_money(b[1]),valor:_money(b[2]),qtd:c?parseInt(c[1],10):0,bad:!c});
+    curHas=true; i++; }
+  if(cur&&!curHas) items.push({op:cur[1],ref:cur[2],desc:cur[3],cor:'',unit:0,valor:0,qtd:0,bad:true});
+  return {os:mo?mo[1]:null, total:mt?_money(mt[1]):null, items:items, hadVia2:cut>=0};
+}
+function fcRender(){
+  var fl=$('fcFechList'), rl=$('fcRomList');
+  if(fl) fl.innerHTML=FC.fech?('<div style="display:flex;gap:8px;align-items:center"><span style="color:var(--f-green)">&#10003;</span><span style="flex:1;color:var(--ink);word-break:break-all">'+uEsc(FC.fech.name)+'</span><span class="rm" data-fcrm="fech" style="cursor:pointer;color:var(--muted);font-size:12px">remover</span></div>'):'<span style="color:var(--muted)">Nenhum arquivo</span>';
+  if(rl) rl.innerHTML=FC.roms.length?(FC.roms.map(function(f,i){ return '<div style="display:flex;gap:8px;align-items:center;padding:3px 0"><span style="color:var(--f-green)">&#10003;</span><span style="flex:1;color:var(--ink);word-break:break-all">'+uEsc(f.name)+'</span><span data-fcrm="'+i+'" style="cursor:pointer;color:var(--muted);font-size:12px">remover</span></div>'; }).join('')+'<div style="color:var(--muted);font-size:12px;margin-top:4px">'+FC.roms.length+' arquivo(s)</div>'):'<span style="color:var(--muted)">Nenhum arquivo</span>';
+  document.querySelectorAll('#modFaccao [data-fcrm]').forEach(function(el){ el.onclick=function(){ var k=el.getAttribute('data-fcrm'); if(k==='fech')FC.fech=null; else FC.roms.splice(+k,1); fcRender(); }; });
+}
+async function fcRun(){
+  var st=$('fcStat'); function stat(t,c){ st.style.color=c||'var(--muted)'; st.innerHTML=t; }
+  if(!FC.fech) return stat('Selecione o PDF do fechamento.','var(--f-amber)');
+  if(!FC.roms.length) return stat('Adicione pelo menos um romaneio.','var(--f-amber)');
+  var btn=$('fcGo'); btn.disabled=true;
+  try{
+    stat('Lendo o fechamento…');
+    var F=fcParseFech(await _pdfLines(FC.fech)); var avisos=[];
+    if(!F.isFech) avisos.push('O arquivo do fechamento não parece ser um “Fechamento de Beneficiador”.');
+    if(F.total===null) avisos.push('Não encontrei o “Total Geral” no fechamento.');
+    if(!F.rows.length) avisos.push('Não reconheci nenhuma linha de OP no fechamento.');
+    var somaF=F.rows.reduce(function(a,r){return a+r.valor;},0);
+    if(F.total!==null&&F.rows.length&&Math.abs(somaF-F.total)>=0.01) avisos.push('A soma das linhas lidas do fechamento (R$ '+_brl(somaF)+') não bate com o Total Geral (R$ '+_brl(F.total)+') — alguma linha pode não ter sido lida.');
+    var oss={}, osOrd=[], romOps={};
+    for(var i=0;i<FC.roms.length;i++){ var f=FC.roms[i];
+      stat('Lendo romaneio '+(i+1)+' de '+FC.roms.length+'…');
+      var R=fcParseRom(await _pdfLines(f));
+      if(!R.os){ avisos.push('“'+f.name+'”: não encontrei o número da OS — arquivo ignorado.'); continue; }
+      if(oss[R.os]){ avisos.push('OS '+R.os+' aparece em mais de um arquivo (“'+f.name+'”) — contada uma vez só.'); continue; }
+      if(R.total===null) avisos.push('OS '+R.os+': não encontrei o “Vr. Total da Ordem de Serviço”.');
+      if(!R.hadVia2) avisos.push('OS '+R.os+': não encontrei a “Via do Beneficiador” — o arquivo foi lido inteiro.');
+      var somaR=R.items.reduce(function(a,x){return a+x.valor;},0);
+      if(R.total!==null&&Math.abs(somaR-R.total)>=0.01) avisos.push('OS '+R.os+': a soma das OPs lidas (R$ '+_brl(somaR)+') não bate com o total impresso (R$ '+_brl(R.total)+').');
+      R.items.filter(function(x){return x.bad;}).forEach(function(x){ avisos.push('OS '+R.os+', OP '+x.op+': não consegui ler a quantidade/valor.'); });
+      oss[R.os]={os:R.os,total:R.total||0,file:f.name,n:R.items.length}; osOrd.push(R.os);
+      R.items.forEach(function(x){ var o=romOps[x.op]||(romOps[x.op]={op:x.op,ref:x.ref,os:[],qtd:0,valor:0,cores:[]}); if(o.os.indexOf(R.os)<0)o.os.push(R.os); o.qtd+=x.qtd; o.valor+=x.valor; if(x.cor&&o.cores.indexOf(x.cor)<0)o.cores.push(x.cor); });
+    }
+    var totRom=osOrd.reduce(function(a,k){return a+oss[k].total;},0), totFech=F.total||0;
+    var dif=totRom-totFech, bateu=Math.abs(dif)<0.01;
+    var falta=Object.keys(romOps).filter(function(k){return !F.ops[k];}).map(function(k){return romOps[k];});
+    var sobra=Object.keys(F.ops).filter(function(k){return !romOps[k];}).map(function(k){return F.ops[k];});
+    var qdif=Object.keys(romOps).filter(function(k){return F.ops[k]&&F.ops[k].qtd!==romOps[k].qtd;}).map(function(k){return {op:k,ref:romOps[k].ref,os:romOps[k].os,qR:romOps[k].qtd,qF:F.ops[k].qtd,vR:romOps[k].valor,vF:F.ops[k].valor};});
+    var byOp=function(a,b){return (+a.op)-(+b.op);}; falta.sort(byOp); sobra.sort(byOp); qdif.sort(byOp);
+    var R0={fechName:FC.fech.name,oss:osOrd.map(function(k){return oss[k];}),totRom:totRom,totFech:totFech,dif:dif,bateu:bateu,falta:falta,sobra:sobra,qdif:qdif,avisos:avisos,nFech:F.rows.length};
+    window.__FC_LAST=R0;
+    stat('');
+    openProgModal(fcHtml(R0,false),function(){ _openPrint(_prDoc('Fechamento da Facção — conciliação',fcHtml(R0,true),false)); });
+  }catch(e){ stat('Erro: '+uEsc(e&&e.message||e),'var(--danger)'); }
+  finally{ btn.disabled=false; }
+}
+function fcHtml(R,pr){
+  var red=pr?'#b00000':'var(--danger)', green=pr?'#0a7a3d':'var(--f-green)', amber=pr?'#8a5a00':'var(--f-amber)', ink=pr?'#111':'var(--ink)', mut=pr?'#555':'var(--muted)';
+  var tb='width:100%;border-collapse:collapse;font-size:'+(pr?'10.5px':'13px')+';margin:6px 0 4px', td='border:1px solid '+(pr?'#bbb':'var(--line)')+';padding:4px 8px;text-align:left', tdr=td+';text-align:right', th=td+';background:'+(pr?'#eee':'var(--surface2)')+';font-weight:600';
+  function tabOps(list,col){ var sq=0,sv=0;
+    var h='<table style="'+tb+'"><thead><tr><th style="'+th+'">OS</th><th style="'+th+'">OP</th><th style="'+th+'">Referência</th><th style="'+th+';text-align:right">Qtde</th><th style="'+th+';text-align:right">Valor</th></tr></thead><tbody>';
+    list.forEach(function(o){ sq+=o.qtd; sv+=o.valor; h+='<tr style="color:'+col+'"><td style="'+td+'">'+_e0(o.os.join(', '))+'</td><td style="'+td+'"><b>'+_e0(o.op)+'</b></td><td style="'+td+'">'+_e0(o.ref)+'</td><td style="'+tdr+'">'+o.qtd+'</td><td style="'+tdr+'">R$ '+_brl(o.valor)+'</td></tr>'; });
+    return h+'<tr style="font-weight:700;color:'+col+'"><td style="'+td+'" colspan="3">Subtotal ('+list.length+' OP'+(list.length===1?'':'s')+')</td><td style="'+tdr+'">'+sq+'</td><td style="'+tdr+'">R$ '+_brl(sv)+'</td></tr></tbody></table>'; }
+  var h='<h1 style="margin:0 0 2px;font-size:'+(pr?'16px':'20px')+';color:'+ink+'">Fechamento da Facção — conciliação</h1>'
+    +'<div style="color:'+mut+';font-size:12px;margin-bottom:14px">Fechamento: '+_e0(R.fechName)+' ('+R.nFech+' linhas) · '+R.oss.length+' romaneio(s) · gerado em '+_dstamp()+'</div>';
+  h+='<div style="font-size:'+(pr?'13px':'16px')+';font-weight:700;padding:10px 14px;border-radius:9px;margin-bottom:14px;border:2px solid '+(R.bateu?green:red)+';color:'+(R.bateu?green:red)+'">'+(R.bateu?'&#9989; Bateu':'&#10060; Não bateu — diferença de R$ '+_brl(Math.abs(R.dif))+(R.dif>0?' (romaneios acima do fechamento)':' (fechamento acima dos romaneios)'))+'</div>';
+  h+='<table style="'+tb+'"><tbody>'
+    +'<tr><td style="'+td+'"><b>Total dos romaneios</b></td><td style="'+tdr+'"><b>R$ '+_brl(R.totRom)+'</b></td></tr>'
+    +R.oss.map(function(o){ return '<tr style="color:'+mut+'"><td style="'+td+';padding-left:22px">OS '+_e0(o.os)+' <span style="font-size:11px">('+o.n+' OP'+(o.n===1?'':'s')+')</span></td><td style="'+tdr+'">R$ '+_brl(o.total)+'</td></tr>'; }).join('')
+    +'<tr><td style="'+td+'"><b>Total do fechamento</b></td><td style="'+tdr+'"><b>R$ '+_brl(R.totFech)+'</b></td></tr>'
+    +'<tr style="color:'+(R.bateu?green:red)+'"><td style="'+td+'"><b>Diferença (romaneios − fechamento)</b></td><td style="'+tdr+'"><b>R$ '+_brl(R.dif)+'</b></td></tr></tbody></table>';
+  h+='<h2 style="font-size:'+(pr?'12px':'15px')+';margin:18px 0 2px;color:'+(R.falta.length?red:ink)+'">OPs enviadas que NÃO foram cobradas no fechamento</h2>';
+  h+=R.falta.length?tabOps(R.falta,red):'<div style="color:'+green+';font-size:13px">Nenhuma — todas as OPs dos romaneios aparecem no fechamento.</div>';
+  if(R.falta.length){ var sf=R.falta.reduce(function(a,o){return a+o.valor;},0); if(!R.bateu&&Math.abs(sf-R.dif)<0.01) h+='<div style="color:'+mut+';font-size:12px">A soma dessas OPs (R$ '+_brl(sf)+') explica toda a diferença.</div>'; }
+  if(R.sobra.length){ h+='<h2 style="font-size:'+(pr?'12px':'15px')+';margin:18px 0 2px;color:'+amber+'">OPs cobradas no fechamento que não estão nos romaneios</h2><div style="color:'+mut+';font-size:12px">Podem ser de romaneios que não foram adicionados aqui.</div>'+tabOps(R.sobra,amber); }
+  if(R.qdif.length){ h+='<h2 style="font-size:'+(pr?'12px':'15px')+';margin:18px 0 2px;color:'+amber+'">OPs com quantidade diferente</h2><table style="'+tb+'"><thead><tr><th style="'+th+'">OS</th><th style="'+th+'">OP</th><th style="'+th+'">Referência</th><th style="'+th+';text-align:right">Enviado</th><th style="'+th+';text-align:right">Cobrado</th><th style="'+th+';text-align:right">Valor enviado</th><th style="'+th+';text-align:right">Valor cobrado</th></tr></thead><tbody>'
+    +R.qdif.map(function(o){ return '<tr style="color:'+amber+'"><td style="'+td+'">'+_e0(o.os.join(', '))+'</td><td style="'+td+'"><b>'+_e0(o.op)+'</b></td><td style="'+td+'">'+_e0(o.ref)+'</td><td style="'+tdr+'">'+o.qR+'</td><td style="'+tdr+'">'+o.qF+'</td><td style="'+tdr+'">R$ '+_brl(o.vR)+'</td><td style="'+tdr+'">R$ '+_brl(o.vF)+'</td></tr>'; }).join('')+'</tbody></table>'; }
+  if(R.avisos.length) h+='<h2 style="font-size:'+(pr?'12px':'14px')+';margin:18px 0 4px;color:'+amber+'">Avisos da leitura</h2><ul style="margin:0;padding-left:18px;color:'+amber+';font-size:12.5px">'+R.avisos.map(function(a){return '<li>'+_e0(a)+'</li>';}).join('')+'</ul>';
+  return h;
+}
+(function(){
+  var fe=$('fcFech'), ro=$('fcRom'), go=$('fcGo'), cl=$('fcClear');
+  if(fe) fe.onchange=function(e){ var f=e.target.files&&e.target.files[0]; if(f){ FC.fech=f; fcRender(); $('fcStat').textContent=''; } fe.value=''; };
+  if(ro) ro.onchange=function(e){ [].slice.call(e.target.files||[]).forEach(function(f){ if(!FC.roms.some(function(x){return x.name===f.name&&x.size===f.size;})) FC.roms.push(f); }); ro.value=''; fcRender(); $('fcStat').textContent=''; };
+  if(go) go.onclick=fcRun;
+  if(cl) cl.onclick=function(){ FC={fech:null,roms:[]}; fcRender(); $('fcStat').textContent=''; };
+}());
+
 /* ===== CRIPTOGRAFIA (senhas fora do HTML + dados publicados) =====
    KEYS.sk  = chaves de cada slot, cifradas com a chave mestra M
    KEYS.rc  = M cifrada com o código de recuperação
@@ -2622,12 +2787,12 @@ $('recForm').addEventListener('submit',async function(e){
   pubStatus('Senha redefinida neste navegador. Clique em <b>Publicar alterações</b> para ela valer (anote a nova senha: '+uEsc(np)+').','var(--f-amber)');
 });
 document.getElementById('logoutBtn').addEventListener('click',function(){
-  current=null; currentUserKey=''; APPMODE=''; BASE_STASH=null; REL_STASH=null;
+  current=null; currentUserKey=''; APPMODE=''; BASE_STASH=null; REL_STASH=null; FC={fech:null,roms:[]}; fcRender();
   SESSION={ku:null,slots:{},m:null,sk:null}; PUB={manifest:null,loading:false,prog:'',err:'',noKey:[],fetchedAt:0};
   Object.keys(FILES).forEach(k=>delete FILES[k]); Object.keys(applied).forEach(k=>delete applied[k]);
   try{ localStorage.removeItem('painelop_user'); localStorage.removeItem('painelop_ku'); }catch(e){}
   $('app').style.display='none';
-  ['modules','modProd','modUsers'].forEach(function(id){var e=$(id);if(e)e.style.display='none';});
+  ['modules','modProd','modUsers','modFaccao'].forEach(function(id){var e=$(id);if(e)e.style.display='none';});
   $('login').style.display='flex';
   Object.keys(iframes).forEach(k=>{ iframes[k].remove(); delete iframes[k]; delete ready[k]; delete pending[k]; delete urlCache[k]; });
   $('u').value='';pInput.value='';pInput.type='password';eyeBtn.innerHTML=EYE_OFF;
