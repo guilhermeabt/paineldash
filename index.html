@@ -754,6 +754,14 @@ function panelFileRows(pk){
     var avisoDup = (disputa&&disputa.length>1) ? '<div class="fdup" title="'+escapeHtml(disputa.join(' · '))+'">\u26a0 '+disputa.length+' arquivos da pasta casam com este slot — foi usado o mais recente</div>' : '';
     var nomeTxt = nomes.length ? '<div class="fname" title="'+escapeHtml(nomes.join(' · '))+'">'+escapeHtml(nomes.length>1?(nomes[0]+' +'+(nomes.length-1)):nomes[0])+'</div>' : '';
     if(APPMODE==='base') stat+=slotPubTag(s.key);
+    if(APPMODE==='rel'){ // arquivo próprio: substitui o publicado só neste painel
+      const loc=LOCAL[s.key];
+      stat+=loc?'<span class="fx" style="margin-left:6px;color:#6ea8ff">seu arquivo · '+fmtTs(loc.at)+'</span>':(has?'<span class="fx" style="margin-left:6px;color:var(--muted)">publicado</span>':'');
+      rows+='<div class="frow '+cls+'"><span class="fl">'+s.label+(isReq?'':' <i>(opcional)</i>')+nomeTxt+'</span>'+stat+
+        '<span class="fact"><label class="miniup">'+(has?'trocar':'subir')+'<input type="file"'+(multi?' multiple':'')+' accept="'+s.accept+',.zip" data-lslot="'+s.key+'"></label>'+
+        (loc?'<span class="rm" data-lrev="'+s.key+'" title="Voltar a usar o arquivo publicado">voltar ao publicado</span>':'')+'</span></div>';
+      return;
+    }
     rows+='<div class="frow '+cls+'"><span class="fl">'+s.label+(isReq?'':' <i>(opcional)</i>')+nomeTxt+avisoDup+'</span>'+stat+
       '<span class="fact"><label class="miniup">'+(has?(multi?'+ arquivo':'trocar'):'subir')+'<input type="file"'+(multi?' multiple':'')+' accept="'+s.accept+'" data-slot="'+s.key+'"></label>'+
       (has?(multi?'<span class="rm" data-clearslot="'+s.key+'">limpar</span>':'<span class="rm" data-rm="'+s.key+'">remover</span>'):'')+'</span></div>';
@@ -780,11 +788,17 @@ function renderRelStatus(){
   allowedPanels(current).forEach(pk=>{
     const cfg=PANELCFG[pk]||{}; const S=panelStatus(pk);
     const txt=S.st==='incompleto'?S.txt.replace('Falta subir:','Sem dados publicados de:'):(S.st==='estatico'?S.txt:'Dados carregados');
-    html+='<div class="pcard"><div class="pcard-h"><span class="farol '+S.st+'"></span><span class="pcard-name">'+(cfg.name||PANELS[pk].name)+'</span><span class="pcard-stat">'+escapeHtml(txt)+'</span></div></div>';
+    const up=!SNAP_MODE&&canLocalUp(current)&&!cfg.static&&!PUB.loading;
+    html+='<div class="pcard"><div class="pcard-h"><span class="farol '+S.st+'"></span><span class="pcard-name">'+(cfg.name||PANELS[pk].name)+'</span><span class="pcard-stat">'+escapeHtml(txt)+'</span></div>'
+      +(up?'<div class="pcard-files">'+panelFileRows(pk)+'</div>':'')+'</div>';
   });
+  if(!SNAP_MODE&&canLocalUp(current)) html=html.replace('</p></div>','</p><p style="margin-top:6px">Você pode <b>trocar</b> um arquivo para atualizar mais rápido: ele vale <b>só no seu painel</b>. Quando sair uma publicação mais nova desse arquivo, ela volta a valer.</p>'
+      +((PUB.stale&&PUB.stale.length)?'<p style="margin-top:6px;color:var(--f-amber)">Saiu uma publicação mais nova de: <b>'+escapeHtml(PUB.stale.map(slotLabel).join(', '))+'</b> — o seu arquivo foi substituído por ela.</p>':'')+'</div>');
   wrap.innerHTML=html;
   const bv=$('baseView'); bv.innerHTML=''; bv.appendChild(wrap);
   const rb=$('reloadPubBtn'); if(rb) rb.addEventListener('click',loadPublished);
+  wrap.querySelectorAll('input[type=file][data-lslot]').forEach(inp=>inp.addEventListener('change',e=>{ if(e.target.files&&e.target.files.length) localUpload(inp.dataset.lslot,e.target.files); }));
+  wrap.querySelectorAll('[data-lrev]').forEach(el=>el.addEventListener('click',()=>localRevert(el.dataset.lrev)));
 }
 function slotPubTag(k){ const e=PUB.manifest&&PUB.manifest.slots&&PUB.manifest.slots[k]; if(!e)return '<span class="fx miss" style="margin-left:6px">não publicado</span>'; return '<span class="fx" style="margin-left:6px;color:var(--muted)">publicado '+fmtTs(e.ts)+(e.n>1?' · '+e.n+' arq.':'')+'</span>'; }
 function renderBase(){
@@ -910,7 +924,7 @@ function openModule(k){
 }
 function panelName(pk){ return (typeof PANELCFG!=='undefined'&&PANELCFG[pk]&&PANELCFG[pk].name)||pk; }
 function modulesLabel(u){ if(isAdmin(u))return 'Todos (administrador)'; return userModules(u).map(function(k){return MODMETA[k].name;}).join(', ')||'—'; }
-function accessLabel(u){ if(isAdmin(u))return 'Todos'; if(userModules(u).indexOf('relatorios')<0)return '—'; if(u.panels==='*')return 'Todos os relatórios'; return (u.panels||[]).map(panelName).join(', ')||'—'; }
+function accessLabel(u){ if(isAdmin(u))return 'Todos'; if(userModules(u).indexOf('relatorios')<0)return '—'; return ((u.panels==='*')?'Todos os relatórios':((u.panels||[]).map(panelName).join(', ')||'—'))+(u.up?' · sobe arquivos':''); }
 function pwLabel(u){ if(u.k&&u.k.wk) return '<span style="color:var(--f-green)">&#128274; protegida</span>'; if(cryptoOn()) return '<span style="color:var(--f-amber)" title="A senha antiga fica visível no código do painel e este usuário não recebe os dados publicados. Edite e defina uma nova senha.">&#9888; definir nova</span>'; return '<span style="color:var(--muted)">antiga</span>'; }
 function legacyUsers(){ return Object.keys(USERS).filter(function(k){ return !(USERS[k].k&&USERS[k].k.wk); }); }
 function renderSecBox(){
@@ -990,6 +1004,7 @@ function openUserForm(key){
      +USER_MODS.map(function(mk){var on=adm||userModules(u).indexOf(mk)>=0; return '<label style="font-size:13px;color:var(--ink)"><input type="checkbox" class="ufm" value="'+mk+'" '+(on?'checked':'')+'> '+MODMETA[mk].name+'</label>';}).join('')
      +'<div style="font-size:11px;color:var(--muted)">Base de Dados dá acesso a todos os dados. Controle de Usuários: só administradores.</div>'
    +'</div>'
+   +'<label style="font-size:13px;color:var(--ink)"><input type="checkbox" id="ufUp"'+(u.up?' checked':'')+'> Pode subir arquivos nos Relatórios <span style="color:var(--muted);font-size:11.5px">(valem só no painel dela/dele, até a próxima publicação)</span></label>'
    +'<label style="font-size:13px;color:var(--ink)"><input type="checkbox" id="ufAll"'+((isAll&&!adm)?'checked':'')+'> Todos os relatórios</label>'
    +'<div style="font-size:12px;color:var(--muted)">Relatórios liberados:</div>'
    +'<div id="ufPanels" style="display:flex;flex-direction:column;gap:4px;max-height:190px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:8px">'
@@ -1030,6 +1045,7 @@ async function saveUserForm(){
   var email=$('ufEmail')?($('ufEmail').value||'').trim().toLowerCase():null;
   if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail('E-mail inválido.');
   var obj={name:name,panels:panels,modules:mods}; if(adm)obj.admin=true;
+  if($('ufUp')&&$('ufUp').checked&&!adm&&mods.indexOf('relatorios')>=0) obj.up=true;
   $('ufSave').disabled=true; err.style.color='var(--muted)'; err.textContent=cryptoOn()?'Gerando chaves…':'';
   try{
     if(cryptoOn()){
@@ -1309,11 +1325,32 @@ async function pruneBlobCache(man){ try{ var keep={}; Object.keys(man.slots||{})
   var ks=await idbKeys(); for(var i=0;i<ks.length;i++){ if(String(ks[i]).indexOf('enc:')===0&&!keep[ks[i]]) await idbDel(ks[i]); } }catch(e){} }
 async function pool(items,n,fn){ var i=0; async function w(){ while(i<items.length){ var j=i++; await fn(items[j],j); } } var ws=[]; for(var k=0;k<Math.min(n,items.length);k++)ws.push(w()); await Promise.all(ws); }
 function fmtTs(ts){ if(!ts)return ''; var d=new Date(ts); return d.toLocaleDateString('pt-BR')+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2); }
+/* ---- arquivos próprios no Relatórios (usuário com permissão "up"): valem só no painel dele ----
+   Ficam no IndexedDB do navegador; quando sai uma publicação mais nova do mesmo arquivo, a publicação volta a valer. */
+var LOCAL={};
+function canLocalUp(u){ return !!(u&&(u.up||isAdmin(u))); }
+async function locLoad(){ LOCAL={}; if(!canLocalUp(current))return;
+  try{ var o=await idbGet('loc:'+currentUserKey); if(o) Object.keys(o).forEach(function(k){ LOCAL[k]={at:o[k].at,files:o[k].files.map(function(x){return new File([x.buf],x.n,{type:x.t||'',lastModified:x.lm||0});})}; }); }catch(e){} }
+async function locSave(){ var o={};
+  for(var k of Object.keys(LOCAL)){ var fs=[]; for(var f of LOCAL[k].files) fs.push({n:f.name,t:f.type,lm:f.lastModified,buf:await f.arrayBuffer()}); o[k]={at:LOCAL[k].at,files:fs}; }
+  try{ if(Object.keys(o).length) await idbSet('loc:'+currentUserKey,o); else await idbDel('loc:'+currentUserKey); }catch(e){} }
+function applyLocal(man){ PUB.stale=[];
+  Object.keys(LOCAL).forEach(function(k){ var pts=man&&man.slots&&man.slots[k]?man.slots[k].ts:0;
+    if(pts>LOCAL[k].at){ PUB.stale.push(k); delete LOCAL[k]; return; }
+    FILES[k]=isMulti(k)?LOCAL[k].files.slice():LOCAL[k].files[0]; });
+  if(PUB.stale.length) locSave(); }
+async function localUpload(k,list){
+  var fs=await expandShopZips([].slice.call(list)); if(!fs.length)return;
+  LOCAL[k]={at:Date.now(),files:fs}; FILES[k]=isMulti(k)?fs.slice():fs[0]; PUB.stale=(PUB.stale||[]).filter(function(x){return x!==k;});
+  await locSave(); applyAll(); toast('✓ '+slotLabel(k)+': usando o seu arquivo (só no seu painel).'); }
+async function localRevert(k){
+  delete LOCAL[k]; var p=PUB.files&&PUB.files[k]; if(p) FILES[k]=isMulti(k)?p.slice():p; else delete FILES[k];
+  await locSave(); applyAll(); }
 async function loadPublished(){
   if(PUB.loading) return; PUB.loading=true; PUB.err=''; PUB.noKey=[]; PUB.prog='Buscando a última publicação…'; renderBase(); renderNav();
   try{
     var man=await fetchManifest(); PUB.manifest=man; PUB.fetchedAt=Date.now();
-    if(!man){ PUB.err='none'; return; }
+    if(!man){ PUB.err='none'; PUB.files={}; await locLoad(); if(Object.keys(LOCAL).length&&APPMODE==='rel'){ applyLocal(null); applyAll(); } return; }
     var vis=visibleSlots(current).map(function(s){return s.key;});
     var jobs=[];
     for(var i=0;i<vis.length;i++){ var k=vis[i], e=man.slots[k]; if(!e)continue;
@@ -1326,8 +1363,9 @@ async function loadPublished(){
     PUB.prog=''; pruneBlobCache(man);
     if(APPMODE!=='rel'){ REL_STASH=built; Object.keys(applied).forEach(function(k){delete applied[k];}); return; } // saiu do módulo durante o download
     Object.keys(FILES).forEach(function(k){delete FILES[k];}); Object.keys(applied).forEach(function(k){delete applied[k];});
-    Object.assign(FILES,built);
-    if(jobs.length){ applyAll(); if(activeView==='base'){ var a=allowedPanels(current); if(a.length)openPanel(a[0]); } }
+    Object.assign(FILES,built); PUB.files=built;
+    await locLoad(); applyLocal(man);
+    if(Object.keys(FILES).length){ applyAll(); if(activeView==='base'){ var a=allowedPanels(current); if(a.length)openPanel(a[0]); } }
   }catch(e){ PUB.err=(e&&e.message)||String(e); }
   finally{ PUB.loading=false; PUB.prog=''; renderNav(); if(activeView==='base')renderBase(); }
 }
@@ -2899,7 +2937,7 @@ $('recForm').addEventListener('submit',async function(e){
   pubStatus('Senha redefinida neste navegador. Clique em <b>Publicar alterações</b> para ela valer (anote a nova senha: '+uEsc(np)+').','var(--f-amber)');
 });
 document.getElementById('logoutBtn').addEventListener('click',function(){
-  current=null; currentUserKey=''; APPMODE=''; BASE_STASH=null; REL_STASH=null; FC={fech:null,roms:[]}; fcRender(); CONTACTS={};
+  current=null; currentUserKey=''; APPMODE=''; BASE_STASH=null; REL_STASH=null; FC={fech:null,roms:[]}; fcRender(); CONTACTS={}; LOCAL={};
   SESSION={ku:null,slots:{},m:null,sk:null}; PUB={manifest:null,loading:false,prog:'',err:'',noKey:[],fetchedAt:0};
   Object.keys(FILES).forEach(k=>delete FILES[k]); Object.keys(applied).forEach(k=>delete applied[k]);
   try{ localStorage.removeItem('painelop_user'); localStorage.removeItem('painelop_ku'); }catch(e){}
