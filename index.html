@@ -1379,7 +1379,7 @@ function openNotify(man){
     +(logins.length?'<div style="display:flex;gap:12px;margin-bottom:4px;font-size:12px"><button class="linkbtn" id="ntAll">marcar todos</button><button class="linkbtn" id="ntNone">desmarcar todos</button></div>':'')
     +'<div style="border:1px solid var(--line);border-radius:9px;padding:6px 12px;max-height:260px;overflow:auto">'+rows+'</div>'
     +'<label style="display:block;margin-top:10px;font-size:12px;color:var(--muted)">Outros e-mails (separados por vírgula)<input id="ntExtra" style="'+inp+';margin-top:4px" placeholder="fulano@empresa.com.br"></label>'
-    +'<label style="display:block;margin-top:10px;font-size:12px;color:var(--muted)">Enviar pela conta Gmail <span style="opacity:.8">(fica salvo neste navegador; a conta precisa estar logada neste perfil do Chrome)</span><input id="ntFrom" type="email" style="'+inp+';margin-top:4px" placeholder="seuemail@dashuniformes.com.br" value="'+uEsc(fromSaved)+'"></label>'
+    +'<label style="display:block;margin-top:10px;font-size:12px;color:var(--muted)">Conta do Gmail para enviar <span style="opacity:.8">— o número que aparece depois de <b>/u/</b> no endereço do Gmail dessa conta (ex.: 1). Fica salvo neste navegador.</span><input id="ntFrom" type="text" style="'+inp+';margin-top:4px" placeholder="ex.: 1" value="'+uEsc(fromSaved)+'"></label>'
     +'<label style="display:block;margin-top:10px;font-size:12px;color:var(--muted)">Assunto<input id="ntSubj" style="'+inp+';margin-top:4px" value="'+uEsc(t.subj)+'"></label>'
     +'<label style="display:block;margin-top:10px;font-size:12px;color:var(--muted)">Mensagem<textarea id="ntBody" rows="10" style="'+inp+';margin-top:4px;resize:vertical">'+uEsc(t.body)+'</textarea></label>'
     +'<div id="ntErr" style="color:var(--f-amber);font-size:12.5px;min-height:16px;margin-top:8px"></div>'
@@ -1395,10 +1395,12 @@ function openNotify(man){
   if(n)n.onclick=function(){ m.querySelectorAll('.ntf').forEach(function(c){c.checked=false;}); };
   $('ntGmail').onclick=function(){ var to=recips(); if(!to)return; var e=encodeURIComponent;
     var from=($('ntFrom').value||'').trim().toLowerCase();
-    if(from&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(from)){ $('ntErr').textContent='A conta de envio não é um e-mail válido.'; return; }
+    if(from&&!/^\d{1,2}$/.test(from)&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(from)){ $('ntErr').textContent='Informe o número da conta (o que aparece depois de /u/ no Gmail) ou o e-mail.'; return; }
     try{ if(from)localStorage.setItem('painelop_notify_from',from); else localStorage.removeItem('painelop_notify_from'); }catch(_){}
     // /mail/u/<email>/ escolhe a conta Google entre as logadas neste perfil do Chrome (authuser sozinho era ignorado)
-    window.open('https://mail.google.com/mail/'+(from?'u/'+from.replace(/[^a-z0-9@._+-]/g,'')+'/?authuser='+e(from)+'&':'?')+'view=cm&fs=1&to='+e(to.join(','))+'&su='+e($('ntSubj').value)+'&body='+e($('ntBody').value),'_blank'); };
+    // número = posição da conta no Gmail (/u/0, /u/1…), o jeito garantido; e-mail nem sempre é respeitado
+    var acct=!from?'':(/^\d+$/.test(from)?'u/'+from+'/?':'u/'+from.replace(/[^a-z0-9@._+-]/g,'')+'/?authuser='+e(from)+'&');
+    window.open('https://mail.google.com/mail/'+(acct||'?')+'view=cm&fs=1&to='+e(to.join(','))+'&su='+e($('ntSubj').value)+'&body='+e($('ntBody').value),'_blank'); };
   $('ntMailto').onclick=function(){ var to=recips(); if(!to)return; var e=encodeURIComponent;
     location.href='mailto:'+to.map(e).join(',')+'?subject='+e($('ntSubj').value)+'&body='+e($('ntBody').value); };
   $('ntCopy').onclick=function(){ var to=recips(); if(!to)return; var s=to.join(', ');
