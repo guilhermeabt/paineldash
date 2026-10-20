@@ -1360,9 +1360,10 @@ async function publishData(){
 function siteURL(){ return location.href.split('#')[0].split('?')[0]; }
 function notifyText(man){
   var d=new Date(man&&man.ts||Date.now()), dia=d.toLocaleDateString('pt-BR'), hr=('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
-  var labs=((man&&man.up)||[]).map(slotLabel);
+  // agrupa por painel: quais painéis usam algum dos arquivos publicados
+  var up=(man&&man.up)||[], labs=Object.keys(PANELCFG).filter(function(pk){ return SLOTS.some(function(s){ return up.indexOf(s.key)>=0&&s.panels.indexOf(pk)>=0; }); }).map(panelName);
   var body='Olá!\n\nOs dados do Painel Operacional foram atualizados em '+dia+' às '+hr+'.\n'
-    +(labs.length?'\nArquivos atualizados:\n'+labs.map(function(l){return '• '+l;}).join('\n')+'\n':'')
+    +(labs.length?'\n'+labs.map(function(l){return '• Painel '+l+' atualizado';}).join('\n')+'\n':'')
     +'\nAcesse: '+siteURL()+'\n(Se o painel já estiver aberto, aperte F5 para carregar os dados novos.)\n\n'+((current&&current.name)||'');
   return {subj:'Painel Operacional atualizado — '+dia+' '+hr, body:body};
 }
