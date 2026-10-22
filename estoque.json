@@ -107,6 +107,18 @@
    "ref": "COF0211",
    "cor": "Caramelo",
    "caixa": "B12"
+  },
+  {
+   "id": "mvk0z80sh7d0",
+   "ts": 1792702829404,
+   "by": "Mylena",
+   "user": "mylena",
+   "tipo": "entrada",
+   "caixa": "B4",
+   "qtd": null,
+   "ref": "BZF0109",
+   "cor": "Azul Noite",
+   "mudou": false
   }
  ]
 }
