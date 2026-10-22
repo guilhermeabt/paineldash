@@ -54,7 +54,8 @@
    "cor": "Caramelo",
    "esvaziou": false,
    "desc": "Colete Feminino Com Faixa Liana Be",
-   "mudou": false
+   "mudou": false,
+   "desfeito": "mvk0m8tr7ulc"
   },
   {
    "id": "mvk0lpizhh4z",
@@ -81,6 +82,18 @@
    "ref": "CMM0963",
    "cor": "Branco",
    "caixa": "D5"
+  },
+  {
+   "id": "mvk0m8tr7ulc",
+   "ts": 1792702223919,
+   "by": "Guilherme",
+   "user": "guilherme",
+   "tipo": "desfazer",
+   "alvo": "mvk0l7lh73bg",
+   "mudou": false,
+   "ref": "COF0211",
+   "cor": "Caramelo",
+   "caixa": "B12"
   }
  ]
 }
