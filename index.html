@@ -1329,7 +1329,7 @@ function estApplyMov(state,m){
   state.mov=state.mov.concat([m]).slice(-3000); return state;
 }
 /* ---- tela do módulo Localização do Estoque ---- */
-var EST=null, EST_STATE=null, EST_BRANCH='estoque', EST_FILE='estoque.json', EST_TAB='entrada', EST_EDIT_BASE=null;
+var EST=null, EST_STATE=null, EST_BRANCH='estoque', EST_FILE='estoque.json', EST_TAB='entrada', EST_EDIT_BASE=null, EST_TOK_EDIT=false;
 function estDoc(){ return (EST_STATE&&EST_STATE.doc)||ESTOQUE_DOC; }
 function estIndex(){ if(!EST) EST=estParse(estDoc()); return EST; }
 function estCanEdit(u){ return isAdmin(u)||userCanBase(u); }
@@ -1410,7 +1410,9 @@ function estRenderMov(){
         +'<label style="display:flex;gap:10px;align-items:center;margin-top:14px;font-size:15px;color:var(--ink)"><input type="checkbox" id="emVazio" style="width:20px;height:20px"> A caixa ficou sem essa peça</label>'
         +'<div style="font-size:12px;color:var(--muted);margin-top:4px">Marque só se não sobrou nenhuma peça dessa referência/cor na caixa — aí ela sai da base.</div>';
     }
-    h+=(ghToken()?'':'<div style="font-size:12.5px;color:var(--f-amber);margin-top:14px">Este aparelho ainda não tem o token do GitHub. Cole aqui uma vez: <div style="display:flex;gap:8px;margin-top:6px"><input id="emTok" type="password" placeholder="github_pat_..." style="'+inp+';font-size:14px"><button class="ubtn" id="emTokSave">Salvar</button></div></div>')
+    h+=((!ghToken()||EST_TOK_EDIT)
+      ?'<div style="font-size:12.5px;color:var(--f-amber);margin-top:14px">'+(ghToken()?'Cole o token novo do GitHub:':'Este aparelho ainda não tem o token do GitHub. Cole aqui uma vez:')+' <div style="display:flex;gap:8px;margin-top:6px"><input id="emTok" type="password" placeholder="github_pat_..." style="'+inp+';font-size:14px"><button class="ubtn" id="emTokSave">Salvar</button>'+(ghToken()?'<button class="ubtn" id="emTokCancel">Cancelar</button>':'')+'</div></div>'
+      :'<div style="font-size:12px;color:var(--muted);margin-top:14px">Token do GitHub configurado neste aparelho · <button class="linkbtn" id="emTokChg">trocar token</button></div>')
       +'<button id="emGo" style="width:100%;margin-top:16px;background:var(--f-green);border:none;color:#0c241a;font-weight:700;padding:14px;border-radius:10px;cursor:pointer;font-size:16px">Lançar '+(EST_TAB==='entrada'?'entrada':'saída')+'</button>'
       +'<div id="emSt" style="font-size:14px;margin-top:10px;min-height:16px"></div></details>';
   }
@@ -1421,7 +1423,9 @@ function estRenderMov(){
   box.querySelectorAll('.estundo').forEach(function(b){ b.onclick=function(){ estUndo(b.dataset.id); }; });
   if(!can) return;
   $('emCx').oninput=estCxInfo; var r=$('emRef'); if(r) r.oninput=estRefInfo;
-  var ts=$('emTokSave'); if(ts) ts.onclick=function(){ var v=($('emTok').value||'').trim(); if(!v)return; try{ localStorage.setItem('painelop_ghtoken',v); }catch(e){} estRenderMov(); };
+  var ts=$('emTokSave'); if(ts) ts.onclick=function(){ var v=($('emTok').value||'').trim(); if(!v)return; try{ localStorage.setItem('painelop_ghtoken',v); }catch(e){} EST_TOK_EDIT=false; estRenderMov(); var s=$('emSt'); if(s){ s.style.color='var(--f-green)'; s.textContent='✓ Token salvo neste aparelho. Pode lançar.'; } };
+  var tc=$('emTokChg'); if(tc) tc.onclick=function(){ EST_TOK_EDIT=true; estRenderMov(); var t=$('emTok'); if(t) t.focus(); };
+  var tx=$('emTokCancel'); if(tx) tx.onclick=function(){ EST_TOK_EDIT=false; estRenderMov(); };
   $('emGo').onclick=estLancar; estRefInfo();
 }
 function estCxInfo(){
@@ -1459,7 +1463,7 @@ async function estLancar(){
     estHead(); estRenderMov(); $('emCx').value=cx; estCxInfo();
     S('✓ Lançado: '+uEsc(estMovTxt(m))+'.'+(m.tipo==='saida'&&!m.esvaziou?' A base continua com a peça na caixa.':' Já vale para todos.'),'var(--f-green)');
     if($('estQ').value.trim()) estGo();
-  }catch(e){ S('Não consegui lançar: '+uEsc(estErrMsg(e)),'var(--danger)'); }
+  }catch(e){ S('Não consegui lançar: '+uEsc(estErrMsg(e))+((e&&(e.status===401||e.status===403||e.status===404))?' Clique em <b>trocar token</b> (logo acima) e cole um token com permissão de escrita.':''),'var(--danger)'); }
   finally{ var b=$('emGo'); if(b) b.disabled=false; }
 }
 async function estUndo(id){
