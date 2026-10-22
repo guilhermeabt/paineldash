@@ -325,6 +325,7 @@
   </div>
   <div style="color:var(--muted);font-size:12px;margin-top:8px">Pode digitar com ou sem a cor: “CLF0710 preto”, “BLF0077”, “polo branca”, “calça cecilia”.</div>
   <div id="estRes"></div>
+  <div id="estMov"></div>
   <div style="margin-top:28px;border-top:1px solid var(--line);padding-top:14px"><button id="estEdit" class="ubtn">✎ Atualizar instrução</button></div>
 </div>
 
@@ -995,7 +996,7 @@ function openModule(k){
   else if(k==='usuarios'){ if(!isAdmin(current)){ showModules(); return; } editingUser=null; $('userForm').innerHTML=''; renderUsers(); $('modUsers').style.display='block'; }
 }
 function panelName(pk){ return (typeof PANELCFG!=='undefined'&&PANELCFG[pk]&&PANELCFG[pk].name)||pk; }
-function modulesLabel(u){ if(isAdmin(u))return 'Todos (administrador)'; return userModules(u).map(function(k){return MODMETA[k].name;}).join(', ')||'—'; }
+function modulesLabel(u){ if(isAdmin(u))return 'Todos (administrador)'; return (userModules(u).map(function(k){return MODMETA[k].name;}).join(', ')||'—')+(u.estMov&&userModules(u).indexOf('estoque')>=0?' · movimenta o estoque':''); }
 function accessLabel(u){ if(isAdmin(u))return 'Todos'; if(userModules(u).indexOf('relatorios')<0)return '—'; return ((u.panels==='*')?'Todos os relatórios':((u.panels||[]).map(panelName).join(', ')||'—'))+(u.up?' · sobe arquivos':''); }
 function pwLabel(u){ if(u.k&&u.k.wk) return '<span style="color:var(--f-green)">&#128274; protegida</span>'; if(cryptoOn()) return '<span style="color:var(--f-amber)" title="A senha antiga fica visível no código do painel e este usuário não recebe os dados publicados. Edite e defina uma nova senha.">&#9888; definir nova</span>'; return '<span style="color:var(--muted)">antiga</span>'; }
 function legacyUsers(){ return Object.keys(USERS).filter(function(k){ return !(USERS[k].k&&USERS[k].k.wk); }); }
@@ -1076,6 +1077,7 @@ function openUserForm(key){
      +USER_MODS.map(function(mk){var on=adm||userModules(u).indexOf(mk)>=0; return '<label style="font-size:13px;color:var(--ink)"><input type="checkbox" class="ufm" value="'+mk+'" '+(on?'checked':'')+'> '+MODMETA[mk].name+'</label>';}).join('')
      +'<div style="font-size:11px;color:var(--muted)">Base de Dados dá acesso a todos os dados. Controle de Usuários: só administradores.</div>'
    +'</div>'
+   +'<label style="font-size:13px;color:var(--ink)"><input type="checkbox" id="ufEstMov"'+(u.estMov?' checked':'')+'> Pode movimentar o estoque <span style="color:var(--muted);font-size:11.5px">(entradas e saídas nas caixas — precisa do módulo Localização do Estoque)</span></label>'
    +'<label style="font-size:13px;color:var(--ink)"><input type="checkbox" id="ufUp"'+(u.up?' checked':'')+'> Pode subir arquivos nos Relatórios <span style="color:var(--muted);font-size:11.5px">(valem só no painel dela/dele, até a próxima publicação)</span></label>'
    +'<label style="font-size:13px;color:var(--ink)"><input type="checkbox" id="ufAll"'+((isAll&&!adm)?'checked':'')+'> Todos os relatórios</label>'
    +'<div style="font-size:12px;color:var(--muted)">Relatórios liberados:</div>'
@@ -1118,6 +1120,7 @@ async function saveUserForm(){
   if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail('E-mail inválido.');
   var obj={name:name,panels:panels,modules:mods}; if(adm)obj.admin=true;
   if($('ufUp')&&$('ufUp').checked&&!adm&&mods.indexOf('relatorios')>=0) obj.up=true;
+  if($('ufEstMov')&&$('ufEstMov').checked&&!adm&&mods.indexOf('estoque')>=0) obj.estMov=true;
   $('ufSave').disabled=true; err.style.color='var(--muted)'; err.textContent=cryptoOn()?'Gerando chaves…':'';
   try{
     if(cryptoOn()){
@@ -1156,7 +1159,7 @@ var EST_PREF0={cls:'CLF',slf:'CLF',claf:'CLF',lf:'CLF',cl:'CLF',belf:'BLF',bellf
 function estParse(doc){
   var L=String(doc||'').replace(/\r/g,'').split('\n'), sec='', cur=null;
   var E={cores:{},nomes:{},refs:{},order:[],warn:[],polo:[],poloFem:[],pref:Object.assign({},EST_PREF0),data:'',nLocs:0};
-  var md=/registrada em\s+(\d{2}\/\d{2}\/\d{4})/i.exec(doc||''); if(md)E.data=md[1];
+  var md=/registrada em\s+(\d{2}\/\d{2}\/\d{4})/i.exec(doc||''); if(md)E.data=md[1]; E.faixas=estFaixas(doc);
   L.forEach(function(l,i){ var t=l.trim(); if(!t)return;
     var ms=/^===\s*(.+?)\s*===$/.exec(t); if(ms){ sec=_en(ms[1]); cur=null; return; }
     if(sec.indexOf('codigos de cor')===0){ t.split(/\s*\/\s*/).forEach(function(p){ var mc=/^([A-Z]{2}\d{3})\s*=\s*(.+)$/i.exec(p.trim()); if(mc){ var nm=mc[2].trim(); E.cores[mc[1].toUpperCase()]=nm; E.nomes[_en(nm)]=nm; } }); return; }
@@ -1225,6 +1228,8 @@ function estAns(E,codes,cq,entendi,nota){ var rs=codes.map(function(c){ return {
 function estPoloCodes(E,fem){ var g=fem?E.poloFem:E.polo.concat(E.poloFem); return g.filter(function(c,i){ return E.refs[c]&&g.indexOf(c)===i; }); }
 function estFind(E,raw){
   var q=_en(raw).replace(/[?!.,;:]/g,' ').replace(/(\d)\s+e\s+(?=\d)/g,'$1 ').replace(/\s+/g,' ').trim(); if(!q) return null; // "12 e 45" = 1245
+  var cx=/^(?:caixa\s*)?([a-z])\s*(\d{1,3})$/.exec(q); // "B3" / "caixa b3": o que tem na caixa
+  if(cx){ var id=cx[1].toUpperCase()+parseInt(cx[2],10); if(!Object.keys(E.faixas||{}).length||(E.faixas||{})[id[0]]) return {tipo:'caixa',id:id,existe:estCaixaOk(E,id),itens:estCaixaItens(E,id)}; }
   var flat=q.replace(/[^a-z0-9]/g,''), prefs={}; E.order.forEach(function(c){ prefs[c.slice(0,3)]=1; });
   var mn=/(\d[\d ]*\d|\d)/.exec(q);
   if(mn){
@@ -1262,6 +1267,7 @@ function estFind(E,raw){
 function estLinhas(res){
   if(!res) return [];
   if(res.tipo==='nf') return [(res.label?res.label+': ':'')+'Na sala grande essa referência não está. Deve estar em outro lugar (sala pequena ou sala da Klus).'];
+  if(res.tipo==='caixa') return res.itens.length?res.itens.map(function(x){ return 'Caixa '+res.id+': '+x.ref+' '+x.cor+'.'; }):['Caixa '+res.id+(res.existe?': vazia, segundo a base.':': essa caixa não existe na sala grande.')];
   if(res.tipo==='ask') return ['Você quis dizer '+_lst(res.codes)+'?'];
   var out=[]; res.refs.forEach(function(x){ var R=x.R, p=x.pick;
     if(p.aviso) out.push(p.aviso);
@@ -1269,23 +1275,212 @@ function estLinhas(res){
     else p.cores.forEach(function(c){ out.push(R.ref+' '+c.nome+': '+estFmtLocs(c.locs)+'.'); }); });
   return out;
 }
+/* ---- movimentação das caixas (entrada/saída) ----
+   Estado guardado no ramo "estoque": {v:1, doc: texto da instrução, mov: [movimentações]}.
+   Cada movimentação é aplicada na base e o texto da instrução é regravado (seção da base + caixas vazias). */
+function estFaixas(doc){ var f={}, m=/intervalos existentes:([^\n]*)/i.exec(_en(doc||'')); if(!m) return f;
+  m[1].replace(/([a-z])(\d+)\s*a\s*[a-z]?(\d+)/g,function(_,p,a,b){ f[p.toUpperCase()]=[parseInt(a,10),parseInt(b,10)]; }); return f; }
+function estCaixaOk(E,id){ var f=E.faixas||{}; if(!Object.keys(f).length) return true; var p=id[0], n=parseInt(id.slice(1),10), r=f[p]; return !!r&&n>=r[0]&&n<=r[1]; }
+function estNormCaixa(s){ var m=/^\s*(?:caixa|cx)?\s*([a-z])\s*-?\s*(\d{1,3})\s*$/i.exec(String(s||'')); return m?m[1].toUpperCase()+parseInt(m[2],10):''; }
+function estCaixaItens(E,id){ var out=[]; E.order.forEach(function(k){ var R=E.refs[k]; if(!R)return; R.cores.forEach(function(c){ if(c.locs.some(function(l){return l.id===id;})) out.push({ref:k,desc:R.desc,cor:c.nome}); }); }); return out; }
+function estVazias(E){ var f=E.faixas||{}, us={}, out=[];
+  E.order.forEach(function(k){ var R=E.refs[k]; if(R) R.cores.forEach(function(c){ c.locs.forEach(function(l){ us[l.id]=1; }); }); });
+  Object.keys(f).sort().forEach(function(p){ for(var i=f[p][0];i<=f[p][1];i++) if(!us[p+i]) out.push(p+i); }); return out; }
+function estSerialize(doc,E){
+  var L=String(doc).replace(/\r/g,'').split('\n');
+  var a=L.findIndex(function(l){ return /^===\s*base de dados/.test(_en(l.trim())); }), b=L.findIndex(function(l){ return /^===\s*fim da base/.test(_en(l.trim())); });
+  if(a<0||b<0||b<a) throw new Error('a instrução precisa das linhas "=== BASE DE DADOS … ===" e "=== FIM DA BASE ===".');
+  var body=[''];
+  E.order.slice().sort().forEach(function(k){ var R=E.refs[k]; if(!R||!R.cores.length) return;
+    body.push(k+' — '+R.desc);
+    R.cores.slice().sort(function(x,y){ return x.nome.localeCompare(y.nome,'pt'); }).forEach(function(c){
+      body.push('    '+c.nome+': '+c.locs.map(function(l){ return l.tipo==='?'?l.id:(l.tipo==='pilha'?'pilha ':'caixa ')+l.id; }).join(', ')); });
+    body.push(''); });
+  var out=L.slice(0,a+1).concat(body,L.slice(b));
+  if(Object.keys(E.faixas||{}).length){ var vz=estVazias(E); // mantém a linha das caixas vazias em dia
+    out=out.map(function(l){ return /^\s*-?\s*caixas vazias/i.test(_en(l))?l.replace(/:.*$/,': '+(vz.length?vz.join(', '):'nenhuma')+'.'):l; }); }
+  return out.join('\n');
+}
+// nome da cor para uma entrada: a cor que já existe na referência, ou o nome da tabela, ou o que a pessoa digitou
+function estCorNome(E,R,txt){ var n=_cnorm(txt).trim(); if(!n) return ''; // "preta" = Preto, "branca" = Branco…
+  if(R){ var c=R.cores.filter(function(x){return x.n===n;})[0]; if(c) return c.nome; }
+  if(E.nomes[n]) return E.nomes[n];
+  var al=EST_ALIAS.filter(function(a){return a[0]===n;})[0]; if(al&&E.nomes[al[1]]) return E.nomes[al[1]];
+  return String(txt).trim().replace(/\s+/g,' ').replace(/(^|\s)(\S)/g,function(_,b,c){return b+c.toUpperCase();}); }
+function _estAdd(E,ref,desc,cor,caixa){ var R=E.refs[ref];
+  if(!R){ R=E.refs[ref]={ref:ref,desc:desc||'(cadastrada pelo estoque)',cores:[]}; E.order.push(ref); }
+  var n=_en(cor), c=R.cores.filter(function(x){return x.n===n;})[0];
+  if(!c){ c={nome:cor,n:n,fam:estFamOf(cor),locs:[]}; R.cores.push(c); }
+  if(c.locs.some(function(l){return l.id===caixa;})) return false; c.locs.push(estLoc('caixa '+caixa)); return true; }
+function _estDel(E,ref,cor,caixa){ var R=E.refs[ref]; if(!R) return false; var n=_en(cor), c=R.cores.filter(function(x){return x.n===n;})[0]; if(!c) return false;
+  var antes=c.locs.length; c.locs=c.locs.filter(function(l){return l.id!==caixa;}); if(c.locs.length===antes) return false;
+  if(!c.locs.length) R.cores=R.cores.filter(function(x){return x!==c;});
+  if(!R.cores.length){ delete E.refs[ref]; E.order=E.order.filter(function(x){return x!==ref;}); } return true; }
+// aplica uma movimentação no estado {doc,mov}; devolve o estado novo (m.mudou diz se a base mudou)
+function estApplyMov(state,m){
+  var E=estParse(state.doc); state.mov=state.mov||[];
+  if(m.tipo==='entrada'){ m.mudou=_estAdd(E,m.ref,m.desc,m.cor,m.caixa); }
+  else if(m.tipo==='saida'){ var R=E.refs[m.ref]; if(R) m.desc=R.desc; m.mudou=m.esvaziou?_estDel(E,m.ref,m.cor,m.caixa):false; }
+  else if(m.tipo==='desfazer'){ var o=state.mov.filter(function(x){return x.id===m.alvo;})[0];
+    if(!o) throw new Error('movimentação não encontrada.'); if(o.desfeito) throw new Error('essa movimentação já foi desfeita.');
+    m.mudou=o.mudou?(o.tipo==='entrada'?_estDel(E,o.ref,o.cor,o.caixa):_estAdd(E,o.ref,o.desc,o.cor,o.caixa)):false;
+    o.desfeito=m.id; m.ref=o.ref; m.cor=o.cor; m.caixa=o.caixa; }
+  if(m.mudou) state.doc=estSerialize(state.doc,E);
+  state.mov=state.mov.concat([m]).slice(-3000); return state;
+}
 /* ---- tela do módulo Localização do Estoque ---- */
-var EST=null;
-function estIndex(){ if(!EST) EST=estParse(ESTOQUE_DOC); return EST; }
+var EST=null, EST_STATE=null, EST_BRANCH='estoque', EST_FILE='estoque.json', EST_TAB='entrada', EST_EDIT_BASE=null;
+function estDoc(){ return (EST_STATE&&EST_STATE.doc)||ESTOQUE_DOC; }
+function estIndex(){ if(!EST) EST=estParse(estDoc()); return EST; }
 function estCanEdit(u){ return isAdmin(u)||userCanBase(u); }
+function estCanMove(u){ return isAdmin(u)||!!(u&&u.estMov); }
+function estWho(){ return (current&&current.name)||currentUserKey||'?'; }
+// a base vive no ramo "estoque" (estoque.json), lido na hora para todos verem as movimentações em segundos
+async function estFetchState(){
+  var hd={'Accept':'application/vnd.github.raw+json'}; if(ghToken())hd['Authorization']='Bearer '+ghToken();
+  try{ var r=await fetch('https://api.github.com/repos/'+GH_REPO.owner+'/'+GH_REPO.repo+'/contents/'+EST_FILE+'?ref='+EST_BRANCH,{headers:hd,cache:'no-store'});
+    if(r.status===404) return null; if(r.ok) return JSON.parse(await r.text()); }catch(e){}
+  var r2=await fetch('https://raw.githubusercontent.com/'+GH_REPO.owner+'/'+GH_REPO.repo+'/'+EST_BRANCH+'/'+EST_FILE,{cache:'no-store'});
+  if(r2.status===404) return null; if(!r2.ok) throw new Error('HTTP '+r2.status); return r2.json();
+}
+async function estLoad(){
+  try{ var s=await estFetchState(); if(s&&s.doc){ EST_STATE=s; EST=null; try{ localStorage.setItem('est_state',JSON.stringify(s)); }catch(e){} } return true; }
+  catch(e){ if(!EST_STATE){ try{ var c=JSON.parse(localStorage.getItem('est_state')||'null'); if(c&&c.doc){ EST_STATE=c; EST=null; } }catch(_){} } return false; }
+}
+// grava no ramo "estoque" refazendo a alteração sobre a versão mais nova (se duas pessoas lançarem juntas, nenhuma se perde)
+async function estCommit(mutate,msg){
+  for(var t=0;t<4;t++){
+    var ref=null; try{ ref=await gh('/git/ref/heads/'+EST_BRANCH); }catch(e){ if(e.status!==404) throw e; }
+    var state=null, parent=null, baseTree=null;
+    if(ref){ parent=ref.object.sha; baseTree=(await gh('/git/commits/'+parent)).tree.sha;
+      try{ state=JSON.parse(await gh('/contents/'+EST_FILE+'?ref='+parent,{accept:'application/vnd.github.raw+json'})); }catch(e){ if(e.status!==404) throw e; } }
+    if(!state) state={v:1,doc:ESTOQUE_DOC,mov:[]};
+    var ns=mutate(JSON.parse(JSON.stringify(state)));
+    var body={tree:[{path:EST_FILE,mode:'100644',type:'blob',content:JSON.stringify(ns,null,1)}]}; if(baseTree) body.base_tree=baseTree;
+    var tr=await gh('/git/trees',{method:'POST',body:body});
+    var nc=await gh('/git/commits',{method:'POST',body:{message:msg,tree:tr.sha,parents:parent?[parent]:[]}});
+    try{ if(ref) await gh('/git/refs/heads/'+EST_BRANCH,{method:'PATCH',body:{sha:nc.sha,force:false}}); else await gh('/git/refs',{method:'POST',body:{ref:'refs/heads/'+EST_BRANCH,sha:nc.sha}}); }
+    catch(e){ if(e.status===422) continue; throw e; }
+    EST_STATE=ns; EST=null; try{ localStorage.setItem('est_state',JSON.stringify(ns)); }catch(_){} return ns;
+  }
+  throw new Error('outra pessoa está lançando ao mesmo tempo — tente de novo.');
+}
+function estErrMsg(e){ var m=e&&e.message||String(e);
+  if(e&&e.status===401) return 'token inválido ou expirado.'; if(e&&(e.status===403||e.status===404)) return 'o token não tem permissão de escrita no repositório.';
+  if(e instanceof TypeError) return 'sem conexão com a internet.'; return m; }
+function estUltima(){ var mv=(EST_STATE&&EST_STATE.mov)||[]; return mv.length?mv[mv.length-1]:null; }
+function estHead(){
+  var E=estIndex(), u=estUltima();
+  $('estSub').textContent='Sala grande · '+E.order.length+' referências'+(E.data?' · base registrada em '+E.data:'')+(u?' · última movimentação '+fmtTs(u.ts)+' por '+u.by:'');
+}
 function estEnter(){
-  var E=estIndex();
-  $('estSub').textContent='Sala grande · '+E.order.length+' referências'+(E.data?' · base registrada em '+E.data:'');
   $('estEdit').style.display=estCanEdit(current)?'':'none';
   $('estMic').style.display=(window.SpeechRecognition||window.webkitSpeechRecognition)?'':'none';
   $('modEstoque').style.display='block'; $('estRes').innerHTML=''; var q=$('estQ'); q.value=''; setTimeout(function(){q.focus();},50);
+  estHead(); estRenderMov();
+  estLoad().then(function(){ estHead(); estRenderMov(); if($('estQ').value.trim()) estGo(); });
+}
+function estMovTxt(x){ var s={entrada:'⬇ Entrada',saida:'⬆ Saída',desfazer:'↩ Desfez',instrucao:'✎ Instrução atualizada'}[x.tipo]||x.tipo;
+  if(x.tipo==='instrucao') return s;
+  return s+' '+(x.caixa||'')+': '+(x.ref||'')+' '+(x.cor||'')+(x.qtd?' ('+x.qtd+' pç)':'')+(x.tipo==='saida'?(x.esvaziou?' — caixa ficou sem':' — ainda tem na caixa'):''); }
+function estHistHtml(list,canUndo){
+  if(!list.length) return '<div style="color:var(--muted);font-size:13px">Nenhuma movimentação ainda.</div>';
+  return list.map(function(x){ var off=!!x.desfeito;
+    return '<div style="display:flex;gap:10px;align-items:baseline;padding:7px 0;border-top:1px solid var(--line);flex-wrap:wrap;font-size:13.5px'+(off?';opacity:.5;text-decoration:line-through':'')+'"><span style="color:var(--muted);min-width:96px">'+fmtTs(x.ts)+'</span><span style="color:var(--muted);min-width:70px">'+uEsc(x.by||'')+'</span><span style="flex:1;color:var(--ink)">'+uEsc(estMovTxt(x))+'</span>'
+      +((canUndo&&!off&&(x.tipo==='entrada'||x.tipo==='saida'))?'<button class="linkbtn estundo" data-id="'+uEsc(x.id)+'">desfazer</button>':'')+'</div>'; }).join(''); }
+function estRenderMov(){
+  var box=$('estMov'); if(!box) return; var can=estCanMove(current), mv=((EST_STATE&&EST_STATE.mov)||[]).slice(-15).reverse();
+  var inp='width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:11px 12px;font-size:16px';
+  var lab='display:block;font-size:12.5px;color:var(--muted);margin-top:12px';
+  var h='';
+  if(can){
+    var tab=function(k,t){ var on=EST_TAB===k; return '<button class="ubtn estTab" data-tab="'+k+'" style="flex:1;padding:11px;font-size:15px;font-weight:600;'+(on?'background:var(--f-green);color:#0c241a;border:none':'')+'">'+t+'</button>'; };
+    h+='<details id="estMovDet"'+(box.dataset.open==='1'?' open':'')+' style="margin-top:20px;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:14px 16px">'
+      +'<summary style="cursor:pointer;font-weight:600;color:var(--ink);font-size:15px">📦 Movimentar caixa</summary>'
+      +'<div style="display:flex;gap:8px;margin-top:14px">'+tab('entrada','⬇ Entrada')+tab('saida','⬆ Saída')+'</div>'
+      +'<label style="'+lab+'">Caixa<input id="emCx" autocomplete="off" placeholder="ex.: B3" style="'+inp+'"></label><div id="emCxInfo" style="font-size:12.5px;color:var(--muted);margin-top:6px;min-height:15px"></div>';
+    if(EST_TAB==='entrada'){
+      h+='<label style="'+lab+'">Referência<input id="emRef" autocomplete="off" placeholder="ex.: CLF0710" style="'+inp+'"></label><div id="emRefInfo" style="font-size:12.5px;color:var(--muted);margin-top:6px;min-height:15px"></div>'
+        +'<label id="emDescL" style="'+lab+';display:none">Descrição da referência nova<input id="emDesc" autocomplete="off" placeholder="ex.: Calca Feminina Reta" style="'+inp+'"></label>'
+        +'<label style="'+lab+'">Cor<input id="emCor" list="emCores" autocomplete="off" placeholder="ex.: Preto" style="'+inp+'"></label><datalist id="emCores"></datalist>'
+        +'<label style="'+lab+'">Quantidade <span style="opacity:.8">(opcional, só fica no histórico)</span><input id="emQtd" type="number" min="1" inputmode="numeric" style="'+inp+'"></label>';
+    } else {
+      h+='<div style="'+lab+'">O que saiu (escolha na caixa)</div><div id="emItens" style="margin-top:6px"></div>'
+        +'<label style="'+lab+'">Quantidade <span style="opacity:.8">(opcional, só fica no histórico)</span><input id="emQtd" type="number" min="1" inputmode="numeric" style="'+inp+'"></label>'
+        +'<label style="display:flex;gap:10px;align-items:center;margin-top:14px;font-size:15px;color:var(--ink)"><input type="checkbox" id="emVazio" style="width:20px;height:20px"> A caixa ficou sem essa peça</label>'
+        +'<div style="font-size:12px;color:var(--muted);margin-top:4px">Marque só se não sobrou nenhuma peça dessa referência/cor na caixa — aí ela sai da base.</div>';
+    }
+    h+=(ghToken()?'':'<div style="font-size:12.5px;color:var(--f-amber);margin-top:14px">Este aparelho ainda não tem o token do GitHub. Cole aqui uma vez: <div style="display:flex;gap:8px;margin-top:6px"><input id="emTok" type="password" placeholder="github_pat_..." style="'+inp+';font-size:14px"><button class="ubtn" id="emTokSave">Salvar</button></div></div>')
+      +'<button id="emGo" style="width:100%;margin-top:16px;background:var(--f-green);border:none;color:#0c241a;font-weight:700;padding:14px;border-radius:10px;cursor:pointer;font-size:16px">Lançar '+(EST_TAB==='entrada'?'entrada':'saída')+'</button>'
+      +'<div id="emSt" style="font-size:14px;margin-top:10px;min-height:16px"></div></details>';
+  }
+  h+='<details style="margin-top:14px"><summary style="cursor:pointer;color:var(--muted);font-size:13.5px">Últimas movimentações</summary><div style="margin-top:6px">'+estHistHtml(mv,can)+'</div></details>';
+  box.innerHTML=h;
+  var det=$('estMovDet'); if(det) det.ontoggle=function(){ box.dataset.open=det.open?'1':''; };
+  box.querySelectorAll('.estTab').forEach(function(b){ b.onclick=function(){ var cx=$('emCx').value; EST_TAB=b.dataset.tab; estRenderMov(); $('emCx').value=cx; estCxInfo(); }; });
+  box.querySelectorAll('.estundo').forEach(function(b){ b.onclick=function(){ estUndo(b.dataset.id); }; });
+  if(!can) return;
+  $('emCx').oninput=estCxInfo; var r=$('emRef'); if(r) r.oninput=estRefInfo;
+  var ts=$('emTokSave'); if(ts) ts.onclick=function(){ var v=($('emTok').value||'').trim(); if(!v)return; try{ localStorage.setItem('painelop_ghtoken',v); }catch(e){} estRenderMov(); };
+  $('emGo').onclick=estLancar; estRefInfo();
+}
+function estCxInfo(){
+  var id=estNormCaixa($('emCx').value), info=$('emCxInfo'), E=estIndex(); if(!info) return;
+  var itens=id?estCaixaItens(E,id):[];
+  if(!id) info.textContent=''; else if(!estCaixaOk(E,id)) info.innerHTML='<span style="color:var(--danger)">A caixa '+uEsc(id)+' não existe na sala grande.</span>';
+  else info.textContent=itens.length?('Hoje na '+id+': '+itens.map(function(x){return x.ref+' '+x.cor;}).join(' · ')):('A '+id+' está vazia, segundo a base.');
+  var box=$('emItens'); if(!box) return;
+  box.innerHTML=!id?'<div style="color:var(--muted);font-size:13px">Digite a caixa acima.</div>':(!itens.length?'<div style="color:var(--f-amber);font-size:13px">Nada registrado nessa caixa.</div>':
+    itens.map(function(x,i){ return '<label style="display:flex;gap:10px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:9px;margin-top:6px;font-size:15px;color:var(--ink)"><input type="radio" name="emItem" value="'+i+'" style="width:20px;height:20px"'+(itens.length===1?' checked':'')+'> <b>'+uEsc(x.ref)+'</b> '+uEsc(x.cor)+' <span style="color:var(--muted);font-size:12.5px">'+uEsc(x.desc)+'</span></label>'; }).join(''));
+  box._itens=itens;
+}
+function estRefCode(v){ var m=/^\s*([a-z]{3})\s*0*(\d{1,4})\s*$/i.exec(String(v||'')); return m?m[1].toUpperCase()+('0000'+m[2]).slice(-4):''; }
+function estRefInfo(){
+  var r=$('emRef'); if(!r) return; var E=estIndex(), code=estRefCode(r.value), info=$('emRefInfo'), R=code&&E.refs[code];
+  $('emDescL').style.display=(code&&!R)?'block':'none';
+  info.innerHTML=!code?'':(R?uEsc(code+' — '+R.desc):'<span style="color:var(--f-amber)">'+uEsc(code)+' não está na base — vai ser cadastrada como referência nova.</span>');
+  var nomes={}; (R?R.cores:[]).forEach(function(c){ nomes[c.nome]=1; }); Object.keys(E.nomes).forEach(function(n){ nomes[E.nomes[n]]=1; });
+  $('emCores').innerHTML=Object.keys(nomes).sort().map(function(n){ return '<option value="'+uEsc(n)+'">'; }).join('');
+}
+async function estLancar(){
+  function S(t,c){ var st=$('emSt'); if(!st)return; st.style.color=c||'var(--muted)'; st.innerHTML=t; } // busca o campo de novo: o formulário é redesenhado depois de gravar
+  if(!ghToken()) return S('Cole o token do GitHub neste aparelho (acima) antes de lançar.','var(--f-amber)');
+  var E=estIndex(), cx=estNormCaixa($('emCx').value);
+  if(!cx) return S('Informe a caixa (ex.: B3).','var(--f-amber)'); if(!estCaixaOk(E,cx)) return S('A caixa '+uEsc(cx)+' não existe na sala grande.','var(--danger)');
+  var qtd=parseInt($('emQtd').value,10)||null, m={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),ts:Date.now(),by:estWho(),user:currentUserKey,tipo:EST_TAB,caixa:cx,qtd:qtd};
+  if(EST_TAB==='entrada'){ var code=estRefCode($('emRef').value); if(!code) return S('Informe a referência (3 letras + 4 números, ex.: CLF0710).','var(--f-amber)');
+    var R=E.refs[code], cor=estCorNome(E,R,$('emCor').value); if(!cor) return S('Informe a cor.','var(--f-amber)');
+    m.ref=code; m.cor=cor; if(!R) m.desc=($('emDesc').value||'').trim()||'(cadastrada pelo estoque)'; }
+  else { var it=$('emItens')._itens||[], sel=document.querySelector('input[name=emItem]:checked'); if(!sel) return S('Escolha o que saiu da caixa.','var(--f-amber)');
+    var x=it[+sel.value]; m.ref=x.ref; m.cor=x.cor; m.esvaziou=$('emVazio').checked; }
+  var btn=$('emGo'); btn.disabled=true; S('Lançando…');
+  try{
+    await estCommit(function(s){ return estApplyMov(s,m); },'Estoque: '+(m.tipo==='entrada'?'entrada':'saída')+' '+m.ref+' '+m.cor+' na '+m.caixa+' ('+m.by+')');
+    estHead(); estRenderMov(); $('emCx').value=cx; estCxInfo();
+    S('✓ Lançado: '+uEsc(estMovTxt(m))+'.'+(m.tipo==='saida'&&!m.esvaziou?' A base continua com a peça na caixa.':' Já vale para todos.'),'var(--f-green)');
+    if($('estQ').value.trim()) estGo();
+  }catch(e){ S('Não consegui lançar: '+uEsc(estErrMsg(e)),'var(--danger)'); }
+  finally{ var b=$('emGo'); if(b) b.disabled=false; }
+}
+async function estUndo(id){
+  var x=((EST_STATE&&EST_STATE.mov)||[]).filter(function(m){return m.id===id;})[0]; if(!x) return;
+  if(!confirm('Desfazer esta movimentação?\n\n'+estMovTxt(x))) return;
+  try{ await estCommit(function(s){ return estApplyMov(s,{id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),ts:Date.now(),by:estWho(),user:currentUserKey,tipo:'desfazer',alvo:id}); },'Estoque: desfaz '+x.ref+' '+x.cor+' na '+x.caixa+' ('+estWho()+')');
+    estHead(); estRenderMov(); if($('estQ').value.trim()) estGo(); }
+  catch(e){ alert('Não consegui desfazer: '+estErrMsg(e)); }
 }
 function estRender(res,raw){
   var box=$('estRes'); if(!res){ box.innerHTML=''; return; }
   var card='background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-top:14px';
   function chips(codes,cor){ return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">'+codes.map(function(c){ var R=EST.refs[c]; return '<button class="ubtn estpick" data-q="'+uEsc(c+(cor?' '+cor:''))+'" style="padding:8px 12px;font-size:13.5px"><b>'+uEsc(c)+'</b>'+(R?' <span style="color:var(--muted)">'+uEsc(R.desc)+'</span>':'')+'</button>'; }).join('')+'</div>'; }
   var h='';
-  if(res.tipo==='nf'){
+  if(res.tipo==='caixa'){
+    var mv=((EST_STATE&&EST_STATE.mov)||[]).filter(function(x){return x.caixa===res.id;}).slice(-6).reverse();
+    h='<div style="'+card+'"><div style="font-size:18px;font-weight:700;color:var(--ink)">Caixa '+uEsc(res.id)+'</div>'
+      +(!res.existe?'<div style="margin-top:8px;color:var(--danger)">Essa caixa não existe na sala grande.</div>':(!res.itens.length?'<div style="margin-top:8px;color:var(--f-amber)">Vazia, segundo a base.</div>':
+        res.itens.map(function(x){ return '<div style="display:flex;gap:12px;align-items:baseline;padding:9px 0;border-top:1px solid var(--line);margin-top:8px;flex-wrap:wrap"><button class="linkbtn estpick" data-q="'+uEsc(x.ref)+'" style="font-size:16px;font-weight:700">'+uEsc(x.ref)+'</button><span style="font-size:15px;color:var(--f-green);font-weight:600">'+uEsc(x.cor)+'</span><span style="color:var(--muted);font-size:12.5px">'+uEsc(x.desc)+'</span></div>'; }).join('')))
+      +(mv.length?'<div style="margin-top:14px;color:var(--muted);font-size:12.5px">Últimas movimentações nesta caixa</div>'+estHistHtml(mv,false):'')+'</div>';
+  } else if(res.tipo==='nf'){
     h='<div style="'+card+';border-color:rgba(224,150,45,.5)"><div style="font-size:17px;font-weight:700;color:var(--f-amber)">'+uEsc(res.label||raw)+'</div><div style="margin-top:6px;font-size:15px;color:var(--ink)">Na sala grande essa referência não está. Deve estar em outro lugar (sala pequena ou sala da Klus).</div>'
       +(res.near&&res.near.length?'<div style="margin-top:12px;color:var(--muted);font-size:13px">Você quis dizer:</div>'+chips(res.near,res.cor):'')+'</div>';
   } else if(res.tipo==='ask'){
@@ -1315,58 +1510,45 @@ function estMic(){
   r.onend=function(){ b.textContent='🎤 Falar'; b.disabled=false; };
   try{ r.start(); }catch(e){ r.onend(); }
 }
-async function ghCommitIndex(transform,msg){
-  var ref=await gh('/git/ref/heads/'+GH_BRANCH), headSha=ref.object.sha, commit=await gh('/git/commits/'+headSha);
-  var src=await gh('/contents/'+GH_FILE+'?ref='+headSha,{accept:'application/vnd.github.raw+json'});
-  var out=transform(src); if(out===src) return false;
-  var blob=await gh('/git/blobs',{method:'POST',body:{content:out,encoding:'utf-8'}});
-  var tree=await gh('/git/trees',{method:'POST',body:{base_tree:commit.tree.sha,tree:[{path:GH_FILE,mode:'100644',type:'blob',sha:blob.sha}]}});
-  var nc=await gh('/git/commits',{method:'POST',body:{message:msg,tree:tree.sha,parents:[headSha]}});
-  await gh('/git/refs/heads/'+GH_BRANCH,{method:'PATCH',body:{sha:nc.sha,force:false}}); return true;
-}
 function estEditOpen(){
   if(!estCanEdit(current)) return;
+  EST_EDIT_BASE=estDoc();
   var ta='width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:10px;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.45';
   var body='<h2 style="margin:0 0 4px;color:var(--ink)">Atualizar a instrução do estoque</h2>'
-    +'<div style="color:var(--muted);font-size:13px;margin-bottom:10px;line-height:1.5">Edite o texto abaixo ou carregue o arquivo .txt novo. Mantenha o formato da base: <code>REFERÊNCIA — descrição</code> e, embaixo, <code>Cor (CÓDIGO): caixa A7, pilha D3</code>. Clique em <b>Conferir</b> antes de publicar.</div>'
+    +'<div style="color:var(--muted);font-size:13px;margin-bottom:10px;line-height:1.5">O texto abaixo já inclui as movimentações lançadas. Edite ou carregue o arquivo .txt novo. Mantenha o formato da base: <code>REFERÊNCIA — descrição</code> e, embaixo, <code>Cor: caixa A7, caixa B3</code>. Clique em <b>Conferir</b> antes de publicar.</div>'
     +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px"><label class="ubtn" style="cursor:pointer">Carregar arquivo .txt<input type="file" id="estFile" accept=".txt,text/plain" style="display:none"></label><button class="ubtn" id="estCheck">Conferir</button></div>'
-    +'<textarea id="estDocTa" rows="18" style="'+ta+'">'+uEsc(ESTOQUE_DOC)+'</textarea>'
+    +'<textarea id="estDocTa" rows="18" style="'+ta+'">'+uEsc(EST_EDIT_BASE)+'</textarea>'
     +'<div id="estCheckRes" style="font-size:13px;margin-top:10px;min-height:16px"></div>'
     +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center"><button class="ubtn" id="estPub" style="background:var(--f-green);color:#0c241a;border:none;font-weight:600;padding:9px 16px">☁ Publicar para todos</button><span id="estPubSt" style="font-size:13px"></span></div>';
-  var m=openProgModal(body,null);
-  function check(){ var E=estParse($('estDocTa').value), r=$('estCheckRes');
-    var ok=E.order.length>0;
+  openProgModal(body,null);
+  function check(){ var E=estParse($('estDocTa').value), r=$('estCheckRes'); var ok=E.order.length>0;
     r.innerHTML='<span style="color:'+(ok?'var(--f-green)':'var(--danger)')+'">'+(ok?'✓ ':'✗ ')+E.order.length+' referências, '+E.nLocs+' localizações, '+Object.keys(E.cores).length+' códigos de cor'+(E.data?', base de '+E.data:'')+'.</span>'
       +(E.warn.length?'<div style="color:var(--f-amber);margin-top:6px">Atenção — '+E.warn.length+' linha(s) não entendida(s):<ul style="margin:4px 0 0;padding-left:18px">'+E.warn.slice(0,12).map(function(w){return '<li>'+uEsc(w)+'</li>';}).join('')+(E.warn.length>12?'<li>…</li>':'')+'</ul></div>':'');
     return E; }
-  $('estFile').onchange=function(e){ var f=e.target.files&&e.target.files[0]; if(!f)return; var rd=new FileReader(); rd.onload=function(){ $('estDocTa').value=String(rd.result).replace(/^\uFEFF/,''); check(); }; rd.readAsText(f,'utf-8'); };
+  $('estFile').onchange=function(e){ var f=e.target.files&&e.target.files[0]; if(!f)return; var rd=new FileReader(); rd.onload=function(){ $('estDocTa').value=String(rd.result).replace(/^﻿/,''); check(); }; rd.readAsText(f,'utf-8'); };
   $('estCheck').onclick=check;
   $('estPub').onclick=async function(){ var st=$('estPubSt'); function S(t,c){ st.style.color=c||'var(--muted)'; st.innerHTML=t; }
     var E=check(); if(!E.order.length) return S('A base ficou vazia — confira o texto.','var(--danger)');
     if(!ghToken()) return S('Precisa do token do GitHub (Controle de Usuários → Configuração da publicação).','var(--f-amber)');
     var doc=$('estDocTa').value.replace(/\r\n/g,'\n'); var btn=this; btn.disabled=true; S('Publicando…');
     try{
-      var re=/var ESTOQUE_DOC\s*=\s*[\s\S]*?;\/\*__ESTOQUE__\*\//;
-      var changed=await ghCommitIndex(function(src){ if(!re.test(src)) throw new Error('o painel no GitHub é de uma versão antiga, sem o módulo de estoque.');
-        return src.replace(re,function(){ return 'var ESTOQUE_DOC = '+JSON.stringify(doc).replace(/</g,'\\u003c')+';/*__ESTOQUE__*/'; }); },
-        'Atualiza instrução do estoque ('+((current&&current.name)||currentUserKey)+')');
-      ESTOQUE_DOC=doc; EST=null; estEnter();
-      S(changed?'✓ Publicado! Para todos em 1 a 2 minutos (quem estiver com o painel aberto recarrega a página).':'Nada mudou — o texto já é esse.','var(--f-green)');
-    }catch(e){ var msg=e&&e.message||String(e);
-      if(e&&e.status===401) msg='token inválido ou expirado.'; else if(e&&(e.status===403||e.status===404)) msg='o token não tem permissão de escrita no repositório.'; else if(e&&e.status===422) msg='o painel mudou no GitHub enquanto publicava. Tente de novo.';
-      S('Não consegui publicar: '+uEsc(msg),'var(--danger)'); }
+      await estLoad();
+      if(estDoc()!==EST_EDIT_BASE&&!confirm('Alguém lançou movimentações enquanto você editava. Se publicar, o seu texto substitui a base inteira (essas movimentações ficam só no histórico). Publicar mesmo assim?')){ S('Publicação cancelada. Feche e abra de novo para editar a versão mais nova.','var(--f-amber)'); return; }
+      await estCommit(function(s){ s.doc=doc; s.mov=(s.mov||[]).concat([{id:Date.now().toString(36),ts:Date.now(),by:estWho(),user:currentUserKey,tipo:'instrucao'}]); return s; },'Estoque: instrução atualizada ('+estWho()+')');
+      EST_EDIT_BASE=doc; estHead(); estRenderMov(); if($('estQ').value.trim()) estGo();
+      S('✓ Publicado! Já vale para todos (quem estiver com a tela aberta, é só abrir o módulo de novo).','var(--f-green)');
+    }catch(e){ S('Não consegui publicar: '+uEsc(estErrMsg(e)),'var(--danger)'); }
     finally{ btn.disabled=false; } };
   check();
 }
 (function(){
   var q=$('estQ'), t=null; if(!q) return;
-  // busca sozinha só quando já dá para responder (4 dígitos, ou texto sem número), para não mostrar "não está" no meio da digitação
+  // busca sozinha só quando já dá para responder (4 dígitos, caixa, ou texto sem número), para não mostrar "não está" no meio da digitação
   q.addEventListener('input',function(){ clearTimeout(t); var v=q.value.trim(); if(!v){ estRender(null); return; }
-    if(/\d{4}/.test(v.replace(/\s/g,''))||(!/\d/.test(v)&&v.length>=4)) t=setTimeout(estGo,450); else estRender(null); });
+    if(/\d{4}/.test(v.replace(/\s/g,''))||/^(caixa\s*)?[a-e]\s*\d{1,2}$/i.test(v)||(!/\d/.test(v)&&v.length>=4)) t=setTimeout(estGo,450); else estRender(null); });
   q.addEventListener('keydown',function(e){ if(e.key==='Enter'){ clearTimeout(t); estGo(); } });
   $('estGoBtn').onclick=estGo; $('estMic').onclick=estMic; $('estEdit').onclick=estEditOpen;
 }());
-
 /* ===== FECHAMENTO DA FACÇÃO (fechamento do beneficiador × romaneios) ===== */
 var FC={fech:null,roms:[]};
 function _money(s){ return parseFloat(String(s).replace(/\./g,'').replace(',','.'))||0; }
