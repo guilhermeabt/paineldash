@@ -40,6 +40,20 @@
    "cor": "Branco",
    "desc": "(cadastrada pelo estoque)",
    "mudou": true
+  },
+  {
+   "id": "mvk0l7lh73bg",
+   "ts": 1792702175669,
+   "by": "Guilherme",
+   "user": "guilherme",
+   "tipo": "saida",
+   "caixa": "B12",
+   "qtd": null,
+   "ref": "COF0211",
+   "cor": "Caramelo",
+   "esvaziou": false,
+   "desc": "Colete Feminino Com Faixa Liana Be",
+   "mudou": false
   }
  ]
 }
