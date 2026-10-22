@@ -788,34 +788,87 @@ function panelFileRows(pk){
 
 function renderRelStatus(){
   const wrap=document.createElement('div'); wrap.className='base-wrap';
-  let html='<div class="base-head"><h1>Dados do painel</h1><p>Os relatórios usam os dados publicados na Base de Dados. Quando avisarem que o painel foi atualizado, dê F5 ou clique em <b>Buscar dados novos</b>.</p></div>';
+  const up=!SNAP_MODE&&canLocalUp(current);
+  let html='<div class="base-head"><h1>Dados do painel</h1><p>'+(up
+    ?'Os relatórios usam os dados publicados pelo administrador. Para atualizar mais rápido, aponte a <b>sua pasta</b> de arquivos e clique em <b>Atualizar pela pasta</b>: vale <b>só no seu painel</b>, e só para arquivos mais novos que os publicados.'
+    :'Os relatórios usam os dados publicados na Base de Dados. Quando avisarem que o painel foi atualizado, é só dar F5.')+'</p>'
+    +((up&&PUB.stale&&PUB.stale.length)?'<p style="margin-top:6px;color:var(--f-amber)">Saiu uma publicação mais nova de: <b>'+escapeHtml(PUB.stale.map(slotLabel).join(', '))+'</b> — o seu arquivo foi substituído por ela.</p>':'')+'</div>';
   if(SNAP_MODE){
     html+='<div class="update-bar" style="border-left:3px solid var(--f-green)"><div class="folder-info">📎 <b>Painel compartilhado</b> — dados já vêm preenchidos, enviado por '+escapeHtml((USERS[SNAPSHOT.user]&&USERS[SNAPSHOT.user].name)||SNAPSHOT.user)+' em '+new Date(SNAPSHOT.ts).toLocaleDateString('pt-BR')+'.</div></div>';
   } else {
     let info;
-    if(PUB.loading) info='<b id="pubProg">'+escapeHtml(PUB.prog||'Carregando…')+'</b>'+(canLocalUp(current)?'<div style="margin-top:4px">Enquanto baixa, você já pode trocar um arquivo abaixo.</div>':'');
-    else if(PUB.err==='none') info='<span style="color:var(--f-amber)">Ainda não há dados publicados. Quem cuida da Base de Dados precisa subir os arquivos e clicar em Publicar dados.</span>';
-    else if(PUB.err) info='<span style="color:var(--danger)">Não consegui carregar os dados: '+escapeHtml(PUB.err)+'</span>';
-    else if(PUB.manifest) info='Publicação de <b>'+fmtTs(PUB.manifest.ts)+'</b>'+(PUB.manifest.by?' por <b>'+escapeHtml(PUB.manifest.by)+'</b>':'');
+    if(PUB.loading) info='<b id="pubProg">'+escapeHtml(PUB.prog||'Carregando…')+'</b>'+(up?'<div style="margin-top:4px">Enquanto baixa, você já pode atualizar pela pasta.</div>':'');
+    else if(PUB.err==='none') info='<span style="color:var(--f-amber)">Ainda não há dados publicados pelo administrador.</span>';
+    else if(PUB.err) info='<span style="color:var(--danger)">Não consegui carregar os dados publicados: '+escapeHtml(PUB.err)+'</span>';
+    else if(PUB.manifest) info='Publicação do administrador: <b>'+fmtTs(PUB.manifest.ts)+'</b>'+(PUB.manifest.by?' por <b>'+escapeHtml(PUB.manifest.by)+'</b>':'');
     else info='';
     if(!PUB.loading&&cryptoOn()&&!(current&&current.k)) info+='<div style="color:var(--f-amber);margin-top:6px">Seu usuário ainda está com a senha antiga e não recebe os dados. Peça ao administrador uma senha nova.</div>';
     if(!PUB.loading&&PUB.noKey&&PUB.noKey.length) info+='<div style="color:var(--f-amber);margin-top:6px">Sem acesso aos dados de: '+escapeHtml(PUB.noKey.map(slotLabel).join(', '))+'. Peça ao administrador para publicar os usuários.</div>';
-    html+='<div class="update-bar"><button class="apply-btn big" id="reloadPubBtn"'+(PUB.loading?' disabled':'')+'>↻ Buscar dados novos</button><div class="folder-info">'+info+'</div></div>';
+    const reload='<button class="linkbtn" id="reloadPubBtn"'+(PUB.loading?' disabled':'')+' title="Baixa de novo a última publicação do administrador (o mesmo que dar F5)">recarregar publicação</button>';
+    if(up){
+      const nm=relDirName();
+      html+='<div class="update-bar" style="border-left:3px solid var(--f-green)">'
+        +(nm?'<button class="apply-btn big" id="relUpdBtn">↻ Atualizar pela pasta</button>':'<button class="apply-btn big" id="relPickBtn">📁 Escolher pasta</button>')
+        +'<div class="folder-info">'+(nm?'Sua pasta: <b>'+escapeHtml(nm)+'</b> · <button class="linkbtn" id="relPickBtn2">trocar pasta</button>':'<span style="color:var(--muted)">Escolha a pasta onde ficam os seus arquivos (uma vez só — o painel lembra).</span>')
+        +(REL_NOTE?'<div style="margin-top:6px">'+REL_NOTE+'</div>':'')
+        +'<div style="margin-top:8px;color:var(--muted)">'+info+' · '+reload+'</div></div>'
+        +'<input type="file" id="relFolderInp" webkitdirectory directory multiple style="display:none"></div>';
+    } else {
+      html+='<div class="update-bar"><div class="folder-info">'+info+' · '+reload+'</div></div>';
+    }
   }
   allowedPanels(current).forEach(pk=>{
     const cfg=PANELCFG[pk]||{}; const S=panelStatus(pk);
-    const txt=S.st==='incompleto'?S.txt.replace('Falta subir:','Sem dados publicados de:'):(S.st==='estatico'?S.txt:'Dados carregados');
-    const up=!SNAP_MODE&&canLocalUp(current)&&!cfg.static;
+    const txt=S.st==='incompleto'?S.txt.replace('Falta subir:','Sem dados de:'):(S.st==='estatico'?S.txt:'Dados carregados');
     html+='<div class="pcard"><div class="pcard-h"><span class="farol '+S.st+'"></span><span class="pcard-name">'+(cfg.name||PANELS[pk].name)+'</span><span class="pcard-stat">'+escapeHtml(txt)+'</span></div>'
-      +(up?'<div class="pcard-files">'+panelFileRows(pk)+'</div>':'')+'</div>';
+      +(up&&!cfg.static?'<div class="pcard-files">'+panelFileRows(pk)+'</div>':'')+'</div>';
   });
-  if(!SNAP_MODE&&canLocalUp(current)) html=html.replace('</p></div>','</p><p style="margin-top:6px">Você pode <b>trocar</b> um arquivo para atualizar mais rápido: ele vale <b>só no seu painel</b>. Quando sair uma publicação mais nova desse arquivo, ela volta a valer.</p>'
-      +((PUB.stale&&PUB.stale.length)?'<p style="margin-top:6px;color:var(--f-amber)">Saiu uma publicação mais nova de: <b>'+escapeHtml(PUB.stale.map(slotLabel).join(', '))+'</b> — o seu arquivo foi substituído por ela.</p>':'')+'</div>');
   wrap.innerHTML=html;
   const bv=$('baseView'); bv.innerHTML=''; bv.appendChild(wrap);
   const rb=$('reloadPubBtn'); if(rb) rb.addEventListener('click',loadPublished);
+  ['relPickBtn','relPickBtn2'].forEach(id=>{ const b=$(id); if(b) b.addEventListener('click',relPickFolder); });
+  const ub=$('relUpdBtn'); if(ub) ub.addEventListener('click',relUpdateFolder);
+  const fi=$('relFolderInp'); if(fi) fi.addEventListener('change',async e=>{ const top=[...e.target.files].filter(f=>{const rp=f.webkitRelativePath||'';return !rp||rp.split('/').length<=2;}); if(top[0]&&top[0].webkitRelativePath) relSetName(top[0].webkitRelativePath.split('/')[0]); await relApplyFiles(await expandShopZips(top)); });
   wrap.querySelectorAll('input[type=file][data-lslot]').forEach(inp=>inp.addEventListener('change',e=>{ if(e.target.files&&e.target.files.length) localUpload(inp.dataset.lslot,e.target.files); }));
   wrap.querySelectorAll('[data-lrev]').forEach(el=>el.addEventListener('click',()=>localRevert(el.dataset.lrev)));
+}
+/* ---- pasta própria no Relatórios: lê os arquivos da pasta da pessoa e usa os mais novos que a publicação ---- */
+var REL_DIR=null, REL_NOTE='';
+function relDirName(){ try{ return localStorage.getItem('dirRelName:'+currentUserKey)||''; }catch(e){ return ''; } }
+function relSetName(n){ try{ localStorage.setItem('dirRelName:'+currentUserKey,n); }catch(e){} }
+async function relPickFolder(){
+  if(!window.showDirectoryPicker){ const fi=$('relFolderInp'); if(fi) fi.click(); return; }
+  let h; try{ h=await window.showDirectoryPicker(); }catch(e){ return; } // cancelou
+  REL_DIR=h; relSetName(h.name); try{ await idbSet('dirRel:'+currentUserKey,h); }catch(e){}
+  await relReadDir(h);
+}
+async function relUpdateFolder(){
+  if(!REL_DIR){ try{ REL_DIR=await idbGet('dirRel:'+currentUserKey); }catch(e){} }
+  if(!REL_DIR||!REL_DIR.queryPermission) return relPickFolder();
+  try{ let pm=await REL_DIR.queryPermission({mode:'read'}); if(pm!=='granted') pm=await REL_DIR.requestPermission({mode:'read'}); if(pm!=='granted') return relPickFolder(); }catch(e){ return relPickFolder(); }
+  await relReadDir(REL_DIR);
+}
+async function relReadDir(h){
+  REL_NOTE='Lendo a pasta…'; renderBase();
+  let files=[]; try{ await collectFiles(h,files,0); }catch(e){ REL_NOTE='<span style="color:var(--danger)">Não consegui ler a pasta: '+escapeHtml(e&&e.message||e)+'</span>'; renderBase(); return; }
+  await relApplyFiles(await expandShopZips(files));
+}
+async function relApplyFiles(list){
+  const vis=visibleSlots(current).map(s=>s.key), cands={};
+  [...list].filter(f=>/\.(xlsx|xls|xlsm|csv)$/i.test(f.name)).forEach(f=>{ const k=matchSlot(f.name); if(k&&vis.indexOf(k)>=0)(cands[k]=cands[k]||[]).push(f); });
+  const usados=[], mantidos=[];
+  Object.keys(cands).forEach(k=>{
+    let fs=cands[k].slice().sort((a,b)=>(b.lastModified||0)-(a.lastModified||0)); if(!isMulti(k)) fs=[fs[0]];
+    const novo=Math.max.apply(null,fs.map(f=>f.lastModified||0)), pub=(PUB.pubLm&&PUB.pubLm[k])||0;
+    if(pub&&novo<=pub){ mantidos.push(slotLabel(k)); return; } // o publicado é igual ou mais novo: vale a publicação
+    LOCAL[k]={at:Date.now(),files:fs}; FILES[k]=isMulti(k)?fs.slice():fs[0]; usados.push(slotLabel(k));
+  });
+  PUB.stale=(PUB.stale||[]).filter(k=>!LOCAL[k]);
+  await locSave();
+  REL_NOTE=(usados.length?'<span style="color:var(--f-green)">✓ Atualizado pela pasta: <b>'+escapeHtml(usados.join(', '))+'</b>.</span>':'<span style="color:var(--f-amber)">Nenhum arquivo da pasta foi usado.</span>')
+    +(mantidos.length?' <span style="color:var(--muted)">Mantidos da publicação (são iguais ou mais novos): '+escapeHtml(mantidos.join(', '))+'.</span>':'')
+    +(!Object.keys(cands).length?' <span style="color:var(--muted)">Não achei na pasta arquivos dos seus relatórios.</span>':'');
+  if(usados.length) applyAll(); else renderBase();
 }
 function slotPubTag(k){ const e=PUB.manifest&&PUB.manifest.slots&&PUB.manifest.slots[k]; if(!e)return '<span class="fx miss" style="margin-left:6px">não publicado</span>'; return '<span class="fx" style="margin-left:6px;color:var(--muted)">publicado '+fmtTs(e.ts)+(e.n>1?' · '+e.n+' arq.':'')+'</span>'; }
 function renderBase(){
@@ -1578,7 +1631,7 @@ async function localRevert(k){
   delete LOCAL[k]; var p=PUB.files&&PUB.files[k]; if(p) FILES[k]=isMulti(k)?p.slice():p; else delete FILES[k];
   await locSave(); applyAll(); }
 async function loadPublished(){
-  if(PUB.loading) return; PUB.loading=true; PUB.err=''; PUB.noKey=[]; PUB.prog='Buscando a última publicação…'; renderBase(); renderNav();
+  if(PUB.loading) return; PUB.loading=true; PUB.err=''; PUB.noKey=[]; PUB.pubLm={}; PUB.prog='Buscando a última publicação…'; renderBase(); renderNav();
   try{
     var man=await fetchManifest(); PUB.manifest=man; PUB.fetchedAt=Date.now();
     if(!man){ PUB.err='none'; PUB.files={}; await locLoad(); if(Object.keys(LOCAL).length&&APPMODE==='rel'){ applyLocal(null); applyAll(); } return; }
@@ -1586,7 +1639,8 @@ async function loadPublished(){
     var jobs=[];
     for(var i=0;i<vis.length;i++){ var k=vis[i], e=man.slots[k]; if(!e)continue;
       if(!SESSION.slots[k]){ PUB.noKey.push(k); continue; }
-      var meta=await decJSON(b64d(SESSION.slots[k]),e.m); meta.files.forEach(function(f){ jobs.push({k:k,f:f}); }); }
+      var meta=await decJSON(b64d(SESSION.slots[k]),e.m); meta.files.forEach(function(f){ jobs.push({k:k,f:f}); });
+      PUB.pubLm[k]=Math.max.apply(null,meta.files.map(function(f){return f.lm||0;}).concat([0])); }
     var got={}, done=0, mb=0;
     PUB.prog='Baixando os dados… 0 de '+jobs.length+' arquivos'; renderBase();
     await pool(jobs,4,async function(j,ix){ var ct=await getEncBlob(j.f.p); var plain=await decBytes(b64d(SESSION.slots[j.k]),j.f.iv,ct);
@@ -3173,7 +3227,7 @@ $('recForm').addEventListener('submit',async function(e){
   pubStatus('Senha redefinida neste navegador. Clique em <b>Publicar alterações</b> para ela valer (anote a nova senha: '+uEsc(np)+').','var(--f-amber)');
 });
 document.getElementById('logoutBtn').addEventListener('click',function(){
-  current=null; currentUserKey=''; APPMODE=''; BASE_STASH=null; REL_STASH=null; FC={fech:null,roms:[]}; fcRender(); CONTACTS={}; LOCAL={};
+  current=null; currentUserKey=''; APPMODE=''; BASE_STASH=null; REL_STASH=null; REL_DIR=null; REL_NOTE=''; FC={fech:null,roms:[]}; fcRender(); CONTACTS={}; LOCAL={};
   SESSION={ku:null,slots:{},m:null,sk:null}; PUB={manifest:null,loading:false,prog:'',err:'',noKey:[],fetchedAt:0};
   Object.keys(FILES).forEach(k=>delete FILES[k]); Object.keys(applied).forEach(k=>delete applied[k]);
   try{ localStorage.removeItem('painelop_user'); localStorage.removeItem('painelop_ku'); }catch(e){}
