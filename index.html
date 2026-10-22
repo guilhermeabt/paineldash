@@ -526,7 +526,7 @@ function matchSlot(name){
   if(/(^|[^a-z])ops([^a-z]|$)/.test(n)) return 'ops';
   return null;
 }
-function idbReq(mode,fn){ return new Promise((res)=>{ let rq; try{rq=indexedDB.open('painelop_fs',1);}catch(e){return res(null);} rq.onupgradeneeded=()=>{try{rq.result.createObjectStore('kv');}catch(e){}}; rq.onsuccess=()=>{ try{ const tx=rq.result.transaction('kv',mode); fn(tx.objectStore('kv'),res,tx); }catch(e){res(null);} }; rq.onerror=()=>res(null); }); }
+function idbReq(mode,fn){ return new Promise((res)=>{ let rq; try{rq=indexedDB.open('painelop_fs',1);}catch(e){return res(null);} rq.onupgradeneeded=()=>{try{rq.result.createObjectStore('kv');}catch(e){}}; rq.onsuccess=()=>{ try{ const tx=rq.result.transaction('kv',mode); fn(tx.objectStore('kv'),res,tx); }catch(e){res(null);} }; rq.onerror=()=>res(null); rq.onblocked=()=>res(null); }); }
 function idbSet(k,v){ return idbReq('readwrite',(st,res,tx)=>{ try{st.put(v,k);}catch(e){} tx.oncomplete=()=>res(true); tx.onerror=()=>res(null); }); }
 function idbGet(k){ return idbReq('readonly',(st,res)=>{ const g=st.get(k); g.onsuccess=()=>res(g.result||null); g.onerror=()=>res(null); }); }
 async function collectFiles(handle,acc,depth){
@@ -641,7 +641,7 @@ function renderUpdProgress(){ if(!updSet)return; const pct=updExp?Math.round(upd
 function updTick(panel){ if(!updSet||!updExpSet||!updExpSet.has(panel)||updSet.has(panel))return; updSet.add(panel); renderUpdProgress(); if(updSet.size>=updExp){ clearTimeout(updSafeT); const f=$('upfill'); if(f)f.style.width='100%'; const tx=$('uptext'); if(tx)tx.textContent='\u2713 Painéis 100% atualizados'; updHideT=setTimeout(function(){ const el=$('updProg'); if(el)el.classList.remove('show'); updSet=null;updExpSet=null; },1600); } }
 window.addEventListener('message',function(ev){
   const m=ev.data||{};
-  if(m.__dash==='ready'){ ready[m.panel]=true; if(m.base) baseInfo[m.panel]=m.base; if(pending[m.panel]){ sendFeed(m.panel,pending[m.panel]); delete pending[m.panel]; } if(current&&activeView==='base') renderBase(); }
+  if(m.__dash==='ready'){ ready[m.panel]=true; if(m.base) baseInfo[m.panel]=m.base; if(pending[m.panel]){ sendFeed(m.panel,pending[m.panel]); delete pending[m.panel]; } if(current&&activeView==='base'&&APPMODE==='base') renderBase(); }
   if(m.__dash==='fed'){ updTick(m.panel); const nm=(PANELCFG[m.panel]&&PANELCFG[m.panel].name)||m.panel; if(fedNames.indexOf(nm)<0)fedNames.push(nm); clearTimeout(fedT); fedT=setTimeout(function(){ toast('✓ Dados entregues: '+fedNames.join(', ')); fedNames=[]; },600); }
   if(m.__dash==='printReport'&&m.panel){ try{ensureIframe(m.panel);}catch(e){} var _tf=iframes[m.panel]; if(_tf&&_tf.contentWindow){ setTimeout(function(){ try{_tf.contentWindow.postMessage({__dash:'printReport',which:m.which,reqId:m.reqId},'*');}catch(e){} },80); } }
   if(m.__dash==='reportHTML'){ var _ef=iframes['expedicao']; if(_ef&&_ef.contentWindow){ try{_ef.contentWindow.postMessage(m,'*');}catch(e){} } }
@@ -793,7 +793,7 @@ function renderRelStatus(){
     html+='<div class="update-bar" style="border-left:3px solid var(--f-green)"><div class="folder-info">📎 <b>Painel compartilhado</b> — dados já vêm preenchidos, enviado por '+escapeHtml((USERS[SNAPSHOT.user]&&USERS[SNAPSHOT.user].name)||SNAPSHOT.user)+' em '+new Date(SNAPSHOT.ts).toLocaleDateString('pt-BR')+'.</div></div>';
   } else {
     let info;
-    if(PUB.loading) info='<b>'+escapeHtml(PUB.prog||'Carregando…')+'</b>';
+    if(PUB.loading) info='<b id="pubProg">'+escapeHtml(PUB.prog||'Carregando…')+'</b>'+(canLocalUp(current)?'<div style="margin-top:4px">Enquanto baixa, você já pode trocar um arquivo abaixo.</div>':'');
     else if(PUB.err==='none') info='<span style="color:var(--f-amber)">Ainda não há dados publicados. Quem cuida da Base de Dados precisa subir os arquivos e clicar em Publicar dados.</span>';
     else if(PUB.err) info='<span style="color:var(--danger)">Não consegui carregar os dados: '+escapeHtml(PUB.err)+'</span>';
     else if(PUB.manifest) info='Publicação de <b>'+fmtTs(PUB.manifest.ts)+'</b>'+(PUB.manifest.by?' por <b>'+escapeHtml(PUB.manifest.by)+'</b>':'');
@@ -805,7 +805,7 @@ function renderRelStatus(){
   allowedPanels(current).forEach(pk=>{
     const cfg=PANELCFG[pk]||{}; const S=panelStatus(pk);
     const txt=S.st==='incompleto'?S.txt.replace('Falta subir:','Sem dados publicados de:'):(S.st==='estatico'?S.txt:'Dados carregados');
-    const up=!SNAP_MODE&&canLocalUp(current)&&!cfg.static&&!PUB.loading;
+    const up=!SNAP_MODE&&canLocalUp(current)&&!cfg.static;
     html+='<div class="pcard"><div class="pcard-h"><span class="farol '+S.st+'"></span><span class="pcard-name">'+(cfg.name||PANELS[pk].name)+'</span><span class="pcard-stat">'+escapeHtml(txt)+'</span></div>'
       +(up?'<div class="pcard-files">'+panelFileRows(pk)+'</div>':'')+'</div>';
   });
@@ -1587,9 +1587,13 @@ async function loadPublished(){
     for(var i=0;i<vis.length;i++){ var k=vis[i], e=man.slots[k]; if(!e)continue;
       if(!SESSION.slots[k]){ PUB.noKey.push(k); continue; }
       var meta=await decJSON(b64d(SESSION.slots[k]),e.m); meta.files.forEach(function(f){ jobs.push({k:k,f:f}); }); }
-    var got={}, done=0;
+    var got={}, done=0, mb=0;
+    PUB.prog='Baixando os dados… 0 de '+jobs.length+' arquivos'; renderBase();
     await pool(jobs,4,async function(j,ix){ var ct=await getEncBlob(j.f.p); var plain=await decBytes(b64d(SESSION.slots[j.k]),j.f.iv,ct);
-      (got[j.k]=got[j.k]||[])[ix]=new File([plain],j.f.n,{type:j.f.t||'',lastModified:j.f.lm||0}); done++; PUB.prog='Baixando os dados… '+done+' de '+jobs.length+' arquivos'; renderBase(); });
+      (got[j.k]=got[j.k]||[])[ix]=new File([plain],j.f.n,{type:j.f.t||'',lastModified:j.f.lm||0}); done++; mb+=ct.length/1048576;
+      PUB.prog='Baixando os dados… '+done+' de '+jobs.length+' arquivos ('+mb.toFixed(1)+' MB)';
+      // só o texto do progresso muda: redesenhar a tela inteira tiraria o botão "trocar" da mão de quem está escolhendo um arquivo
+      var pe=$('pubProg'); if(pe) pe.textContent=PUB.prog; });
     var built={}; Object.keys(got).forEach(function(k){ var arr=got[k].filter(Boolean); if(arr.length) built[k]=isMulti(k)?arr:arr[0]; });
     PUB.prog=''; pruneBlobCache(man);
     if(APPMODE!=='rel'){ REL_STASH=built; Object.keys(applied).forEach(function(k){delete applied[k];}); return; } // saiu do módulo durante o download
