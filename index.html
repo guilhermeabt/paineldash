@@ -2573,7 +2573,7 @@ function auditCompute(){
   var r91=[],r93=[],r94=[],teMap={};
   var terms=[['CINTO'],['NÃO PRODUZIR','NAO PRODUZIR'],['OUTLET'],['TECIDO DIVERSO'],['NÃO APROVEITAR ESTOQUE','NAO APROVEITAR ESTOQUE'],['SEPARADA NA EXPEDIÇÃO','SEPARADA NA EXPEDICAO']];
   var termHits={}; terms.forEach(function(x){termHits[x[0]]=[];});
-  var prontoHits=[],bordHits=[];
+  var prontoHits=[],bordHits=[],bordSite=[];
   ops.forEach(function(o){
     var te=o.teCodes||[]; te.forEach(function(c){ (teMap[c]=teMap[c]||[]).push(o.op); });
     if(te.length===0 && !PRONTO[o.ref] && !o.isPronto) r91.push(o);
@@ -2582,9 +2582,11 @@ function auditCompute(){
     var T=auditNoacc(o.raw||'');
     terms.forEach(function(x){ if(x.some(function(v){return T.indexOf(auditNoacc(v))>=0;})) termHits[x[0]].push(o.op); });
     if(T.indexOf('COMPRADO PRONTO')>=0||T.indexOf('COMPRADA PRONTA')>=0) prontoHits.push(o.op);
-    if(auditNoacc(o.pers||'').indexOf('BORDADO')>=0) bordHits.push(o.op);
+    // bordado: "BORDADO" nas Personalizações, ou pedido do site com "PERSONALIZAÇÃO SKU: … : Busto Esquerdo"
+    var P=auditNoacc(o.pers||''), site=/PERSONALIZAC?A?O\s*SKU|\bSKU\s*:\s*\d/.test(P);
+    if(P.indexOf('BORDADO')>=0||site){ bordHits.push(o.op); if(site&&P.indexOf('BORDADO')<0) bordSite.push(o.op); }
   });
-  return {ops:ops,r91:r91,r93:r93,r94:r94,teMap:teMap,termHits:termHits,prontoHits:prontoHits,bordHits:bordHits};
+  return {ops:ops,r91:r91,r93:r93,r94:r94,teMap:teMap,termHits:termHits,prontoHits:prontoHits,bordHits:bordHits,bordSite:bordSite};
 }
 function audList(ops){ if(!ops.length)return '<div style="color:var(--muted);font-size:13px">Nenhuma OP encontrada neste grupo.</div>'; return '<div style="font-size:12.5px;color:var(--ink);line-height:1.6">'+ops.map(function(o){return (typeof o==='string')?o:('<b>'+o.op+'</b> '+uEsc(o.ref||'')+(o.desc?' — '+uEsc((o.desc||'').slice(0,34)):''));}).join(' · ')+'</div>'; }
 function audSec(num,title,body){ return '<div style="border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px;background:var(--surface2)"><div style="font-weight:600;color:var(--ink);margin-bottom:8px">'+num+' — '+title+'</div>'+body+'</div>'; }
@@ -2606,7 +2608,7 @@ function renderAuditoria(){
     var hits=A.termHits[k]||[]; return '<div style="margin-bottom:6px"><b style="color:var(--ink);font-size:13px">'+k+':</b> '+(hits.length?('<span style="font-size:12.5px">'+hits.join(', ')+'</span>'):'<span style="color:var(--muted);font-size:12.5px">Nenhuma OP encontrada com este termo.</span>')+'</div>';
   }).join('');
   termsBody+='<div style="margin-bottom:6px"><b style="color:var(--ink);font-size:13px">COMPRADO PRONTO:</b> '+(A.prontoHits.length?('<span style="font-size:12.5px">'+A.prontoHits.join(', ')+'</span>'):'<span style="color:var(--muted);font-size:12.5px">Nenhuma OP.</span>')+'</div>';
-  termsBody+='<div><b style="color:var(--ink);font-size:13px">BORDADO (em Personalizações):</b> '+(A.bordHits.length?('<span style="font-size:12.5px">'+A.bordHits.length+' OPs — '+A.bordHits.join(', ')+'</span>'):'<span style="color:var(--muted);font-size:12.5px">Nenhuma OP.</span>')+'</div>';
+  termsBody+='<div><b style="color:var(--ink);font-size:13px">BORDADO (em Personalizações):</b> '+(A.bordHits.length?('<span style="font-size:12.5px">'+A.bordHits.length+' OPs — '+A.bordHits.join(', ')+'</span>'+(A.bordSite.length?'<div style="font-size:12px;color:var(--muted);margin-top:2px">Pedidos do site (Personalização SKU): '+A.bordSite.length+' — '+A.bordSite.join(', ')+'</div>':'')):'<span style="color:var(--muted);font-size:12.5px">Nenhuma OP.</span>')+'</div>';
   // resumo
   var resumo='<ul style="margin:0;padding-left:18px;color:var(--ink);font-size:13px;line-height:1.7">'
     +'<li>9.1 candidatas a sem consumo de tecido: <b>'+A.r91.length+'</b></li>'
@@ -2646,7 +2648,7 @@ function auditInner(){
   var s92; if(tec){ var fora=teList.filter(function(c){return !tec[c];}); s92=fora.length?('<p class="warn">'+fora.length+' código(s) TE.* fora do cadastro:</p><ul>'+fora.map(function(c){return '<li><b>'+c+'</b> — OPs: '+A.teMap[c].join(', ')+'</li>';}).join('')+'</ul>'):('<p class="ok">Todos os '+teList.length+' códigos TE.* constam no cadastro.</p>'); } else { s92='<p class="warn">Validação pendente — Cadastro de Tecidos não carregado.</p><p>'+teList.length+' TE.* distintos: '+teList.join(', ')+'</p>'; }
   var tr=['CINTO','NÃO PRODUZIR','OUTLET','TECIDO DIVERSO','NÃO APROVEITAR ESTOQUE','SEPARADA NA EXPEDIÇÃO'].map(function(k){ var h=A.termHits[k]||[]; return '<tr><td>'+k+'</td><td>'+(h.length?h.join(', '):'—')+'</td></tr>'; }).join('');
   tr+='<tr><td>COMPRADO PRONTO</td><td>'+(A.prontoHits.length?A.prontoHits.join(', '):'—')+'</td></tr>';
-  tr+='<tr><td>BORDADO (Personalizações)</td><td>'+(A.bordHits.length?(A.bordHits.length+' OPs: '+A.bordHits.join(', ')):'—')+'</td></tr>';
+  tr+='<tr><td>BORDADO (Personalizações)</td><td>'+(A.bordHits.length?(A.bordHits.length+' OPs: '+A.bordHits.join(', ')+(A.bordSite.length?'<br><span style="color:#555">Pedidos do site (Personalização SKU): '+A.bordSite.length+' — '+A.bordSite.join(', ')+'</span>':'')):'—')+'</td></tr>';
   return '<h1>Auditoria das Ordens de Produção</h1><p class="sub">Dash · '+_dstamp()+' · '+ops.length+' OPs'+(window.__PROG_OPS_DT?' (PDF de '+window.__PROG_OPS_DT+')':'')+'</p>'
     +'<h2>9.6 Resumo</h2><div class="kpis"><span>9.1 sem tecido: <b>'+A.r91.length+'</b></span><span>9.2 TE.* distintos: <b>'+teList.length+'</b></span><span>9.3 refs PE: <b>'+A.r93.length+'</b></span><span>9.4 SN≠0: <b>'+A.r94.length+'</b></span><span>BORDADO: <b>'+A.bordHits.length+'</b></span><span>COMPR. PRONTO: <b>'+A.prontoHits.length+'</b></span></div>'
     +'<h2>9.1 Candidatas a sem consumo de tecido'+(tec?'':' (triagem)')+'</h2>'+ul(A.r91)
