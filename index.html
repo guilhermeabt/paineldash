@@ -2661,10 +2661,21 @@ function cortarInner(){
   var rows=R.blocks.map(function(b){ return '<tr><td>Bloco '+b.n+'</td><td>'+_e0(b.tecidos.map(teNm).join(', '))+'</td><td style="text-align:center">'+b.ops.length+'</td><td>'+_e0(b.cores.join(', '))+'</td><td>'+_e0(b.pedLig.join(', '))+'</td><td>'+_e0(b.ops.join(', '))+'</td></tr>'; }).join('');
   return '<h1>Cortar junto</h1><p class="sub">Dash · '+_dstamp()+' · '+R.blocks.length+' blocos</p><table><thead><tr><th>Bloco</th><th>Tecido(s)</th><th>Nº OPs</th><th>Cores</th><th>Pedidos que ligam</th><th>OPs</th></tr></thead><tbody>'+rows+'</tbody></table>';
 }
+// só as OPs geradas agora (Excel OPs geradas — 03); sem o 03, mostra todas as do 02
+function datasGeradas(){
+  var all=computeDatas()||[], ger=window.__PROG_OPSGER||[];
+  if(!ger.length) return {R:all,filtrado:false,semPedido:[]};
+  var set={}; ger.forEach(function(o){ set[String(o.op)]=1; });
+  var R=all.filter(function(o){ return set[String(o.op)]; }), tem={}; R.forEach(function(o){ tem[String(o.op)]=1; });
+  var semPedido=Object.keys(set).filter(function(op){ return !tem[op]; }).sort(function(a,b){return (+a)-(+b);});
+  return {R:R,filtrado:true,semPedido:semPedido};
+}
 function datasInner(){
-  var R=computeDatas()||[];
+  var D=datasGeradas(), R=D.R;
   var rows=R.map(function(o){ return '<tr><td>'+o.op+'</td><td>'+_e0(o.peds.map(function(x){return x.ped+': '+(x.dt||'—');}).join('  |  '))+'</td><td style="font-weight:bold">'+_e0(o.dataFinal||'—')+'</td></tr>'; }).join('');
-  return '<h1>Data das OPs</h1><p class="sub">Dash · '+_dstamp()+' · '+R.length+' OPs · data final = entrega mais próxima</p><table><thead><tr><th>OP</th><th>Datas dos pedidos</th><th>Data final</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  return '<h1>Data das OPs</h1><p class="sub">Dash · '+_dstamp()+' · '+R.length+' OPs'+(D.filtrado?' geradas agora (Excel OPs geradas — 03)':' — todas as do 02; suba o OPs geradas (03) para ver só as geradas agora')+' · data final = entrega mais próxima</p>'
+    +(D.semPedido.length?'<p class="sub" style="color:#8a5a00">Geradas sem pedido no 02 ('+D.semPedido.length+'): '+_e0(D.semPedido.join(', '))+'</p>':'')
+    +'<table><thead><tr><th>OP</th><th>Datas dos pedidos</th><th>Data final</th></tr></thead><tbody>'+rows+'</tbody></table>';
 }
 function comprasInner(){
   var R=computeCompras()||{lines:[]};
@@ -2959,7 +2970,7 @@ function computeDatas(){
   return out;
 }
 function exportDatasXlsx(){
-  var R=computeDatas(); if(!R){ alert('Carregue o 02 (OPs com pedidos) em Input de arquivos.'); return; }
+  if(!computeDatas()){ alert('Carregue o 02 (OPs com pedidos) em Input de arquivos.'); return; } var R=datasGeradas().R;
   ensureXLSX(function(){
     var wb=XLSX.utils.book_new();
     var s=[['OP','Datas dos pedidos','Data final da OP']];
