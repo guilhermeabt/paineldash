@@ -2665,7 +2665,8 @@ function cortarInner(){
 }
 // só as OPs geradas agora (Excel OPs geradas — 03); sem o 03, mostra todas as do 02
 function datasGeradas(){
-  var all=computeDatas()||[], ger=window.__PROG_OPSGER||[];
+  // em ordem de OP (é a ordem em que as OPs estão na mão para anotar), não de data de entrega
+  var all=(computeDatas()||[]).slice().sort(function(a,b){ return (+a.op)-(+b.op); }), ger=window.__PROG_OPSGER||[];
   if(!ger.length) return {R:all,filtrado:false,semPedido:[]};
   var set={}; ger.forEach(function(o){ set[String(o.op)]=1; });
   var R=all.filter(function(o){ return set[String(o.op)]; }), tem={}; R.forEach(function(o){ tem[String(o.op)]=1; });
