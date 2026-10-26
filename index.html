@@ -2722,7 +2722,7 @@ function openDatasModal(){
 }
 function buildComprasReportHTML(){ return _prDoc('Compras — Dash', comprasInner(), false); }
 function openComprasModal(){
-  if(!(window.__PROG_OPS||[]).length||!(window.__PROG_OPSPED||[]).length){ openProgModal('<div style="padding:24px;color:var(--f-amber);max-width:500px">Para o controle de compras, carregue o <b>PDF das OPs</b> (passo 2 da Quinta) e o <b>Excel OPs com pedidos (02)</b>.</div>', null); return; }
+  var falta=comprasFalta(); if(falta){ openProgModal('<div style="padding:24px;color:var(--f-amber);max-width:520px">Para o controle de compras, falta carregar '+falta+'.</div>', null); return; }
   var R=computeCompras()||{lines:[],buy:{},nops:0};
   var semEst=!_kc(window.__PROG_ESTOQUE);
   var totBuy=Object.keys(R.buy).reduce(function(a,k){return a+R.buy[k];},0);
@@ -2823,7 +2823,7 @@ function openReprogModal(){
 function printAuditoria(){ if(!(window.__PROG_OPS||[]).length){ alert('Suba o PDF das OPs em Input de arquivos.'); return; } _openPrint(buildAuditReportHTML()); }
 function printCortarJunto(){ if(!(window.__PROG_OPSPED||[]).length||!(window.__PROG_OPSGER||[]).length){ alert('Suba o 02 e o 03 em Input de arquivos.'); return; } _openPrint(buildCortarReportHTML()); }
 function printDatas(){ if(!(window.__PROG_OPSPED||[]).length){ alert('Suba o 02 em Input de arquivos.'); return; } _openPrint(buildDatasReportHTML()); }
-function printCompras(){ if(!(window.__PROG_OPS||[]).length||!(window.__PROG_OPSPED||[]).length){ alert('Suba o PDF das OPs e o 02 em Input de arquivos.'); return; } _openPrint(buildComprasReportHTML()); }
+function printCompras(){ var f=comprasFalta(); if(f){ alert('Para o controle de compras falta: '+f.replace(/<[^>]+>/g,'')+'.'); return; } _openPrint(buildComprasReportHTML()); }
 function printAll(){
   loadProgOps(); loadProgExtra();
   var ops=window.__PROG_OPS||[], ped=window.__PROG_OPSPED||[], ger=window.__PROG_OPSGER||[];
@@ -2959,8 +2959,8 @@ function renderCortarJunto(){
   var b=$('cjXlsx'); if(b)b.onclick=exportCortarXlsx;
 }
 function _dkey(s){ var m=/(\d{2})\/(\d{2})\/(\d{4})/.exec(String(s||'')); return m?(m[3]+m[2]+m[1]):null; }
-function computeDatas(){
-  var ped=window.__PROG_OPSPED||[]; if(!ped.length) return null;
+function computeDatas(pedArg){
+  var ped=pedArg||window.__PROG_OPSPED||[]; if(!ped.length) return null;
   var byop={};
   ped.forEach(function(r){ if(!r.op)return; var o=byop[r.op]||(byop[r.op]={}); if(r.pedido && !(r.pedido in o)) o[r.pedido]=r.dt1||''; });
   var out=Object.keys(byop).map(function(op){
@@ -3005,11 +3005,14 @@ function renderDatas(){
 
 var PRONTO_REFS={SNM0001:1,SNF0001:1,CAF0001:1};
 function isCPop(o){ return (!(o.teCodes&&o.teCodes.length)) || !!o.isPronto || !!PRONTO_REFS[o.ref]; }
+// 02 usado nas compras: o atualizado de segunda (passo 1 da segunda), senão o da quinta
+function comprasPed(){ var r=window.__PROG_REPROG||[]; return r.length?r:(window.__PROG_OPSPED||[]); }
+function comprasFalta(){ var f=[]; if(!(window.__PROG_OPS||[]).length) f.push('o <b>PDF das OPs</b> (passo 2 da Quinta)'); if(!comprasPed().length) f.push('o <b>Excel OPs com pedidos (02)</b> — o atualizado da Segunda (passo 1) ou o da Quinta'); return f.join(' e '); }
 function computeCompras(){
-  var pdf=window.__PROG_OPS||[], ped=window.__PROG_OPSPED||[], est=window.__PROG_ESTOQUE||{};
+  var pdf=window.__PROG_OPS||[], ped=comprasPed(), est=window.__PROG_ESTOQUE||{};
   if(!pdf.length||!ped.length) return null;
   var cp={}; pdf.forEach(function(o){ if(isCPop(o)) cp[o.op]=o.ref; });
-  var datas={}; (computeDatas()||[]).forEach(function(d){ datas[d.op]=d.minK; });
+  var datas={}; (computeDatas(ped)||[]).forEach(function(d){ datas[d.op]=d.minK; });
   var lines=[];
   ped.forEach(function(r){ if(!cp[r.op])return; var sizes=r.sizes||{}; Object.keys(sizes).forEach(function(sz){ lines.push({op:r.op,pedido:String(r.pedido||''),ref:r.ref,cor:r.cor,size:sz,need:sizes[sz],dataK:datas[r.op]||'99999999'}); }); });
   var pool={}; Object.keys(est).forEach(function(k){ Object.keys(est[k]).forEach(function(sz){ pool[k+'|'+sz]=(pool[k+'|'+sz]||0)+est[k][sz]; }); });
@@ -3285,10 +3288,10 @@ var CKL_STEPS=[
     {id:'sex_l_fase',label:'Movimentar a ordem para a próxima fase'},
     {id:'sex_l_folha',label:'Imprimir a folha do cortador (dono do bloco)'}
   ]},
-  {day:'seg',id:'seg_compras',type:'report',label:'Controle de compras',btn:'Ver compras',action:function(){ openComprasModal(); }},
   {day:'seg',id:'in_reprog',type:'input',label:'Fazer o input do OPs com pedidos atualizado (02)',accept:'.xls,.xlsx',
     loaded:function(){return (window.__PROG_REPROG||[]).length>0;}, info:function(){return (window.__PROG_REPROG||[]).length+' linhas';},
     load:function(f,cb){ readXlsx(f,function(aoa){ var r=parse02(aoa); window.__PROG_REPROG=r; try{localStorage.setItem('prog_reprog',JSON.stringify(r));}catch(e){} cb(); },cb); }},
+  {day:'seg',id:'seg_compras',type:'report',label:'Controle de compras',btn:'Ver compras',action:function(){ openComprasModal(); }},
   {day:'seg',id:'seg_reprog',type:'report',label:'Reprogramação',btn:'Ver relatório',action:function(){ openReprogModal(); }},
   {day:'seg',id:'seg_historico',type:'report',label:'Salvar o histórico do checklist',btn:'Gerar PDF',action:function(){ printChecklistHistory(); }}
 ];
