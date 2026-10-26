@@ -3293,7 +3293,8 @@ var CKL_STEPS=[
     load:function(f,cb){ readXlsx(f,function(aoa){ var r=parse02(aoa); window.__PROG_REPROG=r; try{localStorage.setItem('prog_reprog',JSON.stringify(r));}catch(e){} cb(); },cb); }},
   {day:'seg',id:'seg_compras',type:'report',label:'Controle de compras',btn:'Ver compras',action:function(){ openComprasModal(); }},
   {day:'seg',id:'seg_reprog',type:'report',label:'Reprogramação',btn:'Ver relatório',action:function(){ openReprogModal(); }},
-  {day:'seg',id:'seg_historico',type:'report',label:'Salvar o histórico do checklist',btn:'Gerar PDF',action:function(){ printChecklistHistory(); }}
+  {day:'seg',id:'seg_historico',type:'report',label:'Salvar o histórico do checklist',btn:'Gerar PDF',action:function(){ printChecklistHistory(); }},
+  {day:'seg',id:'seg_planejamento',type:'check',label:'Verificar se tem OPs no planejamento (direto no sistema)'}
 ];
 function renderChecklist(){
   loadProgOps(); loadProgExtra();
