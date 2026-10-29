@@ -1776,7 +1776,16 @@ function estRotaHtml(r,pr){
   var card=pr?'border:1px solid #bbb;border-radius:6px;padding:6px 9px;margin-top:6px':'background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-top:10px';
   var h='';
   if(pr) h+='<h1>Rota de separação — Dash</h1><p class="sub">'+_e0(r.quando)+' · '+r.docs.map(function(d){return _e0(d.lbl);}).join(' · ')+'</p>';
-  h+='<div style="margin-top:'+(pr?'4':'14')+'px;font-size:'+(pr?'12':'15')+'px;color:'+ink+';font-weight:700">'+r.stops.length+(r.stops.length===1?' parada':' paradas')+' · '+r.tot+(r.tot===1?' peça':' peças')+(r.faltam.length?' · <span style="color:'+amb+'">'+r.faltam.length+' item(ns) sem lugar no estoque</span>':'')+'</div>';
+  // 1) o que precisa no total · 2) o que achei e a rota · 3) o que vai faltar
+  var pc=function(n){ return n+(n===1?' peça':' peças'); }, sec=function(t){ return '<div style="margin-top:'+(pr?'10':'18')+'px;font-size:'+(pr?'12.5':'16')+'px;font-weight:700;color:'+ink+'">'+t+'</div>'; };
+  var todos=[]; r.stops.forEach(function(s){ s.itens.forEach(function(x){ todos.push(x); }); }); todos=todos.concat(r.faltam);
+  todos.sort(function(a,b){ return a.ref<b.ref?-1:a.ref>b.ref?1:(a.cor<b.cor?-1:a.cor>b.cor?1:0); });
+  var achei=r.tot-r.faltam.reduce(function(a,x){return a+x.qtd;},0), nRef=todos.map(function(x){return x.ref+'|'+x.cor;}).filter(function(v,i,a){return a.indexOf(v)===i;}).length;
+  h+=sec('1. Para atender tudo, você precisa de '+pc(r.tot)+' ('+nRef+(nRef===1?' referência/cor':' referências/cores')+'):');
+  h+='<div style="'+card+'">'+todos.map(function(x){ return '<div style="padding:'+(pr?'1px 0':'4px 0')+';font-size:'+(pr?'11':'14.5')+'px;color:'+ink+'"><b>'+_e0(x.ref)+'</b> '+_e0(x.corNome||x.cor)+' — <b>'+_e0(_estQtdTxt(x))+'</b>'
+    +' <span style="color:'+(x.falta?amb:grn)+';font-size:'+(pr?'10':'13')+'px">'+(x.falta?'✗ não encontrei':'✓ caixa '+_e0(x.cx))+'</span><span style="color:'+mut+';font-size:'+(pr?'9.5':'12.5')+'px"> · '+_e0(_estDocsTxt(r,x))+'</span></div>'; }).join('')+'</div>';
+  h+=sec('2. Encontrei '+achei+' de '+pc(r.tot)+' no estoque'+(r.stops.length?'. Rota para pegar ('+r.stops.length+(r.stops.length===1?' caixa':' caixas')+'):':'.'));
+  if(!r.stops.length) h+='<div style="'+card+';color:'+amb+';font-size:'+(pr?'11':'14.5')+'px">Nada para pegar no estoque: nenhuma dessas peças está na sala grande nem na salinha pequena.</div>';
   var sala='';
   r.stops.forEach(function(s,i){ var sl=estSala(s.id);
     if(sl!==sala){ sala=sl; h+='<div style="margin-top:'+(pr?'8':'16')+'px;font-size:'+(pr?'10.5':'12')+'px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:'+mut+'">'+sl+'</div>'; }
@@ -1785,12 +1794,13 @@ function estRotaHtml(r,pr){
       +s.itens.map(function(x){ return '<div style="padding:'+(pr?'2px 0 0 14px':'6px 0 0 4px')+';font-size:'+(pr?'11':'14.5')+'px;color:'+ink+'">'+(pr?'☐ ':'')+'<b>'+_e0(x.ref)+'</b> '+_e0(x.corNome||x.cor)+' — <b>'+_e0(_estQtdTxt(x))+'</b>'
         +(x.ambig?' <span style="color:'+amb+'">(cor “'+_e0(x.cor)+'”: confira entre '+_e0(x.ambig.join(', '))+')</span>':'')
         +'<span style="color:'+mut+';font-size:'+(pr?'9.5':'12.5')+'px"> · '+_e0(_estDocsTxt(r,x))+(x.alt.length?' · se faltar: '+_e0(x.alt.join(', ')):'')+'</span></div>'; }).join('')+'</div>'; });
-  if(r.faltam.length) h+='<div style="'+card+';border-color:'+(pr?'#d9a35b':'rgba(224,150,45,.5)')+'"><div style="font-weight:700;color:'+amb+';font-size:'+(pr?'12':'15')+'px">Faltando — procurar em outro lugar</div>'
+  h+=sec('3. '+(r.faltam.length?'Vai ficar faltando '+pc(r.tot-achei)+' — procurar em outro lugar (sala da Klus):':'Não vai faltar nada.'));
+  if(r.faltam.length) h+='<div style="'+card+';border-color:'+(pr?'#d9a35b':'rgba(224,150,45,.5)')+'">'
     +r.faltam.map(function(x){ return '<div style="padding-top:4px;font-size:'+(pr?'11':'14')+'px;color:'+ink+'">'+(pr?'☐ ':'')+'<b>'+_e0(x.ref)+'</b> '+_e0(x.cor)+' — '+_e0(_estQtdTxt(x))+' <span style="color:'+mut+'">('+_e0(x.falta)+' · '+_e0(_estDocsTxt(r,x))+')</span></div>'; }).join('')+'</div>';
-  h+='<div style="margin-top:'+(pr?'8':'16')+'px;font-size:'+(pr?'11.5':'14')+'px;font-weight:700;color:'+ink+'">Depois da rota</div>'
-    +r.docs.map(function(d){ return '<div style="padding-top:3px;font-size:'+(pr?'11':'14')+'px;color:'+(d.ok?grn:amb)+'">'+(d.ok?'✓ ':'✗ ')+_e0(d.lbl)+(d.pc?' ('+d.pc+(d.pc>1?' peças':' peça')+')':'')+' — '+(d.ok?'tudo localizado no estoque':'incompleto: falta '+_e0(d.falta.map(function(x){return x.ref+' '+(x.cor||'')+' '+_estQtdTxt(x);}).join('; ')))+'</div>'; }).join('');
+  h+=sec('4. Como ficam as OPs e pedidos depois da rota:')
+    +r.docs.map(function(d){ return '<div style="padding-top:3px;font-size:'+(pr?'11':'14')+'px;color:'+(d.ok?grn:amb)+'">'+(d.ok?'✓ ':'✗ ')+_e0(d.lbl)+(d.pc?' ('+d.pc+(d.pc>1?' peças':' peça')+')':'')+' — '+(d.ok?'completa: todas as peças estão na rota':'incompleta: falta '+_e0(d.falta.map(function(x){return x.ref+' '+(x.cor||'')+' '+_estQtdTxt(x);}).join('; ')))+'</div>'; }).join('');
   if(r.erros.length) h+='<div style="margin-top:10px;font-size:'+(pr?'10.5':'13')+'px;color:'+amb+'">'+r.erros.map(function(e){return '⚠ '+_e0(e);}).join('<br>')+'</div>';
-  h+='<div style="margin-top:10px;font-size:'+(pr?'9.5':'12')+'px;color:'+mut+'">A base não registra quantas peças há dentro de cada caixa: “tudo localizado” quer dizer que todas as referências/cores estão em alguma caixa. Confira as quantidades na hora; se faltar, use as caixas de “se faltar”.</div>';
+  h+='<div style="margin-top:10px;font-size:'+(pr?'9.5':'12')+'px;color:'+mut+'">Atenção: a base diz em que caixa cada referência/cor está, mas não quantas peças há dentro dela. “Encontrei” e “completa” querem dizer que a peça está em alguma caixa da rota — confira a quantidade na hora; se não der, use as caixas de “se faltar”.</div>';
   return h; }
 function estRotaPdf(){ if(!EST_ROTA) return; _openPrint(_prDoc('Rota de separação — Dash',estRotaHtml(EST_ROTA,true),false)); }
 function estMic(){
