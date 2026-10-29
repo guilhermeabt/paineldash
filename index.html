@@ -2606,7 +2606,7 @@ function auditCompute(){
     // CINTO: só na descrição da referência ou na caixa de Obs. (o resto da OP — consumos, pedidos — dá falso positivo)
     var TC=auditNoacc((o.ref||'')+' '+(o.desc||'')+' '+(o.obs||''));
     terms.forEach(function(x){ var src=x[0]==='CINTO'?TC:T; if(x.some(function(v){return src.indexOf(auditNoacc(v))>=0;})) termHits[x[0]].push(o.op); });
-    if(T.indexOf('COMPRADO PRONTO')>=0||T.indexOf('COMPRADA PRONTA')>=0) prontoHits.push(o.op);
+    if(isCPop(o)) prontoHits.push(o.op);
     // bordado: nas Personalizações, "BORDADO", "BORDAR" ou "BUSTO …" (esquerdo, direito…), ou pedido do site com "PERSONALIZAÇÃO SKU: … : Busto Esquerdo"
     // "BORDADO: SEM BORDADO" não conta
     var P=auditNoacc(o.raw?opPers(o.raw):(o.pers||'')).replace(/(\bBORDADO\s*:?\s*)?\bSEM\s+BORDA(DO|R)\b/g,' '), site=/PERSONALIZAC?A?O\s*SKU|\bSKU\s*:\s*\d/.test(P);
@@ -3029,8 +3029,8 @@ function renderDatas(){
   var b=$('dtXlsx'); if(b)b.onclick=exportDatasXlsx;
 }
 
-var PRONTO_REFS={SNM0001:1,SNF0001:1,CAF0001:1};
-function isCPop(o){ return (!(o.teCodes&&o.teCodes.length)) || !!o.isPronto || !!PRONTO_REFS[o.ref]; }
+// comprado pronto: mesma regra da auditoria das OPs (9.5) — "COMPRADO PRONTO"/"COMPRADA PRONTA" escrito na OP
+function isCPop(o){ var T=auditNoacc(o.raw||''); return T.indexOf('COMPRADO PRONTO')>=0||T.indexOf('COMPRADA PRONTA')>=0; }
 // 02 usado nas compras: o atualizado de segunda (passo 1 da segunda), senão o da quinta
 function comprasPed(){ var r=window.__PROG_REPROG||[]; return r.length?r:(window.__PROG_OPSPED||[]); }
 function comprasFalta(){ var f=[]; if(!(window.__PROG_OPS||[]).length) f.push('o <b>PDF das OPs</b> (passo 2 da Quinta)'); if(!comprasPed().length) f.push('o <b>Excel OPs com pedidos (02)</b> — o atualizado da Segunda (passo 1) ou o da Quinta'); return f.join(' e '); }
