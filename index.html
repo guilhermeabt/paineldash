@@ -2344,7 +2344,7 @@ function _anNorm(s){ try{return (s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').
 function computeAnotar(){
   var ops=window.__PROG_OPS||[]; var cinto=[],diverso=[],pronto=[];
   ops.forEach(function(d){
-    var descref=_anNorm((d.desc||'')+' '+(d.ref||''));
+    var descref=_anNorm((d.desc||'')+' '+(d.ref||'')+' '+(d.obs||''));
     var raw=_anNorm(d.raw||'');
     if(descref.indexOf('CINTO')>=0) cinto.push(d);
     if(raw.indexOf('TECIDO DIVERSO')>=0) diverso.push(d);
@@ -2597,7 +2597,9 @@ function auditCompute(){
     if(/^PE/i.test(o.ref||'')) r93.push(o);
     if((o.snHits||[]).length) r94.push(o);
     var T=auditNoacc(o.raw||'');
-    terms.forEach(function(x){ if(x.some(function(v){return T.indexOf(auditNoacc(v))>=0;})) termHits[x[0]].push(o.op); });
+    // CINTO: só na descrição da referência ou na caixa de Obs. (o resto da OP — consumos, pedidos — dá falso positivo)
+    var TC=auditNoacc((o.ref||'')+' '+(o.desc||'')+' '+(o.obs||''));
+    terms.forEach(function(x){ var src=x[0]==='CINTO'?TC:T; if(x.some(function(v){return src.indexOf(auditNoacc(v))>=0;})) termHits[x[0]].push(o.op); });
     if(T.indexOf('COMPRADO PRONTO')>=0||T.indexOf('COMPRADA PRONTA')>=0) prontoHits.push(o.op);
     // bordado: "BORDADO" nas Personalizações, ou pedido do site com "PERSONALIZAÇÃO SKU: … : Busto Esquerdo"
     var P=auditNoacc(o.pers||''), site=/PERSONALIZAC?A?O\s*SKU|\bSKU\s*:\s*\d/.test(P);
