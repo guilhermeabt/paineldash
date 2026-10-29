@@ -2080,6 +2080,12 @@ function openProd(key){
     +'<p style="color:var(--muted);line-height:1.6;margin:0 0 20px">Tela em construção. Vamos montar aqui o conteúdo de <b style="color:var(--ink)">'+s[1]+'</b>.</p>'
     +'<div style="padding:48px;border:1px dashed var(--line);border-radius:12px;text-align:center;color:var(--muted)">conteúdo de &ldquo;'+s[1]+'&rdquo; entra aqui</div></div>';
 }
+// Personalizações da OP: o trecho depois do título e também cada "Pedido: 123456 …" até o rodapé "Tela:"
+// (quando não cabe na 1ª página, a personalização continua na página seguinte sem o título)
+function opPers(t){ t=String(t||''); var out=[], re=/Personaliza[çc][õo]es dos Pedidos|Pedido:\s*\d/g, m, last=-1;
+  while((m=re.exec(t))){ if(m.index<last) continue; var e=t.indexOf('Tela:',m.index); if(e<0)e=t.length;
+    out.push(t.slice(m.index,e).replace(/^Personaliza[çc][õo]es dos Pedidos/,'').trim()); last=e; re.lastIndex=e; }
+  return out.filter(Boolean).join('\n'); }
 function parseOPs(txt){
   var lines=txt.split('\n');
   var hdr=/^(\d{4,6})\s+([A-Z]{2,6}\d{2,5})\s*-\s*(.+?)(?:\s+MARCA:(.*))?$/;
@@ -2111,7 +2117,7 @@ function parseOPs(txt){
     d.corTec={}; consumo.split('\n').forEach(function(ln){ var mm=/([A-Z]{2}\.[A-Z]{2}\.\d{3,4})\s+.+?\s+([A-Z]{2}\d{3})\s/.exec(ln); if(mm){ var cd=mm[1],cr=mm[2]; if(cd.indexOf('TE.')===0&&cd.indexOf('TE.FR')!==0&&cd.indexOf('TE.CO')!==0&&!d.corTec[cr])d.corTec[cr]=cd; } });
     var oi=t.indexOf('Obs.:'); var gi=t.indexOf('Cor Descrição'); var fi=t.indexOf('Fases da Ordem'); var oend=t.length; [gi,fi].forEach(function(x){ if(x>oi&&x<oend)oend=x; });
     d.obs=oi>=0?t.slice(oi+5,oend).trim():'';
-    var pidx=t.indexOf('Personalizações dos Pedidos'); var pend=pidx>=0?t.indexOf('Tela:',pidx):-1; d.pers=pidx>=0?t.slice(pidx+27,(pend>pidx?pend:t.length)).trim():'';
+    d.pers=opPers(t);
     var up=(function(s){try{return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();}catch(e){return s.toUpperCase();}})(t);
     d.isPronto=(up.indexOf('COMPRADO PRONTO')>=0||up.indexOf('COMPRADA PRONTA')>=0);
     return d;
@@ -2601,9 +2607,10 @@ function auditCompute(){
     var TC=auditNoacc((o.ref||'')+' '+(o.desc||'')+' '+(o.obs||''));
     terms.forEach(function(x){ var src=x[0]==='CINTO'?TC:T; if(x.some(function(v){return src.indexOf(auditNoacc(v))>=0;})) termHits[x[0]].push(o.op); });
     if(T.indexOf('COMPRADO PRONTO')>=0||T.indexOf('COMPRADA PRONTA')>=0) prontoHits.push(o.op);
-    // bordado: "BORDADO" nas Personalizações, ou pedido do site com "PERSONALIZAÇÃO SKU: … : Busto Esquerdo"
-    var P=auditNoacc(o.pers||''), site=/PERSONALIZAC?A?O\s*SKU|\bSKU\s*:\s*\d/.test(P);
-    if(P.indexOf('BORDADO')>=0||site){ bordHits.push(o.op); if(site&&P.indexOf('BORDADO')<0) bordSite.push(o.op); }
+    // bordado: nas Personalizações, "BORDADO", "BORDAR" ou "BUSTO …" (esquerdo, direito…), ou pedido do site com "PERSONALIZAÇÃO SKU: … : Busto Esquerdo"
+    // "BORDADO: SEM BORDADO" não conta
+    var P=auditNoacc(o.raw?opPers(o.raw):(o.pers||'')).replace(/(\bBORDADO\s*:?\s*)?\bSEM\s+BORDA(DO|R)\b/g,' '), site=/PERSONALIZAC?A?O\s*SKU|\bSKU\s*:\s*\d/.test(P);
+    if(/\bBORDA(DO|R)|\bBORDAO\b|\bBUSTO\b/.test(P)||site){ bordHits.push(o.op); if(site&&P.indexOf('BORDADO')<0) bordSite.push(o.op); }
   });
   return {ops:ops,r91:r91,r93:r93,r94:r94,teMap:teMap,termHits:termHits,prontoHits:prontoHits,bordHits:bordHits,bordSite:bordSite};
 }
