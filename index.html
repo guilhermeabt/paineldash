@@ -962,7 +962,7 @@ var MODMETA={
  relatorios:{name:'Relatórios',desc:'Vendas, expedição, produção, conciliação, DRE e mais.',icon:'&#128202;'},
  producao:{name:'Programação da Produção',desc:'Planejamento e sequenciamento da produção.',icon:'&#127981;'},
  faccao:{name:'Fechamento da Facção',desc:'Conferir o fechamento do beneficiador contra os romaneios enviados.',icon:'&#129534;'},
- estoque:{name:'Localização do Estoque',desc:'Onde está cada referência na sala grande do pronta entrega.',icon:'&#128230;'},
+ estoque:{name:'Localização do Estoque',desc:'Onde está cada referência do pronta entrega: sala grande (filas A a E) e salinha pequena (F a J).',icon:'&#128230;'},
  base:{name:'Base de Dados',desc:'Subir os arquivos e publicar os dados para todos os relatórios.',icon:'&#128451;'},
  usuarios:{name:'Controle de Usuários',desc:'Cadastrar usuários, senhas e permissões.',icon:'&#128100;'}
 };
@@ -1200,6 +1200,12 @@ function estFmtLocs(locs){ var cx=[],pl=[],ot=[], ids={};
   var parts=[]; if(cx.length) parts.push((cx.length>1?'caixas ':'caixa ')+_lst(cx));
   if(pl.length) parts.push((pl.length>1?'pilhas ':'pilha ')+_lst(pl)); if(ot.length) parts.push(_lst(ot));
   return _lst(parts); }
+// filas A a E ficam na sala grande; F a J na salinha pequena
+function estSala(id){ return /^[A-E]/i.test(String(id||''))?'Sala grande':'Salinha pequena'; }
+function _estPorSala(locs){ var g={}, ord=[]; locs.forEach(function(l){ var s=l.tipo==='?'?'':estSala(l.id); if(!g[s]){ g[s]=[]; ord.push(s); } g[s].push(l); });
+  ord.sort(function(a,b){ return (a==='Sala grande'?0:a?1:2)-(b==='Sala grande'?0:b?1:2); }); return ord.map(function(s){ return {sala:s,locs:g[s]}; }); }
+function estFmtSalas(locs){ return _estPorSala(locs).map(function(x){ return (x.sala?x.sala+': ':'')+estFmtLocs(x.locs); }).join(' · '); }
+function estLocsHtml(locs){ return _estPorSala(locs).map(function(x){ return '<span style="display:inline-block;margin-right:14px">'+(x.sala?'<span style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.03em">'+x.sala+'</span> ':'')+uEsc(estFmtLocs(x.locs))+'</span>'; }).join(''); }
 // apelidos de cor que a pessoa costuma falar → nome da cor
 var EST_ALIAS=[['off white','branco off white'],['offwhite','branco off white'],['verde escuro','dark green'],['rosa nude','nude'],['cinza mescla','cinza mescla medio'],['mescla','cinza mescla medio'],['marinho','azul marinho'],['grafite','cinza grafite'],['chumbo','cinza chumbo'],['petroleo','azul petroleo'],['goiaba','rosa goiaba'],['envelhecido','rosa envelhecido'],['onix','cinza onix'],['celeste','azul celeste'],['royal','azul royal'],['neon','verde neon'],['cimento','cinza cimento']];
 function estColorPhrases(E){ var ph=[];
@@ -1277,13 +1283,13 @@ function estFind(E,raw){
 // texto pronto para o estoque, no formato da instrução
 function estLinhas(res){
   if(!res) return [];
-  if(res.tipo==='nf') return [(res.label?res.label+': ':'')+'Na sala grande essa referência não está. Deve estar em outro lugar (sala pequena ou sala da Klus).'];
-  if(res.tipo==='caixa') return res.itens.length?res.itens.map(function(x){ return 'Caixa '+res.id+': '+x.ref+' '+x.cor+(x.nota?' ('+x.nota+')':'')+'.'; }):['Caixa '+res.id+(res.existe?': vazia, segundo a base.':': essa caixa não existe na sala grande.')];
+  if(res.tipo==='nf') return [(res.label?res.label+': ':'')+'Essa referência não está na sala grande nem na salinha pequena. Deve estar em outro lugar (sala da Klus).'];
+  if(res.tipo==='caixa') return res.itens.length?res.itens.map(function(x){ return 'Caixa '+res.id+': '+x.ref+' '+x.cor+(x.nota?' ('+x.nota+')':'')+'.'; }):['Caixa '+res.id+(res.existe?': vazia, segundo a base.':': essa caixa não existe no estoque.')];
   if(res.tipo==='ask') return ['Você quis dizer '+_lst(res.codes)+'?'];
   var out=[]; res.refs.forEach(function(x){ var R=x.R, p=x.pick;
     if(p.aviso) out.push(p.aviso);
-    if(p.falta){ out.push(R.ref+': a cor '+p.falta+' não está na sala grande.'); R.cores.forEach(function(c){ out.push(R.ref+' '+c.nome+': '+estFmtLocs(c.locs)+'.'); }); }
-    else p.cores.forEach(function(c){ out.push(R.ref+' '+c.nome+': '+estFmtLocs(c.locs)+'.'); }); });
+    if(p.falta){ out.push(R.ref+': a cor '+p.falta+' não está no estoque (sala grande e salinha pequena).'); R.cores.forEach(function(c){ out.push(R.ref+' '+c.nome+': '+estFmtSalas(c.locs)+'.'); }); }
+    else p.cores.forEach(function(c){ out.push(R.ref+' '+c.nome+': '+estFmtSalas(c.locs)+'.'); }); });
   return out;
 }
 /* ---- movimentação das caixas (entrada/saída) ----
@@ -1382,7 +1388,7 @@ function estErrMsg(e){ var m=e&&e.message||String(e);
 function estUltima(){ var mv=(EST_STATE&&EST_STATE.mov)||[]; return mv.length?mv[mv.length-1]:null; }
 function estHead(){
   var E=estIndex(), u=estUltima();
-  $('estSub').textContent='Sala grande · '+E.order.length+' referências'+(E.data?' · base registrada em '+E.data:'')+(u?' · última movimentação '+fmtTs(u.ts)+' por '+u.by:'');
+  $('estSub').textContent='Sala grande e salinha pequena · '+E.order.length+' referências'+(E.data?' · base registrada em '+E.data:'')+(u?' · última movimentação '+fmtTs(u.ts)+' por '+u.by:'');
 }
 function estEnter(){
   $('estEdit').style.display=estCanEdit(current)?'':'none';
@@ -1442,7 +1448,7 @@ function estRenderMov(){
 function estCxInfo(){
   var id=estNormCaixa($('emCx').value), info=$('emCxInfo'), E=estIndex(); if(!info) return;
   var itens=id?estCaixaItens(E,id):[];
-  if(!id) info.textContent=''; else if(!estCaixaOk(E,id)) info.innerHTML='<span style="color:var(--danger)">A caixa '+uEsc(id)+' não existe na sala grande.</span>';
+  if(!id) info.textContent=''; else if(!estCaixaOk(E,id)) info.innerHTML='<span style="color:var(--danger)">A caixa '+uEsc(id)+' não existe no estoque.</span>';
   else info.textContent=itens.length?('Hoje na '+id+': '+itens.map(function(x){return x.ref+' '+x.cor;}).join(' · ')):('A '+id+' está vazia, segundo a base.');
   var box=$('emItens'); if(!box) return;
   box.innerHTML=!id?'<div style="color:var(--muted);font-size:13px">Digite a caixa acima.</div>':(!itens.length?'<div style="color:var(--f-amber);font-size:13px">Nada registrado nessa caixa.</div>':
@@ -1461,7 +1467,7 @@ async function estLancar(){
   function S(t,c){ var st=$('emSt'); if(!st)return; st.style.color=c||'var(--muted)'; st.innerHTML=t; } // busca o campo de novo: o formulário é redesenhado depois de gravar
   if(!ghToken()) return S('Cole o token do GitHub neste aparelho (acima) antes de lançar.','var(--f-amber)');
   var E=estIndex(), cx=estNormCaixa($('emCx').value);
-  if(!cx) return S('Informe a caixa (ex.: B3).','var(--f-amber)'); if(!estCaixaOk(E,cx)) return S('A caixa '+uEsc(cx)+' não existe na sala grande.','var(--danger)');
+  if(!cx) return S('Informe a caixa (ex.: B3).','var(--f-amber)'); if(!estCaixaOk(E,cx)) return S('A caixa '+uEsc(cx)+' não existe no estoque.','var(--danger)');
   var qtd=parseInt($('emQtd').value,10)||null, m={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),ts:Date.now(),by:estWho(),user:currentUserKey,tipo:EST_TAB,caixa:cx,qtd:qtd};
   if(EST_TAB==='entrada'){ var code=estRefCode($('emRef').value); if(!code) return S('Informe a referência (3 letras + 4 números, ex.: CLF0710).','var(--f-amber)');
     var R=E.refs[code], cor=estCorNome(E,R,$('emCor').value); if(!cor) return S('Informe a cor.','var(--f-amber)');
@@ -1492,13 +1498,13 @@ function estRender(res,raw){
   if(res.tipo==='caixa'){
     var mv=((EST_STATE&&EST_STATE.mov)||[]).filter(function(x){return x.caixa===res.id;}).slice(-6).reverse();
     var ob=(EST&&EST.obs||{})[res.id];
-    h='<div style="'+card+'"><div style="font-size:18px;font-weight:700;color:var(--ink)">Caixa '+uEsc(res.id)+'</div>'
+    h='<div style="'+card+'"><div style="font-size:18px;font-weight:700;color:var(--ink)">Caixa '+uEsc(res.id)+(res.existe?' <span style="font-size:14px;font-weight:600;color:var(--muted)">· '+estSala(res.id)+'</span>':'')+'</div>'
       +(ob?'<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(224,150,45,.12);border:1px solid rgba(224,150,45,.45);color:var(--f-amber);font-size:13.5px">⚠ '+uEsc(ob)+'</div>':'')
-      +(!res.existe?'<div style="margin-top:8px;color:var(--danger)">Essa caixa não existe na sala grande.</div>':(!res.itens.length?'<div style="margin-top:8px;color:var(--f-amber)">Vazia, segundo a base.</div>':
+      +(!res.existe?'<div style="margin-top:8px;color:var(--danger)">Essa caixa não existe no estoque.</div>':(!res.itens.length?'<div style="margin-top:8px;color:var(--f-amber)">Vazia, segundo a base.</div>':
         res.itens.map(function(x){ return '<div style="display:flex;gap:12px;align-items:baseline;padding:9px 0;border-top:1px solid var(--line);margin-top:8px;flex-wrap:wrap"><button class="linkbtn estpick" data-q="'+uEsc(x.ref)+'" style="font-size:16px;font-weight:700">'+uEsc(x.ref)+'</button><span style="font-size:15px;color:var(--f-green);font-weight:600">'+uEsc(x.cor)+'</span>'+(x.nota?'<span style="font-size:13.5px;color:'+(/\?/.test(x.nota)?'var(--f-amber)':'var(--ink)')+'">('+uEsc(x.nota)+')</span>':'')+'<span style="color:var(--muted);font-size:12.5px">'+uEsc(x.desc)+'</span></div>'; }).join('')))
       +(mv.length?'<div style="margin-top:14px;color:var(--muted);font-size:12.5px">Últimas movimentações nesta caixa</div>'+estHistHtml(mv,false):'')+'</div>';
   } else if(res.tipo==='nf'){
-    h='<div style="'+card+';border-color:rgba(224,150,45,.5)"><div style="font-size:17px;font-weight:700;color:var(--f-amber)">'+uEsc(res.label||raw)+'</div><div style="margin-top:6px;font-size:15px;color:var(--ink)">Na sala grande essa referência não está. Deve estar em outro lugar (sala pequena ou sala da Klus).</div>'
+    h='<div style="'+card+';border-color:rgba(224,150,45,.5)"><div style="font-size:17px;font-weight:700;color:var(--f-amber)">'+uEsc(res.label||raw)+'</div><div style="margin-top:6px;font-size:15px;color:var(--ink)">Essa referência não está na sala grande nem na salinha pequena. Deve estar em outro lugar (sala da Klus).</div>'
       +(res.near&&res.near.length?'<div style="margin-top:12px;color:var(--muted);font-size:13px">Você quis dizer:</div>'+chips(res.near,res.cor):'')+'</div>';
   } else if(res.tipo==='ask'){
     h='<div style="'+card+'"><div style="font-size:15px;color:var(--ink)">Você quis dizer:</div>'+chips(res.codes,res.cor)+'</div>';
@@ -1509,17 +1515,17 @@ function estRender(res,raw){
     if(res.nota) h+='<div style="margin-top:8px;color:var(--muted);font-size:13px">'+uEsc(res.nota)+'</div>';
     res.refs.forEach(function(x){ var R=x.R, p=x.pick;
       h+='<div style="'+card+'"><div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><span style="font-size:18px;font-weight:700;color:var(--ink)">'+uEsc(R.ref)+'</span><span style="color:var(--muted);font-size:13px">'+uEsc(R.desc)+'</span></div>';
-      if(x.pede) h+='<div style="margin-top:4px;font-size:13.5px;color:var(--ink)">No documento: <b>'+uEsc(x.pede)+'</b></div>';
-      if(p.falta) h+='<div style="margin-top:8px;color:var(--f-amber);font-size:14.5px">A cor <b>'+uEsc(p.falta)+'</b> não está na sala grande. Cores dessa referência que estão lá:</div>';
+      if(x.pede) h+='<div style="margin-top:6px;font-size:15px;color:var(--ink)">Pegar: <b>'+uEsc(x.pede)+'</b></div>';
+      if(p.falta) h+='<div style="margin-top:8px;color:var(--f-amber);font-size:14.5px">A cor <b>'+uEsc(p.falta)+'</b> não está no estoque (sala grande e salinha pequena). Cores dessa referência que estão lá:</div>';
       if(p.aviso) h+='<div style="margin-top:10px;padding:10px 12px;border-radius:9px;background:rgba(224,150,45,.12);border:1px solid rgba(224,150,45,.5);color:var(--f-amber);font-size:14.5px;font-weight:600">⚠ '+uEsc(p.aviso)+'</div>';
       if(p.nota) h+='<div style="margin-top:8px;color:var(--muted);font-size:13px">'+uEsc(p.nota)+'</div>';
       (p.falta?R.cores:p.cores).forEach(function(c){
-        h+='<div style="display:flex;gap:12px;align-items:baseline;padding:9px 0;border-top:1px solid var(--line);margin-top:8px;flex-wrap:wrap"><span style="min-width:150px;font-weight:600;color:var(--ink);font-size:15px">'+uEsc(c.nome)+'</span><span style="font-size:16px;color:var(--f-green);font-weight:600">'+uEsc(estFmtLocs(c.locs))+'</span>'
+        h+='<div style="display:flex;gap:12px;align-items:baseline;padding:9px 0;border-top:1px solid var(--line);margin-top:8px;flex-wrap:wrap"><span style="min-width:150px;font-weight:600;color:var(--ink);font-size:15px">'+uEsc(c.nome)+'</span><span style="font-size:16px;color:var(--f-green);font-weight:600">'+estLocsHtml(c.locs)+'</span>'
           +estObsHtml(c.locs)+'</div>'; });
       h+='</div>'; });
-    if(res.fora&&res.fora.length) h+='<div style="'+card+';border-color:rgba(224,150,45,.5)"><div style="font-size:15px;font-weight:700;color:var(--f-amber)">Não estão na sala grande</div>'
+    if(res.fora&&res.fora.length) h+='<div style="'+card+';border-color:rgba(224,150,45,.5)"><div style="font-size:15px;font-weight:700;color:var(--f-amber)">Não estão na sala grande nem na salinha pequena</div>'
       +res.fora.map(function(x){ return '<div style="padding:7px 0;border-top:1px solid var(--line);margin-top:6px;font-size:14.5px;color:var(--ink)"><b>'+uEsc(x.ref)+'</b>'+(x.pede?' <span style="color:var(--muted)">'+uEsc(x.pede)+'</span>':'')+'</div>'; }).join('')
-      +'<div style="margin-top:8px;color:var(--muted);font-size:12.5px">Devem estar em outro lugar (sala pequena ou sala da Klus).</div></div>';
+      +'<div style="margin-top:8px;color:var(--muted);font-size:12.5px">Devem estar em outro lugar (sala da Klus).</div></div>';
     if(res.head&&!res.refs.length&&!(res.fora&&res.fora.length)) h+='<div style="'+card+'">Não achei nenhuma referência nesse documento.</div>';
   }
   box.innerHTML=h;
@@ -1552,8 +1558,8 @@ function _estIdxSlot(B,k,aoa){
     var iO=h.r.indexOf('op'),iP=h.r.indexOf('pedido'),iR=h.r.indexOf('referencia'),iC=h.r.indexOf('cor'),iD=h.r.indexOf('desc cor'),iN=_estCol(h,'nome cliente'),P=[],T=[];
     for(var n=1;n<=10;n++){ P.push(h.r.indexOf('p'+n)); T.push(h.r.indexOf('t'+n)); }
     aoa.slice(h.i+1).forEach(function(r){ var op=String(r[iO]).trim(), pe=String(r[iP]).trim(), ref=_estRefPE(r[iR]); if(!ref||!/^[A-Z]{3}\d{4}$/.test(ref)) return;
-      var tam=[]; P.forEach(function(pi,j){ var q=parseInt(r[pi],10); if(pi>=0&&q>0) tam.push(String(r[T[j]]).trim()+(q>1?' ×'+q:'')); });
-      var it={ref:ref,cor:String(r[iD]||'').trim()||(EST.cores[String(r[iC]).trim()]||''),tam:tam,op:op,ped:pe}; B.refs[ref]=1;
+      var qt={}; P.forEach(function(pi,j){ var q=parseInt(r[pi],10), t=String(r[T[j]]).trim()||'?'; if(pi>=0&&q>0) qt[t]=(qt[t]||0)+q; });
+      var it={ref:ref,cor:String(r[iD]||'').trim()||(EST.cores[String(r[iC]).trim()]||''),qt:qt,op:op,ped:pe}; B.refs[ref]=1;
       if(op) (B.op[op]=B.op[op]||{cli:String(r[iN]||'').trim(),it:[]}).it.push(it);
       if(pe) (B.ped[pe]=B.ped[pe]||{cli:String(r[iN]||'').trim(),it:[]}).it.push(it); }); }
   else if(k==='shopify'){ var h2=_estHdr(aoa,['name','lineitem name']); if(!h2) return;
@@ -1582,7 +1588,7 @@ function estBases(){ if(EST_BASES_P) return EST_BASES_P;
 // itens do pedido do site: referência pelo cadastro do Shopify; cor/tamanho pelo cadastro ou pelo nome ("… - Preto / 42")
 function _estSiteItens(B,o){ return o.it.map(function(x){ var s=B.sku[x.sku]||{}, pr=String(x.nome).split(' - ').pop().split('/');
   var mr=/\b(?:PE)?([A-Z]{3}\d{4})\b/.exec(String(x.nome).toUpperCase());
-  return {ref:s.ref||(mr?mr[1]:''),cor:s.cor||(pr.length>1?pr[0].trim():''),tam:[(s.tam||(pr.length>1?pr[1].trim():''))+(x.qtd>1?' ×'+x.qtd:'')].filter(Boolean),nome:x.nome}; }); }
+  return {ref:s.ref||(mr?mr[1]:''),cor:s.cor||(pr.length>1?pr[0].trim():''),qt:(function(){ var q={}; q[s.tam||(pr.length>1?pr[1].trim():'')||'?']=x.qtd; return q; })(),nome:x.nome}; }); }
 function _estDataBase(B,k){ return B.ts[k]?' (base de '+fmtTs(B.ts[k]).split(' ')[0]+')':''; }
 async function estBuscaDoc(n,raw){
   var box=$('estRes'), lbl={op:'OP '+n.num,ped:'Pedido '+n.num,site:'Pedido do site #'+n.num}[n.tipo];
@@ -1655,18 +1661,22 @@ async function estFoto(file){
     P.itens=P.itens.filter(function(x){ return estIndex().refs[x.ref]||(B&&B.refs[x.ref]); });
     var nums=[P.op&&'OP '+P.op,P.ped&&'pedido '+P.ped,P.site&&'pedido do site #'+P.site].filter(Boolean);
     if(!P.itens.length){ box.innerHTML='<div style="margin-top:14px;padding:14px 16px;border:1px solid rgba(224,150,45,.5);border-radius:12px;color:var(--f-amber)">Não consegui ler nenhuma referência na foto'+(nums.length?' (li '+uEsc(nums.join(', '))+', mas não achei nas bases)':'')+'. Tente uma foto mais reta, de perto e com boa luz, ou digite o número.'+lido+'</div>'; return; }
-    estRenderItens(P.itens,'Referências lidas na foto',(nums.length?'Li '+uEsc(nums.join(', '))+', mas não achei nas bases; ':'')+'confira se as referências abaixo batem com o documento.'+lido);
+    estRenderItens(P.itens,'Referências lidas na foto',(nums.length?'Li '+uEsc(nums.join(', '))+', mas não achei nas bases; ':'')+'confira se as referências abaixo batem com o documento. As quantidades só aparecem quando a OP ou o pedido está na base — senão, veja no papel.'+lido);
   }catch(e){ box.innerHTML='<div style="margin-top:14px;color:var(--danger)">Não consegui ler a foto: '+uEsc(e&&e.message||String(e))+'</div>'; }
 }
 // mostra, para cada referência/cor do documento, onde está na sala grande
 function estRenderItens(itens,titulo,extra){
   var E=estIndex(), g={}, ord=[];
-  itens.forEach(function(x){ var k=x.ref+'|'+_en(x.cor||''); if(!g[k]){ g[k]={ref:x.ref,cor:x.cor||'',tam:[],nome:x.nome}; ord.push(k); } (x.tam||[]).forEach(function(t){ if(t&&g[k].tam.indexOf(t)<0) g[k].tam.push(t); }); });
-  var refs=[], fora=[];
-  ord.forEach(function(k){ var x=g[k], R=E.refs[x.ref]; var pede=(x.cor?x.cor.toLowerCase().replace(/(^|\s)(\S)/g,function(a,b,c){return b+c.toUpperCase();}):'')+(x.tam.length?' · '+x.tam.join(', '):'');
+  // soma as quantidades por referência/cor/tamanho (o mesmo item pode vir de mais de uma OP ou pedido)
+  itens.forEach(function(x){ var k=x.ref+'|'+_en(x.cor||''); if(!g[k]){ g[k]={ref:x.ref,cor:x.cor||'',qt:{},nome:x.nome}; ord.push(k); }
+    Object.keys(x.qt||{}).forEach(function(t){ g[k].qt[t]=(g[k].qt[t]||0)+x.qt[t]; }); });
+  var refs=[], fora=[], tot=0;
+  ord.forEach(function(k){ var x=g[k], R=E.refs[x.ref], ts=Object.keys(x.qt), n=ts.reduce(function(a,t){return a+x.qt[t];},0); tot+=n;
+    var pede=(x.cor?x.cor.toLowerCase().replace(/(^|\s)(\S)/g,function(a,b,c){return b+c.toUpperCase();}):'')
+      +(ts.length?' — '+ts.map(function(t){ return (t==='?'?'':'tam. '+t+': ')+x.qt[t]+(x.qt[t]>1?' peças':' peça'); }).join(' · ')+(ts.length>1?' (total '+n+')':''):'');
     if(!R){ fora.push({ref:x.ref||(x.nome||'?'),pede:pede}); return; }
     refs.push({R:R,pick:estPick(E,R,x.cor?estColorQuery(E,x.cor):null),pede:pede}); });
-  estRender({tipo:'ok',refs:refs,head:titulo,extra:extra,fora:fora},'');
+  estRender({tipo:'ok',refs:refs,head:titulo+(tot?' · '+tot+(tot>1?' peças':' peça'):''),extra:extra,fora:fora},'');
 }
 function estMic(){
   var SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR)return;
