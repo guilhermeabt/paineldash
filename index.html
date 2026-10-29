@@ -319,11 +319,13 @@
   </div>
   <div id="estSub" style="color:var(--muted);font-size:13px;margin-bottom:16px"></div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
-    <input id="estQ" type="search" autocomplete="off" placeholder="Digite a referência (ex.: CLF0710 preto)" style="flex:1;min-width:220px;font-size:17px;padding:13px 14px;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:10px">
+    <input id="estQ" type="search" autocomplete="off" placeholder="Referência, nº da OP, nº do pedido ou #pedido do site" style="flex:1;min-width:220px;font-size:17px;padding:13px 14px;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:10px">
     <button id="estMic" class="ubtn" style="padding:0 16px;font-size:15px">🎤 Falar</button>
+    <button id="estFotoBtn" class="ubtn" style="padding:0 16px;font-size:15px">📷 Foto</button>
+    <input id="estFoto" type="file" accept="image/*" style="display:none">
     <button id="estGoBtn" style="background:var(--f-green);border:none;color:#0c241a;font-weight:600;padding:0 20px;border-radius:10px;cursor:pointer;font-size:15px;min-height:48px">Buscar</button>
   </div>
-  <div style="color:var(--muted);font-size:12px;margin-top:8px">Pode digitar com ou sem a cor: “CLF0710 preto”, “BLF0077”, “polo branca”, “calça cecilia”.</div>
+  <div style="color:var(--muted);font-size:12px;margin-top:8px">Pode digitar com ou sem a cor: “CLF0710 preto”, “BLF0077”, “polo branca”, “calça cecilia”. Ou um número: OP “61140”, pedido do Matriz “907862”, pedido do site “#3445” — ou tire uma 📷 foto do pedido/OP.</div>
   <div id="estRes"></div>
   <div id="estMov"></div>
   <div style="margin-top:28px;border-top:1px solid var(--line);padding-top:14px"><button id="estEdit" class="ubtn">✎ Atualizar instrução</button></div>
@@ -1501,10 +1503,13 @@ function estRender(res,raw){
   } else if(res.tipo==='ask'){
     h='<div style="'+card+'"><div style="font-size:15px;color:var(--ink)">Você quis dizer:</div>'+chips(res.codes,res.cor)+'</div>';
   } else {
+    if(res.head) h+='<div style="margin-top:14px;font-size:17px;font-weight:700;color:var(--ink)">'+uEsc(res.head)+'</div>';
+    if(res.extra) h+='<div style="margin-top:6px;color:var(--muted);font-size:13px">'+res.extra+'</div>';
     if(res.entendi) h+='<div style="margin-top:14px;color:var(--muted);font-size:13px">Entendi <b style="color:var(--ink)">'+uEsc(res.entendi)+'</b>.</div>';
     if(res.nota) h+='<div style="margin-top:8px;color:var(--muted);font-size:13px">'+uEsc(res.nota)+'</div>';
     res.refs.forEach(function(x){ var R=x.R, p=x.pick;
       h+='<div style="'+card+'"><div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><span style="font-size:18px;font-weight:700;color:var(--ink)">'+uEsc(R.ref)+'</span><span style="color:var(--muted);font-size:13px">'+uEsc(R.desc)+'</span></div>';
+      if(x.pede) h+='<div style="margin-top:4px;font-size:13.5px;color:var(--ink)">No documento: <b>'+uEsc(x.pede)+'</b></div>';
       if(p.falta) h+='<div style="margin-top:8px;color:var(--f-amber);font-size:14.5px">A cor <b>'+uEsc(p.falta)+'</b> não está na sala grande. Cores dessa referência que estão lá:</div>';
       if(p.aviso) h+='<div style="margin-top:10px;padding:10px 12px;border-radius:9px;background:rgba(224,150,45,.12);border:1px solid rgba(224,150,45,.5);color:var(--f-amber);font-size:14.5px;font-weight:600">⚠ '+uEsc(p.aviso)+'</div>';
       if(p.nota) h+='<div style="margin-top:8px;color:var(--muted);font-size:13px">'+uEsc(p.nota)+'</div>';
@@ -1512,6 +1517,10 @@ function estRender(res,raw){
         h+='<div style="display:flex;gap:12px;align-items:baseline;padding:9px 0;border-top:1px solid var(--line);margin-top:8px;flex-wrap:wrap"><span style="min-width:150px;font-weight:600;color:var(--ink);font-size:15px">'+uEsc(c.nome)+'</span><span style="font-size:16px;color:var(--f-green);font-weight:600">'+uEsc(estFmtLocs(c.locs))+'</span>'
           +estObsHtml(c.locs)+'</div>'; });
       h+='</div>'; });
+    if(res.fora&&res.fora.length) h+='<div style="'+card+';border-color:rgba(224,150,45,.5)"><div style="font-size:15px;font-weight:700;color:var(--f-amber)">Não estão na sala grande</div>'
+      +res.fora.map(function(x){ return '<div style="padding:7px 0;border-top:1px solid var(--line);margin-top:6px;font-size:14.5px;color:var(--ink)"><b>'+uEsc(x.ref)+'</b>'+(x.pede?' <span style="color:var(--muted)">'+uEsc(x.pede)+'</span>':'')+'</div>'; }).join('')
+      +'<div style="margin-top:8px;color:var(--muted);font-size:12.5px">Devem estar em outro lugar (sala pequena ou sala da Klus).</div></div>';
+    if(res.head&&!res.refs.length&&!(res.fora&&res.fora.length)) h+='<div style="'+card+'">Não achei nenhuma referência nesse documento.</div>';
   }
   box.innerHTML=h;
   box.querySelectorAll('.estpick').forEach(function(b){ b.onclick=function(){ $('estQ').value=b.getAttribute('data-q'); estGo(); }; });
@@ -1521,7 +1530,144 @@ function estObsHtml(locs){ var ob=(EST&&EST.obs)||{}, ls=[], inc=locs.some(funct
   locs.forEach(function(l){ if(ob[l.id]&&ls.indexOf(l.id)<0) ls.push(l.id); });
   if(!ls.length&&!inc) return '';
   return '<div style="flex-basis:100%;font-size:12.5px;color:var(--f-amber);margin-top:2px">⚠ '+(ls.length?uEsc(ls.join(', '))+': caixa sortida, não conferida. ':'')+(inc?'(?) = incerto, confira no estoque.':'')+'</div>'; }
-function estGo(){ var raw=$('estQ').value; estRender(raw.trim()?estFind(estIndex(),raw):null,raw); }
+function estGo(){ var raw=$('estQ').value, num=estNumQuery(raw.trim()); if(num){ estBuscaDoc(num,raw); return; } estRender(raw.trim()?estFind(estIndex(),raw):null,raw); }
+
+/* ---- busca por OP, pedido do Matriz, pedido do site e foto do documento ----
+   Bases (as publicadas na Base de Dados): 01 Ops com pedidos (OP/pedido → ref, cor, tamanhos),
+   08 Shopify (pedido #NNNN → itens) e cadastro do Shopify (código do item → referência). */
+function estNumQuery(q){ var m;
+  if((m=/^(?:pedido\s+do\s+site|site|shopify)?\s*#\s*(\d{3,6})$/i.exec(q))||(m=/^(?:pedido\s+do\s+site|site|shopify)\s*(\d{3,6})$/i.exec(q))) return {tipo:'site',num:m[1]};
+  if((m=/^op\s*(\d{4,6})$/i.exec(q))||(m=/^(\d{5})$/.exec(q))) return {tipo:'op',num:m[1]};
+  if((m=/^pedido\s*(\d{5,7})$/i.exec(q))||(m=/^(\d{6})$/.exec(q))) return {tipo:'ped',num:m[1]};
+  return null; }
+var EST_BASES_P=null, EST_SLOTN={ops:'01 Ops com pedidos',shopify:'08 Shopify — Exportação de Pedidos',produtos_pe:'cadastro de produtos do Shopify'};
+function _estRefPE(r){ r=String(r||'').toUpperCase().replace(/\s/g,''); var m=/^(?:PE)?([A-Z]{3}\d{4})$/.exec(r); return m?m[1]:r; }
+async function _estAoa(f){ await new Promise(function(ok,ko){ ensureXLSX(ok,ko); });
+  var wb=/\.csv$/i.test(f.name)?XLSX.read(new TextDecoder('utf-8').decode(await f.arrayBuffer()),{type:'string',raw:true}):XLSX.read(new Uint8Array(await f.arrayBuffer()),{type:'array'});
+  return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false,defval:''}); }
+function _estHdr(aoa,need){ for(var i=0;i<Math.min(aoa.length,10);i++){ var r=(aoa[i]||[]).map(function(c){return _en(String(c).trim());}); if(need.every(function(n){return r.some(function(c){return c===n||c.indexOf(n)===0;});})) return {i:i,r:r}; } return null; }
+function _estCol(h,n){ var i=h.r.indexOf(n); if(i<0) i=h.r.findIndex(function(c){return c.indexOf(n)===0||c.indexOf(n)>=0;}); return i; }
+function _estIdxSlot(B,k,aoa){
+  if(k==='ops'){ var h=_estHdr(aoa,['op','pedido','referencia']); if(!h) return;
+    var iO=h.r.indexOf('op'),iP=h.r.indexOf('pedido'),iR=h.r.indexOf('referencia'),iC=h.r.indexOf('cor'),iD=h.r.indexOf('desc cor'),iN=_estCol(h,'nome cliente'),P=[],T=[];
+    for(var n=1;n<=10;n++){ P.push(h.r.indexOf('p'+n)); T.push(h.r.indexOf('t'+n)); }
+    aoa.slice(h.i+1).forEach(function(r){ var op=String(r[iO]).trim(), pe=String(r[iP]).trim(), ref=_estRefPE(r[iR]); if(!ref||!/^[A-Z]{3}\d{4}$/.test(ref)) return;
+      var tam=[]; P.forEach(function(pi,j){ var q=parseInt(r[pi],10); if(pi>=0&&q>0) tam.push(String(r[T[j]]).trim()+(q>1?' ×'+q:'')); });
+      var it={ref:ref,cor:String(r[iD]||'').trim()||(EST.cores[String(r[iC]).trim()]||''),tam:tam,op:op,ped:pe}; B.refs[ref]=1;
+      if(op) (B.op[op]=B.op[op]||{cli:String(r[iN]||'').trim(),it:[]}).it.push(it);
+      if(pe) (B.ped[pe]=B.ped[pe]||{cli:String(r[iN]||'').trim(),it:[]}).it.push(it); }); }
+  else if(k==='shopify'){ var h2=_estHdr(aoa,['name','lineitem name']); if(!h2) return;
+    var a=h2.r.indexOf('name'),b=h2.r.indexOf('lineitem name'),c=h2.r.indexOf('lineitem sku'),d=h2.r.indexOf('lineitem quantity'),e=h2.r.indexOf('billing name');
+    aoa.slice(h2.i+1).forEach(function(r){ var nm=String(r[a]).replace(/\D/g,''); if(!nm||!r[b]) return; var o=B.site[nm]=B.site[nm]||{cli:'',it:[]}; if(!o.cli&&e>=0) o.cli=String(r[e]||'').trim();
+      o.it.push({nome:String(r[b]),sku:parseInt(r[c],10)||0,qtd:parseInt(r[d],10)||1}); }); }
+  else if(k==='produtos_pe'){ var h3=_estHdr(aoa,['handle','variant sku']); if(!h3) return;
+    var iH=h3.r.indexOf('handle'),iS=h3.r.indexOf('variant sku'),iRf=h3.r.findIndex(function(c){return c.indexOf('custom.referencia')>=0;}),i1=h3.r.indexOf('option1 value'),i2=h3.r.indexOf('option2 value'),ref={};
+    aoa.slice(h3.i+1).forEach(function(r){ if(iRf>=0&&r[iRf]) ref[r[iH]]=_estRefPE(r[iRf]); var s=parseInt(r[iS],10); if(s&&!B.sku[s]) B.sku[s]={h:r[iH],cor:String(r[i1]||''),tam:String(r[i2]||'')}; });
+    Object.keys(B.sku).forEach(function(s){ var x=B.sku[s]; if(!x.ref) x.ref=ref[x.h]||''; });
+    Object.keys(ref).forEach(function(h){ B.refs[ref[h]]=1; }); }
+}
+// baixa e decifra só as 3 bases que a busca usa (uma vez por sessão)
+function estBases(){ if(EST_BASES_P) return EST_BASES_P;
+  EST_BASES_P=(async function(){ var B={op:{},ped:{},site:{},sku:{},refs:{},falta:[],ts:{}};
+    var man=await fetchManifest(); estIndex();
+    for(var k of ['ops','shopify','produtos_pe']){ var e=man&&man.slots&&man.slots[k];
+      if(!e||!(SESSION&&SESSION.slots&&SESSION.slots[k])){ B.falta.push(k); continue; }
+      var meta=await decJSON(b64d(SESSION.slots[k]),e.m), files=[];
+      for(var f of meta.files){ var ct=await getEncBlob(f.p); files.push(new File([await decBytes(b64d(SESSION.slots[k]),f.iv,ct)],f.n,{type:f.t||''})); }
+      if(k==='produtos_pe') files=await expandShopZips(files);
+      for(var fl of files) _estIdxSlot(B,k,await _estAoa(fl));
+      B.ts[k]=e.ts; }
+    return B; })();
+  EST_BASES_P.catch(function(){ EST_BASES_P=null; }); return EST_BASES_P; }
+// itens do pedido do site: referência pelo cadastro do Shopify; cor/tamanho pelo cadastro ou pelo nome ("… - Preto / 42")
+function _estSiteItens(B,o){ return o.it.map(function(x){ var s=B.sku[x.sku]||{}, pr=String(x.nome).split(' - ').pop().split('/');
+  var mr=/\b(?:PE)?([A-Z]{3}\d{4})\b/.exec(String(x.nome).toUpperCase());
+  return {ref:s.ref||(mr?mr[1]:''),cor:s.cor||(pr.length>1?pr[0].trim():''),tam:[(s.tam||(pr.length>1?pr[1].trim():''))+(x.qtd>1?' ×'+x.qtd:'')].filter(Boolean),nome:x.nome}; }); }
+function _estDataBase(B,k){ return B.ts[k]?' (base de '+fmtTs(B.ts[k]).split(' ')[0]+')':''; }
+async function estBuscaDoc(n,raw){
+  var box=$('estRes'), lbl={op:'OP '+n.num,ped:'Pedido '+n.num,site:'Pedido do site #'+n.num}[n.tipo];
+  box.innerHTML='<div style="margin-top:14px;color:var(--muted)">Buscando '+uEsc(lbl)+' nas bases…</div>';
+  var B; try{ B=await estBases(); }catch(e){ box.innerHTML='<div style="margin-top:14px;color:var(--danger)">Não consegui abrir as bases: '+uEsc(e&&e.message||String(e))+'</div>'; return; }
+  if(raw!=null&&$('estQ').value!==raw) return; // a pessoa já digitou outra coisa
+  var need=n.tipo==='site'?['shopify','produtos_pe']:['ops'], sem=need.filter(function(k){return B.falta.indexOf(k)>=0;});
+  var o=n.tipo==='op'?B.op[n.num]:n.tipo==='ped'?B.ped[n.num]:B.site[n.num];
+  if(!o){ var why=sem.length?'Seu usuário não tem acesso à base '+sem.map(function(k){return EST_SLOTN[k];}).join(' e ')+' (o administrador libera em Controle de Usuários).'
+      :'Não achei '+lbl+' na base '+EST_SLOTN[need[0]]+_estDataBase(B,need[0])+'.'+(n.tipo==='ped'?' Pedido de pronta entrega sem OP não aparece nessa base.':'')+' Tire uma 📷 foto do documento que eu leio as referências.';
+    box.innerHTML='<div style="margin-top:14px;padding:14px 16px;border:1px solid rgba(224,150,45,.5);border-radius:12px;color:var(--f-amber)">'+uEsc(why)+'</div>'; return; }
+  var it=n.tipo==='site'?_estSiteItens(B,o):o.it;
+  estRenderItens(it,lbl+(o.cli?' · '+o.cli:'')+(n.tipo==='ped'?' · OP '+it.map(function(x){return x.op;}).filter(function(v,i,a){return v&&a.indexOf(v)===i;}).join(', '):'')+(n.tipo==='op'&&it[0]&&it[0].ped?' · pedido '+it.map(function(x){return x.ped;}).filter(function(v,i,a){return v&&a.indexOf(v)===i;}).join(', '):''),'');
+}
+// foto do pedido/OP: lê o texto no próprio navegador (Tesseract) e procura nº da OP/pedido e as referências com as cores
+var __tessP=null;
+function ensureTesseract(){ if(window.Tesseract) return Promise.resolve();
+  if(!__tessP) __tessP=new Promise(function(ok,ko){ var s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js'; s.onload=ok; s.onerror=function(){ __tessP=null; ko(new Error('não consegui carregar o leitor de fotos (sem internet?)')); }; document.head.appendChild(s); });
+  return __tessP; }
+// foto do celular é grande: reduz para ~2200 px no lado maior antes de ler (fica bem mais rápido)
+function _estFotoCanvas(file){ return new Promise(function(ok,ko){ var img=new Image(), u=URL.createObjectURL(file);
+  img.onload=function(){ var k=Math.min(1,2200/Math.max(img.width,img.height)), c=document.createElement('canvas'); c.width=Math.round(img.width*k); c.height=Math.round(img.height*k);
+    var x=c.getContext('2d'); x.drawImage(img,0,0,c.width,c.height);
+    // cinza + contraste: as linhas claras das tabelas (cor/tamanho) ficam legíveis
+    try{ var d=x.getImageData(0,0,c.width,c.height), p=d.data, lo=255, hi=0, i, v;
+      for(i=0;i<p.length;i+=4){ v=(p[i]*.3+p[i+1]*.59+p[i+2]*.11)|0; p[i]=v; if(v<lo)lo=v; if(v>hi)hi=v; }
+      var s=255/Math.max(1,(hi-lo)*.85); for(i=0;i<p.length;i+=4){ v=Math.max(0,Math.min(255,(p[i]-lo)*s)); p[i]=p[i+1]=p[i+2]=v; } x.putImageData(d,0,0); }catch(e){}
+    URL.revokeObjectURL(u); ok(c); };
+  img.onerror=function(){ URL.revokeObjectURL(u); ko(new Error('não consegui abrir a imagem')); }; img.src=u; }); }
+function _estGira(c,g){ var r=document.createElement('canvas'), q=g%180!==0; r.width=q?c.height:c.width; r.height=q?c.width:c.height;
+  var x=r.getContext('2d'); x.translate(r.width/2,r.height/2); x.rotate(g*Math.PI/180); x.drawImage(c,-c.width/2,-c.height/2); return r; }
+function estOcrParse(txt){ var E=estIndex(), T=String(txt||'').toUpperCase(), out={op:'',ped:'',site:'',itens:[]}, m;
+  if((m=/ORDEM\s*PRODU[\s\S]{0,160}?(?:^|[^\d\/])([4-9]\d{4})(?![\d\/])/.exec(T))||(/ORDEM\s+DE\s+PRODU/.test(T)&&(m=/^\W{0,3}([4-9]\d{4})(?![\d\/])/m.exec(T)))) out.op=m[1];
+  if((m=/PEDIDO\s*N\S{0,2}\s*:?\s*(\d{6})\b/.exec(T))||(m=/CONFIRMA\S*\s+DO\s+PEDIDO\D{0,10}(\d{6})\b/.exec(T))) out.ped=m[1];
+  if((m=/N\S?MERO\s+DO\s+PEDIDO\s*:?\s*#?\s*(\d{3,6})\b/.exec(T))||(m=/#\s?(\d{4,5})\b/.exec(T))) out.site=m[1];
+  var pref={}; E.order.forEach(function(r){ pref[r.slice(0,3)]=1; });
+  var L=T.split('\n'), refAt=[];
+  L.forEach(function(l,i){ var re=/(?:^|[^A-Z])(?:PE)?([A-Z]{3})\s?([0-9OIL]{4,5})(?![0-9])/g, mm;
+    while((mm=re.exec(l))){ if(!pref[mm[1]]) continue; var dg=mm[2].replace(/O/g,'0').replace(/[IL]/g,'1'); if(dg.length===5){ if(dg[0]!=='0') continue; dg=dg.slice(1); } // "BLFO0178" = BLF0178
+      var ref=mm[1]+dg; if(refAt.some(function(x){return x.i===i&&x.ref===ref;})) continue; refAt.push({i:i,ref:ref}); } });
+  function cores(a,b){ var cs=[]; for(var j=Math.max(0,a);j<=Math.min(L.length-1,b);j++){ var l=L[j], mc, re2=/\b([A-Z]{2})\s?([0-9O]{3})\b/g;
+      while((mc=re2.exec(l))){ var cod=mc[1]+mc[2].replace(/O/g,'0'); if(E.cores[cod]&&cs.indexOf(E.cores[cod])<0) cs.push(E.cores[cod]); }
+      var cq=estColorQuery(E,l.replace(/\/.*$/,'')); if(cq){ var nm=cq.spec?(E.nomes[cq.spec]||cq.said):cq.said.replace(/^./,function(a){return a.toUpperCase();}); if(!cs.some(function(c){return _en(c)===_en(nm);})) cs.push(nm); } }
+    return cs; }
+  // no pedido do site a cor vem antes do código ("Preto / 42" … "PECLF0772"); no Matriz (OP/pedido) vem depois
+  var antes=/FATURA|SHOPIFY|DASH-UNIFORMES\/ORDERS/.test(T)||(!!out.site&&!out.op&&!out.ped);
+  refAt.forEach(function(x,k){ var nx=refAt[k+1]?refAt[k+1].i-1:x.i+10, pv=k?refAt[k-1].i+1:x.i-6, cs;
+    var dep=function(){ return cores(x.i,Math.min(nx,x.i+10)); }, ant=function(){ return cores(Math.max(pv,x.i-6),x.i-1); };
+    cs=antes?ant():dep(); if(!cs.length) cs=antes?dep():ant();
+    if(!cs.length) out.itens.push({ref:x.ref,cor:''}); cs.forEach(function(c){ out.itens.push({ref:x.ref,cor:c}); }); });
+  return out; }
+async function estFoto(file){
+  var box=$('estRes'), st=function(t){ box.innerHTML='<div style="margin-top:14px;color:var(--muted)">'+t+'</div>'; };
+  st('📷 Preparando a foto…');
+  try{ await ensureTesseract(); var cv=await _estFotoCanvas(file);
+    var w=await Tesseract.createWorker('por',1,{logger:function(m){ if(m.status==='recognizing text') st('📷 Lendo a foto… '+Math.round((m.progress||0)*100)+'%'); else if(/load/.test(m.status||'')) st('📷 Carregando o leitor de fotos (só na primeira vez)…'); }});
+    // foto deitada ou de ponta-cabeça sai ilegível: se a leitura vier fraca, tenta girada e fica com a melhor
+    var r=await w.recognize(cv), best=r;
+    if(!(r.data.confidence>=65)) for(var g of [90,270,180]){ st('📷 A foto parece torta, tentando girar ('+g+'°)…'); var r2=await w.recognize(_estGira(cv,g)); if(r2.data.confidence>best.data.confidence) best=r2; if(best.data.confidence>=65) break; }
+    await w.terminate();
+    var txt=(best&&best.data&&best.data.text)||'', P=estOcrParse(txt);
+    var lido='<details style="margin-top:4px"><summary style="cursor:pointer">ver o texto lido na foto</summary><pre style="white-space:pre-wrap;font-size:11.5px;max-height:240px;overflow:auto;background:var(--bg);padding:8px;border-radius:8px">'+uEsc(txt)+'</pre></details>';
+    // com o nº da OP/pedido na foto, usa a base (mais confiável); senão, as referências lidas na própria foto
+    var B=null; if(P.op||P.ped||P.site){ try{ B=await estBases(); }catch(e){} }
+    var achou=B&&((P.op&&B.op[P.op]&&{tipo:'op',num:P.op})||(P.ped&&B.ped[P.ped]&&{tipo:'ped',num:P.ped})||(P.site&&B.site[P.site]&&{tipo:'site',num:P.site}));
+    if(achou){ var o=B[achou.tipo][achou.num], it=achou.tipo==='site'?_estSiteItens(B,o):o.it;
+      estRenderItens(it,{op:'OP ',ped:'Pedido ',site:'Pedido do site #'}[achou.tipo]+achou.num+(o.cli?' · '+o.cli:''),'Li o número na foto e busquei na base.'+lido); return; }
+    // leitura errada inventa códigos: só fica a referência que existe na sala grande ou nos cadastros (01/Shopify)
+    if(!B){ try{ B=await estBases(); }catch(e){} }
+    P.itens=P.itens.filter(function(x){ return estIndex().refs[x.ref]||(B&&B.refs[x.ref]); });
+    var nums=[P.op&&'OP '+P.op,P.ped&&'pedido '+P.ped,P.site&&'pedido do site #'+P.site].filter(Boolean);
+    if(!P.itens.length){ box.innerHTML='<div style="margin-top:14px;padding:14px 16px;border:1px solid rgba(224,150,45,.5);border-radius:12px;color:var(--f-amber)">Não consegui ler nenhuma referência na foto'+(nums.length?' (li '+uEsc(nums.join(', '))+', mas não achei nas bases)':'')+'. Tente uma foto mais reta, de perto e com boa luz, ou digite o número.'+lido+'</div>'; return; }
+    estRenderItens(P.itens,'Referências lidas na foto',(nums.length?'Li '+uEsc(nums.join(', '))+', mas não achei nas bases; ':'')+'confira se as referências abaixo batem com o documento.'+lido);
+  }catch(e){ box.innerHTML='<div style="margin-top:14px;color:var(--danger)">Não consegui ler a foto: '+uEsc(e&&e.message||String(e))+'</div>'; }
+}
+// mostra, para cada referência/cor do documento, onde está na sala grande
+function estRenderItens(itens,titulo,extra){
+  var E=estIndex(), g={}, ord=[];
+  itens.forEach(function(x){ var k=x.ref+'|'+_en(x.cor||''); if(!g[k]){ g[k]={ref:x.ref,cor:x.cor||'',tam:[],nome:x.nome}; ord.push(k); } (x.tam||[]).forEach(function(t){ if(t&&g[k].tam.indexOf(t)<0) g[k].tam.push(t); }); });
+  var refs=[], fora=[];
+  ord.forEach(function(k){ var x=g[k], R=E.refs[x.ref]; var pede=(x.cor?x.cor.toLowerCase().replace(/(^|\s)(\S)/g,function(a,b,c){return b+c.toUpperCase();}):'')+(x.tam.length?' · '+x.tam.join(', '):'');
+    if(!R){ fora.push({ref:x.ref||(x.nome||'?'),pede:pede}); return; }
+    refs.push({R:R,pick:estPick(E,R,x.cor?estColorQuery(E,x.cor):null),pede:pede}); });
+  estRender({tipo:'ok',refs:refs,head:titulo,extra:extra,fora:fora},'');
+}
 function estMic(){
   var SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR)return;
   var r=new SR(), b=$('estMic'); r.lang='pt-BR'; r.interimResults=false; r.maxAlternatives=1;
@@ -1569,6 +1715,8 @@ function estEditOpen(){
     if(/\d{4}/.test(v.replace(/\s/g,''))||/^(caixa\s*)?[a-z]\s*\d{1,2}$/i.test(v)||(!/\d/.test(v)&&v.length>=4)) t=setTimeout(estGo,450); else estRender(null); });
   q.addEventListener('keydown',function(e){ if(e.key==='Enter'){ clearTimeout(t); estGo(); } });
   $('estGoBtn').onclick=estGo; $('estMic').onclick=estMic; $('estEdit').onclick=estEditOpen;
+  $('estFotoBtn').onclick=function(){ $('estFoto').click(); };
+  $('estFoto').onchange=function(){ var f=this.files&&this.files[0]; this.value=''; if(f) estFoto(f); };
 }());
 /* ===== FECHAMENTO DA FACÇÃO (fechamento do beneficiador × romaneios) ===== */
 var FC={fech:null,roms:[]};
