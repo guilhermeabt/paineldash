@@ -2313,16 +2313,19 @@ function ckParseOpsPdf(file,cb){
   });
 }
 function ckOpsInfo(){ var o=window.__PROG_OPS||[]; if(!o.length)return 'não carregado'; var nn=o.map(function(x){return parseInt(x.op,10);}).filter(function(x){return !isNaN(x);}); var mn=nn.length?Math.min.apply(null,nn):0,mx=nn.length?Math.max.apply(null,nn):0; var pc=o.reduce(function(a,x){return a+(x.pecas||0);},0); return o.length+' OPs (OP '+mn+' a '+mx+') · '+pc.toLocaleString('pt-BR')+' peças'; }
-function openSemOrdemModal(){
+function openSemOrdemModal(){ _pedSelListModal('Pedidos sem ordem'); }
+function openPedSelQuartaModal(){ _pedSelListModal('Pedidos selecionados na quarta'); }
+// lista dos pedidos do arquivo Pedidos Selecionados Quarta, no formato da consulta do Matriz: '123','456'
+function _pedSelListModal(titulo){
   var ps=window.__PROG_PEDSEL||[]; var seen={}, peds=[];
   ps.forEach(function(r){ var p=String(r.pedido||'').trim(); if(p&&/^\d+$/.test(p)&&!seen[p]){ seen[p]=1; peds.push(p); } });
   var txt=peds.map(function(p){return "'"+p+"'";}).join(',');
   var body;
   if(!ps.length){
-    body='<div style="max-width:520px"><h2 style="margin:0 0 8px;color:var(--ink);font-weight:600">Pedidos sem ordem</h2>'
+    body='<div style="max-width:520px"><h2 style="margin:0 0 8px;color:var(--ink);font-weight:600">'+titulo+'</h2>'
       +'<div style="color:var(--f-amber);padding:18px;border:1px dashed var(--line);border-radius:10px">Suba o arquivo <b>Pedidos Selecionados Quarta</b> no passo 1 da aba Quarta-feira.</div></div>';
   } else {
-    body='<div style="max-width:620px"><h2 style="margin:0 0 4px;color:var(--ink);font-weight:600">Pedidos sem ordem</h2>'
+    body='<div style="max-width:620px"><h2 style="margin:0 0 4px;color:var(--ink);font-weight:600">'+titulo+'</h2>'
       +'<p style="color:var(--muted);margin:0 0 12px;font-size:13px">'+peds.length+' pedidos do arquivo de quarta, formatados para colar na consulta do Matriz. Copie e cole.</p>'
       +'<textarea id="soTxt" readonly style="width:100%;height:120px;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:10px;font-family:monospace;font-size:13px;box-sizing:border-box;resize:vertical">'+txt+'</textarea>'
       +'<div style="margin-top:10px;display:flex;align-items:center;gap:10px"><button id="soCopy" class="ubtn" style="background:var(--f-green);color:#0c241a;border:none;font-weight:600">Copiar</button><span id="soOk" style="display:none;color:var(--f-green);font-size:13px">✓ copiado</span></div></div>';
@@ -2373,7 +2376,7 @@ function _anSec(title,ops,scheme,dark){
     +'<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left;background:'+C.hbg+';color:'+C.ink+'"><th style="border:1px solid '+C.bd+';padding:5px 10px">OP</th><th style="border:1px solid '+C.bd+';padding:5px 10px">Referência</th><th style="border:1px solid '+C.bd+';padding:5px 10px">Descrição</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 function openAnotarModal(){
-  if(!(window.__PROG_OPS||[]).length){ openProgModal('<div style="padding:24px;color:var(--f-amber);max-width:440px">Suba o PDF com todas as OPs (passo 2 da aba Quinta-feira) para gerar as listas.</div>', null); return; }
+  if(!(window.__PROG_OPS||[]).length){ openProgModal('<div style="padding:24px;color:var(--f-amber);max-width:440px">Suba o PDF com todas as OPs (passo 3 da aba Quinta-feira) para gerar as listas.</div>', null); return; }
   var A=computeAnotar();
   var body='<div style="max-width:720px"><h2 style="margin:0 0 4px;color:var(--ink);font-weight:600">Anotações nas OPs</h2>'
     +'<p style="color:var(--muted);margin:0 0 16px;font-size:13px">Listas extraídas do PDF das OPs. Use o botão Imprimir para a versão colorida.</p>'
@@ -2724,7 +2727,7 @@ function buildFichaReportHTML(){ return _prDoc('Ficha técnica — Dash', fichaI
 function printFicha(){ if(!Object.keys(window.__PROG_PECAS||{}).length){ alert('Carregue o 05 - Peças Produção em Input de arquivos.'); return; } _openPrint(buildFichaReportHTML()); }
 function buildAuditReportHTML(){ return _prDoc('Auditoria das OPs — Dash', auditInner(), false); }
 function openAuditModal(){
-  if(!(window.__PROG_OPS||[]).length){ openProgModal('<div style="padding:24px;color:var(--f-amber);max-width:480px">Carregue o <b>PDF com todas as OPs</b> (passo 2 da aba Quinta-feira) para rodar a auditoria.</div>', null); return; }
+  if(!(window.__PROG_OPS||[]).length){ openProgModal('<div style="padding:24px;color:var(--f-amber);max-width:480px">Carregue o <b>PDF com todas as OPs</b> (passo 3 da aba Quinta-feira) para rodar a auditoria.</div>', null); return; }
   var body='<div style="max-width:960px;width:90vw"><div class="auModal" style="background:#fff;color:#111;border-radius:8px;padding:18px 22px">'
     +'<style>.auModal h1{font-size:20px;margin:0 0 2px;color:#111}.auModal h2{font-size:15px;margin:16px 0 6px;color:#111;border-bottom:1px solid #ddd;padding-bottom:3px}.auModal .sub{color:#666;margin:0 0 8px;font-size:13px}.auModal p{color:#222;font-size:13px;margin:6px 0}.auModal ul{margin:6px 0;padding-left:20px;color:#222;font-size:13px}.auModal li{margin:2px 0}.auModal table{width:100%;border-collapse:collapse;font-size:12.5px;margin:6px 0}.auModal th,.auModal td{border:1px solid #ccc;padding:5px 8px;text-align:left;color:#111;vertical-align:top}.auModal .warn{color:#b06a12}.auModal .ok{color:#1b6e4b}.auModal .empty{color:#888}.auModal .kpis{display:flex;flex-wrap:wrap;gap:8px}.auModal .kpis span{background:#eee;border:1px solid #ddd;border-radius:6px;padding:4px 10px;font-size:12px;color:#222}</style>'
     +auditInner()+'</div></div>';
@@ -2740,7 +2743,7 @@ function openCortarModal(){
 }
 function buildDatasReportHTML(){ return _prDoc('Data das OPs — Dash', datasInner(), false); }
 function openDatasModal(){
-  if(!(window.__PROG_OPS||[]).length){ openProgModal('<div style="padding:24px;color:var(--f-amber);max-width:500px">Para a análise de datas, carregue o <b>PDF das OPs</b> (passo 2 da Quinta).</div>', null); return; }
+  if(!(window.__PROG_OPS||[]).length){ openProgModal('<div style="padding:24px;color:var(--f-amber);max-width:500px">Para a análise de datas, carregue o <b>PDF das OPs</b> (passo 3 da Quinta).</div>', null); return; }
   var body='<div style="max-width:900px;width:88vw"><div class="cjModal" style="background:#fff;color:#111;border-radius:8px;padding:18px 20px">'
     +'<style>.cjModal h1{font-size:20px;margin:0 0 2px;color:#111}.cjModal .sub{color:#666;margin:0 0 14px;font-size:13px}.cjModal table{width:100%;border-collapse:collapse;font-size:12.5px}.cjModal th,.cjModal td{border:1px solid #ccc;padding:5px 8px;text-align:left;color:#111;vertical-align:top}.cjModal thead th{background:#eee}</style>'
     +datasInner()+'</div></div>';
@@ -2915,7 +2918,7 @@ function peInnerPrint(){
 }
 function printPE(){ if(!(window.__PROG_OPS||[]).length){ alert('Suba o PDF das OPs no checklist.'); return; } _openPrint(_prDoc('Análise pronta entrega — Dash', peInnerPrint(), false)); }
 function openPEModal(){
-  if(!(window.__PROG_OPS||[]).length){ openProgModal('<div style="padding:24px;color:var(--f-amber);max-width:480px">Suba o <b>PDF com todas as OPs</b> (passo 2) para a análise.</div>', null); return; }
+  if(!(window.__PROG_OPS||[]).length){ openProgModal('<div style="padding:24px;color:var(--f-amber);max-width:480px">Suba o <b>PDF com todas as OPs</b> (passo 3 da Quinta) para a análise.</div>', null); return; }
   var A=computePEAnalise();
   var warn=_kc(window.__PROG_ESTOQUE)>0?'':'<p style="color:var(--f-amber);font-size:12px;margin:0 0 10px">Estoque não carregado — sem ele, tudo que não tem conjunto cai em "mandar para produção".</p>';
   var body='<div style="max-width:780px"><h2 style="margin:0 0 4px;color:var(--ink);font-weight:600">Referências pronta entrega</h2>'
@@ -3033,7 +3036,7 @@ function renderDatas(){
 function isCPop(o){ var T=auditNoacc(o.raw||''); return T.indexOf('COMPRADO PRONTO')>=0||T.indexOf('COMPRADA PRONTA')>=0; }
 // 02 usado nas compras: o atualizado de segunda (passo 1 da segunda), senão o da quinta
 function comprasPed(){ var r=window.__PROG_REPROG||[]; return r.length?r:(window.__PROG_OPSPED||[]); }
-function comprasFalta(){ var f=[]; if(!(window.__PROG_OPS||[]).length) f.push('o <b>PDF das OPs</b> (passo 2 da Quinta)'); if(!comprasPed().length) f.push('o <b>Excel OPs com pedidos (02)</b> — o atualizado da Segunda (passo 1) ou o da Quinta'); return f.join(' e '); }
+function comprasFalta(){ var f=[]; if(!(window.__PROG_OPS||[]).length) f.push('o <b>PDF das OPs</b> (passo 3 da Quinta)'); if(!comprasPed().length) f.push('o <b>Excel OPs com pedidos (02)</b> — o atualizado da Segunda (passo 1) ou o da Quinta'); return f.join(' e '); }
 function computeCompras(){
   var pdf=window.__PROG_OPS||[], ped=comprasPed(), est=window.__PROG_ESTOQUE||{};
   if(!pdf.length||!ped.length) return null;
@@ -3276,6 +3279,7 @@ var CKL_STEPS=[
   {day:'qua',id:'data_mapa',type:'date',label:'Próxima data disponível para o mapa'},
   {day:'qua',id:'data_corte',type:'date',label:'Próxima data disponível para o corte',auto:function(){return computeProxCorte();},autoHint:'suba o 08 (Acompanhamento de Beneficiador)'},
   {day:'qua',id:'calendario',type:'report',label:'Calendário de corte e facção',btn:'Ver calendário',action:function(){ openCalendarModal(); }},
+  {day:'qui',id:'qui_lista_pedsel',type:'report',label:'Gerar a lista de pedidos selecionados na quarta',btn:'Ver lista',action:function(){ openPedSelQuartaModal(); }},
   {day:'qui',id:'qui_tabela',type:'table',label:'Intervalos de OPs por grupo',
     rows:['Aproveitamento de estoque','Tecidos faltantes','Prioridade','Demais pedidos','SAC e troca'],
     cols:['Quantidade de peças','Intervalo de OPs'], colkeys:['q','op']},
