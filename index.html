@@ -3194,9 +3194,12 @@ function _calBlockHTML(title,rows,dark,scheme){
     C = dark ? {bd:'rgba(180,180,180,.35)', thbg:'rgba(180,180,180,.22)', rowbg:'rgba(180,180,180,.07)', head:'#cfcfcf', ttl:ink}
              : {bd:'#c7c7c7', thbg:'#e4e4e4', rowbg:'#f5f5f5', head:'#333', ttl:'#333'};
   }
-  return '<div style="flex:1;min-width:260px"><h3 style="color:'+C.ttl+';font-weight:600;margin:0 0 6px;font-size:15px">'+title+'</h3>'
-    +'<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left;color:'+C.head+';background:'+C.thbg+'"><th style="border:1px solid '+C.bd+';padding:5px 10px">Data do corte</th><th style="border:1px solid '+C.bd+';padding:5px 10px">Data da facção</th><th style="border:1px solid '+C.bd+';padding:5px 10px">Data da entrega</th></tr></thead><tbody>'
-    +rows.map(function(x){return '<tr style="background:'+C.rowbg+'"><td style="border:1px solid '+C.bd+';padding:5px 10px;color:'+ink+'">'+x.corteBr+'</td><td style="border:1px solid '+C.bd+';padding:5px 10px;color:'+ink+'">'+x.facBr+'</td><td style="border:1px solid '+C.bd+';padding:5px 10px;color:'+ink+'">'+x.entBr+'</td></tr>';}).join('')
+  // datas grandes, centralizadas e sem o ano (dd/mm)
+  var th='border:1px solid '+C.bd+';padding:8px 10px;text-align:center', td='border:1px solid '+C.bd+';padding:8px 10px;text-align:center;font-size:30px;font-weight:600;color:'+ink;
+  function dm(s){ return String(s||'').slice(0,5); }
+  return '<div style="flex:1;min-width:300px"><h3 style="color:'+C.ttl+';font-weight:600;margin:0 0 8px;font-size:20px">'+title+'</h3>'
+    +'<table style="width:100%;border-collapse:collapse;font-size:15px"><thead><tr style="color:'+C.head+';background:'+C.thbg+'"><th style="'+th+'">Data do corte</th><th style="'+th+'">Data da facção</th><th style="'+th+'">Data da entrega</th></tr></thead><tbody>'
+    +rows.map(function(x){return '<tr style="background:'+C.rowbg+'"><td style="'+td+'">'+dm(x.corteBr)+'</td><td style="'+td+'">'+dm(x.facBr)+'</td><td style="'+td+'">'+dm(x.entBr)+'</td></tr>';}).join('')
     +'</tbody></table></div>';
 }
 function _calHolEditorHTML(){
