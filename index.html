@@ -3175,11 +3175,13 @@ function _calBR(d){ return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)
 function _calBRs(iso){ var p=iso.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
 function _calNextCorte(d){ do{ d.setDate(d.getDate()+1); }while(_calWknd(d)||_isHol(_calISO(d))); }
 function _calFaccao(corteISO,n){ var d=new Date(corteISO+'T00:00:00'); var c=0; while(c<n){ d.setDate(d.getDate()+1); if(!_calWknd(d)&&!_isHol(_calISO(d)))c++; } while(_calWknd(d)||_isHol(_calISO(d))||d.getDay()===5){ d.setDate(d.getDate()+1); } return d; }
+// entrega = facção + n dias úteis (pula fim de semana e feriado), igual com e sem bordado
+function _calAddUteis(from,n){ var d=new Date(from.getTime()), c=0; while(c<n){ d.setDate(d.getDate()+1); if(!_calWknd(d)&&!_isHol(_calISO(d)))c++; } return d; }
 function computeCorteCalendar(){
   var start=computeProxCorte(); if(!start)return null;
   var d=new Date(start+'T00:00:00'); if(_calWknd(d)||_isHol(_calISO(d)))_calNextCorte(d);
   var cortes=[_calISO(d)]; for(var i=1;i<5;i++){ _calNextCorte(d); cortes.push(_calISO(d)); }
-  function rowsFor(n){ return cortes.map(function(c){ var f=_calFaccao(c,n); return {corte:c, corteBr:_calBR(new Date(c+'T00:00:00')), facBr:_calBR(f)}; }); }
+  function rowsFor(n){ return cortes.map(function(c){ var f=_calFaccao(c,n), e=_calAddUteis(f,7); return {corte:c, corteBr:_calBR(new Date(c+'T00:00:00')), facBr:_calBR(f), entBr:_calBR(e)}; }); }
   return {sem:rowsFor(2), com:rowsFor(6), start:start};
 }
 function _calBlockHTML(title,rows,dark,scheme){
@@ -3193,8 +3195,8 @@ function _calBlockHTML(title,rows,dark,scheme){
              : {bd:'#c7c7c7', thbg:'#e4e4e4', rowbg:'#f5f5f5', head:'#333', ttl:'#333'};
   }
   return '<div style="flex:1;min-width:260px"><h3 style="color:'+C.ttl+';font-weight:600;margin:0 0 6px;font-size:15px">'+title+'</h3>'
-    +'<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left;color:'+C.head+';background:'+C.thbg+'"><th style="border:1px solid '+C.bd+';padding:5px 10px">Data do corte</th><th style="border:1px solid '+C.bd+';padding:5px 10px">Data da facção</th></tr></thead><tbody>'
-    +rows.map(function(x){return '<tr style="background:'+C.rowbg+'"><td style="border:1px solid '+C.bd+';padding:5px 10px;color:'+ink+'">'+x.corteBr+'</td><td style="border:1px solid '+C.bd+';padding:5px 10px;color:'+ink+'">'+x.facBr+'</td></tr>';}).join('')
+    +'<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left;color:'+C.head+';background:'+C.thbg+'"><th style="border:1px solid '+C.bd+';padding:5px 10px">Data do corte</th><th style="border:1px solid '+C.bd+';padding:5px 10px">Data da facção</th><th style="border:1px solid '+C.bd+';padding:5px 10px">Data da entrega</th></tr></thead><tbody>'
+    +rows.map(function(x){return '<tr style="background:'+C.rowbg+'"><td style="border:1px solid '+C.bd+';padding:5px 10px;color:'+ink+'">'+x.corteBr+'</td><td style="border:1px solid '+C.bd+';padding:5px 10px;color:'+ink+'">'+x.facBr+'</td><td style="border:1px solid '+C.bd+';padding:5px 10px;color:'+ink+'">'+x.entBr+'</td></tr>';}).join('')
     +'</tbody></table></div>';
 }
 function _calHolEditorHTML(){
@@ -3208,7 +3210,7 @@ function _calHolEditorHTML(){
   if(!keys.length) rows='<li style="color:var(--muted);padding:4px 0">Nenhum feriado cadastrado.</li>';
   return '<details style="margin-top:18px;border:1px solid var(--line);border-radius:10px;padding:10px 14px">'
     +'<summary style="cursor:pointer;color:var(--ink);font-weight:600;font-size:14px">Feriados considerados ('+keys.length+') — editar</summary>'
-    +'<p style="color:var(--muted);font-size:12px;margin:8px 0 4px">Feriados nacionais e de Belo Horizonte. O corte pula essas datas (a facção não). Adicione ou remova conforme precisar.</p>'
+    +'<p style="color:var(--muted);font-size:12px;margin:8px 0 4px">Feriados nacionais e de Belo Horizonte. Corte, facção e entrega (facção + 7 dias úteis) pulam essas datas. Adicione ou remova conforme precisar.</p>'
     +'<ul style="list-style:none;margin:6px 0 10px;padding:0;max-height:180px;overflow:auto">'+rows+'</ul>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'
       +'<label style="font-size:12px;color:var(--muted)">Data<br><input type="date" id="calHolDate" style="background:var(--surface2);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:5px 8px"></label>'
