@@ -317,7 +317,13 @@
     <button class="backMod" style="background:none;border:1px solid var(--line);color:var(--muted);padding:8px 14px;border-radius:8px;cursor:pointer">&larr; Módulos</button>
     <h2 style="margin:0;color:var(--ink);font-weight:600">Localização do Estoque</h2>
   </div>
-  <div id="estSub" style="color:var(--muted);font-size:13px;margin-bottom:16px"></div>
+  <div id="estSub" style="color:var(--muted);font-size:13px;margin-bottom:12px"></div>
+  <div id="estAbas" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+    <button class="ubtn estAba" data-aba="buscar" style="padding:7px 14px;font-size:13.5px">🔎 Buscar peças</button>
+    <button class="ubtn estAba" data-aba="mover" style="padding:7px 14px;font-size:13.5px">📦 Movimentar caixa</button>
+    <button class="ubtn estAba" data-aba="rota" style="padding:7px 14px;font-size:13.5px">🧭 Criar rota</button>
+  </div>
+  <div id="estPaneBuscar">
   <div style="display:flex;gap:8px;flex-wrap:wrap">
     <input id="estQ" type="search" autocomplete="off" placeholder="Referência, nº da OP, nº do pedido ou #pedido do site" style="flex:1;min-width:220px;font-size:17px;padding:13px 14px;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:10px">
     <button id="estMic" class="ubtn" style="padding:0 16px;font-size:15px">🎤 Falar</button>
@@ -327,7 +333,19 @@
   </div>
   <div style="color:var(--muted);font-size:12px;margin-top:8px">Pode digitar com ou sem a cor: “CLF0710 preto”, “BLF0077”, “polo branca”, “calça cecilia”. Ou um número: OP “61140”, pedido do Matriz “907862”, pedido do site “#3445” — ou tire uma 📷 foto do pedido/OP.</div>
   <div id="estRes"></div>
-  <div id="estMov"></div>
+  </div>
+  <div id="estPaneMover" style="display:none"><div id="estMov"></div></div>
+  <div id="estPaneRota" style="display:none">
+    <div style="color:var(--ink);font-size:14px;margin-bottom:6px">Uma linha por item. Pode misturar:</div>
+    <div style="color:var(--muted);font-size:12.5px;margin-bottom:8px;line-height:1.6">OP: <b>61140</b> · pedido do Matriz: <b>907862</b> · pedido do site: <b>#3445</b> · ou a peça: <b>CLF0710 preto 42 2</b> (referência, cor, tamanho e quantidade)</div>
+    <textarea id="estRotaTxt" rows="6" placeholder="61140&#10;907862&#10;#3445&#10;CLF0710 preto 42 2" style="width:100%;box-sizing:border-box;font-size:16px;padding:12px;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:10px;resize:vertical"></textarea>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button id="estRotaGo" style="background:var(--f-green);border:none;color:#0c241a;font-weight:600;padding:0 20px;border-radius:10px;cursor:pointer;font-size:15px;min-height:46px">Gerar rota</button>
+      <button id="estRotaPdf" class="ubtn" style="padding:0 16px;font-size:15px;display:none">🖨 Imprimir / PDF</button>
+      <button id="estRotaLimpar" class="ubtn" style="padding:0 16px;font-size:15px">Limpar</button>
+    </div>
+    <div id="estRotaRes"></div>
+  </div>
   <div style="margin-top:28px;border-top:1px solid var(--line);padding-top:14px"><button id="estEdit" class="ubtn">✎ Atualizar instrução</button></div>
 </div>
 
@@ -1394,7 +1412,7 @@ function estEnter(){
   $('estEdit').style.display=estCanEdit(current)?'':'none';
   $('estMic').style.display=(window.SpeechRecognition||window.webkitSpeechRecognition)?'':'none';
   $('modEstoque').style.display='block'; $('estRes').innerHTML=''; var q=$('estQ'); q.value=''; setTimeout(function(){q.focus();},50);
-  estHead(); estRenderMov();
+  estHead(); estRenderMov(); estAba(EST_ABA||'buscar');
   estLoad().then(function(){ estHead(); estRenderMov(); if($('estQ').value.trim()) estGo(); });
 }
 function estMovTxt(x){ var s={entrada:'⬇ Entrada',saida:'⬆ Saída',desfazer:'↩ Desfez',instrucao:'✎ Instrução atualizada'}[x.tipo]||x.tipo;
@@ -1678,6 +1696,103 @@ function estRenderItens(itens,titulo,extra){
     refs.push({R:R,pick:estPick(E,R,x.cor?estColorQuery(E,x.cor):null),pede:pede}); });
   estRender({tipo:'ok',refs:refs,head:titulo+(tot?' · '+tot+(tot>1?' peças':' peça'):''),extra:extra,fora:fora},'');
 }
+
+/* ---- abas do módulo: Buscar peças / Movimentar caixa / Criar rota ---- */
+var EST_ABA='buscar';
+function estAba(k){ EST_ABA=k;
+  document.querySelectorAll('#estAbas .estAba').forEach(function(b){ var on=b.getAttribute('data-aba')===k; b.style.background=on?'var(--f-green)':''; b.style.color=on?'#0c241a':''; b.style.borderColor=on?'transparent':''; b.style.fontWeight=on?'700':''; });
+  $('estPaneBuscar').style.display=k==='buscar'?'':'none'; $('estPaneMover').style.display=k==='mover'?'':'none'; $('estPaneRota').style.display=k==='rota'?'':'none';
+  if(k==='mover'){ var mb=$('estMov'); mb.dataset.open='1'; estRenderMov(); }
+  if(k==='buscar') setTimeout(function(){ $('estQ').focus(); },30);
+  if(k==='rota'){ var t=$('estRotaTxt'); if(!t.value){ try{ t.value=localStorage.getItem('est_rota_txt')||''; }catch(e){} } }
+}
+
+/* ---- Criar rota: junta OPs, pedidos e peças digitadas, e diz em que caixa pegar cada coisa ----
+   A base não registra quantas peças há dentro de cada caixa: a rota diz ONDE a referência/cor está.
+   Quando a caixa tem tamanhos anotados ("F9 (44, 36)"), prefere a caixa com o tamanho pedido. */
+var EST_ROTA=null, EST_TAMS=['PP','P','M','G','GG','EG','EGG','EXGG','XGG','G1','G2','G3','U','SN','6G'];
+function _estOrdCx(id){ var m=/^([A-Z])(\d+)$/.exec(id)||[0,'Z','999']; return (m[1]<='E'?0:1)*100000+m[1].charCodeAt(0)*1000+parseInt(m[2],10); }
+// "CLF0710 preto 42 2", "clf710 preta tam 42 x2", "BLF0077 branco GG 3", "JLF0518 branco"
+function _estLinhaPeca(E,l){ var t=String(l).trim(), m=/\b([a-z]{3})\s*0*(\d{1,4})\b/i.exec(t); if(!m) return null;
+  var ref=m[1].toUpperCase()+('0000'+m[2]).slice(-4), resto=(t.slice(0,m.index)+' '+t.slice(m.index+m[0].length)).trim(), cq=estColorQuery(E,resto);
+  var cor=cq?(cq.spec?(E.nomes[cq.spec]||cq.said):cq.said):'', sem=_cnorm(resto);
+  if(cq) sem=sem.replace(' '+cq.said+' ',' ');
+  var tk=sem.trim().split(/\s+/).filter(Boolean), tam='', qtd=null;
+  for(var i=0;i<tk.length;i++){ var w=tk[i].toUpperCase();
+    if(/^(X|QTD|QTDE|QUANT|PC|PCS|PECAS?|UN)$/.test(w)){ var nx=parseInt(tk[i+1],10); if(nx>0){ qtd=nx; i++; } continue; }
+    var mx=/^X(\d+)$/.exec(w)||/^(\d+)X$/.exec(w)||/^(\d+)(?:PC|PCS|UN)$/.exec(w); if(mx){ qtd=parseInt(mx[1],10); continue; }
+    if(w==='TAM'||w==='TAMANHO') continue;
+    if(EST_TAMS.indexOf(w)>=0&&!tam){ tam=w; continue; }
+    if(/^\d+$/.test(w)){ var v=parseInt(w,10); if(!tam&&((v>=30&&v<=60&&v%2===0)||(v>=1&&v<=10&&tk.length>1&&qtd===null&&i<tk.length-1))) tam=w; else if(qtd===null) qtd=v; } }
+  var qt={}; qt[tam||'?']=qtd||1; return {ref:ref,cor:cor,qt:qt}; }
+async function estRotaGo(){
+  var E=estIndex(), box=$('estRotaRes'), L=$('estRotaTxt').value.split('\n').map(function(x){return x.trim();}).filter(Boolean);
+  try{ localStorage.setItem('est_rota_txt',$('estRotaTxt').value); }catch(e){}
+  if(!L.length){ box.innerHTML='<div style="margin-top:12px;color:var(--f-amber)">Escreva pelo menos uma OP, pedido ou peça.</div>'; return; }
+  box.innerHTML='<div style="margin-top:12px;color:var(--muted)">Montando a rota…</div>';
+  var docs=[], erros=[], B=null;
+  for(var i=0;i<L.length;i++){ var l=L[i], n=estNumQuery(l);
+    if(n){ if(!B){ try{ B=await estBases(); }catch(e){ erros.push(l+': não consegui abrir as bases ('+(e&&e.message||e)+')'); continue; } }
+      var o=n.tipo==='op'?B.op[n.num]:n.tipo==='ped'?B.ped[n.num]:B.site[n.num], lbl={op:'OP ',ped:'Pedido ',site:'Pedido do site #'}[n.tipo]+n.num;
+      if(!o){ var sk=n.tipo==='site'?['shopify','produtos_pe']:['ops'], sem=sk.filter(function(k){return B.falta.indexOf(k)>=0;});
+        erros.push(lbl+': '+(sem.length?'seu usuário não tem a base '+sem.map(function(k){return EST_SLOTN[k];}).join(' e '):'não está na base '+EST_SLOTN[sk[0]]+_estDataBase(B,sk[0])+(n.tipo==='ped'?' (pedido sem OP não aparece nela — digite as peças)':''))); continue; }
+      docs.push({lbl:lbl+(o.cli?' · '+o.cli:''),it:n.tipo==='site'?_estSiteItens(B,o):o.it}); continue; }
+    var p=_estLinhaPeca(E,l); if(!p){ erros.push(l+': não entendi (use OP, pedido, #pedido do site ou referência com cor)'); continue; }
+    var d=docs.filter(function(x){return x.manual;})[0]; if(!d){ d={lbl:'Peças digitadas',it:[],manual:true}; docs.push(d); } d.it.push(p); }
+  // junta tudo por referência/cor/tamanho, guardando de quais documentos vem
+  // a mesma linha da 01 (OP + pedido) pode vir pela OP e pelo pedido: conta uma vez só
+  var need={}, ordN=[], visto={};
+  var capCor=function(c){ return String(c||'').toLowerCase().replace(/(^|\s)(\S)/g,function(a,b,d){return b+d.toUpperCase();}); };
+  docs.forEach(function(d,di){ d.it.forEach(function(x){ var lk=x.op?x.op+'|'+x.ped+'|'+x.ref+'|'+_en(x.cor||''):'', rep=lk&&visto[lk]; if(lk) visto[lk]=1;
+    Object.keys(x.qt||{'?':1}).forEach(function(t){ var k=x.ref+'|'+_en(x.cor||'')+'|'+t;
+    if(!need[k]){ need[k]={ref:x.ref,cor:capCor(x.cor),tam:t,qtd:0,docs:[]}; ordN.push(k); } if(!rep) need[k].qtd+=(x.qt?x.qt[t]:1); if(need[k].docs.indexOf(di)<0) need[k].docs.push(di); }); }); });
+  // onde está cada necessidade; a caixa com o tamanho anotado vem primeiro
+  var cand={}, cxUso={};
+  ordN.forEach(function(k){ var x=need[k], R=E.refs[x.ref]; if(!R){ x.falta='referência não está no estoque'; return; }
+    var pk=estPick(E,R,x.cor?estColorQuery(E,x.cor):null); if(pk.falta){ x.falta='a cor '+pk.falta+' não está no estoque'; return; }
+    x.ambig=pk.cores.length>1?pk.cores.map(function(c){return c.nome;}):null; x.corNome=pk.cores.length===1?pk.cores[0].nome:(x.cor||'');
+    var ls=[]; pk.cores.forEach(function(c){ c.locs.forEach(function(lc){ if(lc.tipo==='?') return;
+      var ns=String(lc.nota||'').toUpperCase().split(/[,;]|\bE\b|\bOU\b/).map(function(s){return s.replace(/[?\s]|×\d+/g,'');}).filter(Boolean);
+      var sc=x.tam!=='?'&&ns.indexOf(x.tam.toUpperCase())>=0?3:(!ns.length||/VARIOS|VÁRIOS/.test(String(lc.nota||'').toUpperCase())?2:1);
+      if(/\?/.test(lc.nota||'')) sc-=0.5; ls.push({id:lc.id,sc:sc,cor:c.nome,nota:lc.nota||''}); }); });
+    if(!ls.length){ x.falta='sem caixa registrada'; return; }
+    cand[k]=ls; ls.forEach(function(c){ cxUso[c.id]=(cxUso[c.id]||0)+1; }); });
+  // escolhe uma caixa por necessidade: maior chance de ter o tamanho; no empate, a caixa que já atende mais coisas (menos paradas)
+  var paradas={};
+  ordN.forEach(function(k){ var x=need[k], ls=cand[k]; if(!ls) return;
+    ls.sort(function(a,b){ return (b.sc-a.sc)||((cxUso[b.id]||0)-(cxUso[a.id]||0))||(_estOrdCx(a.id)-_estOrdCx(b.id)); });
+    var esc=ls[0]; x.cx=esc.id; x.alt=ls.slice(1).map(function(c){return c.id;}).filter(function(v,i,a){return a.indexOf(v)===i&&v!==esc.id;}).slice(0,4);
+    (paradas[esc.id]=paradas[esc.id]||{id:esc.id,itens:[]}).itens.push(x); });
+  var stops=Object.keys(paradas).map(function(k){return paradas[k];}).sort(function(a,b){return _estOrdCx(a.id)-_estOrdCx(b.id);});
+  var faltam=ordN.map(function(k){return need[k];}).filter(function(x){return x.falta;});
+  var stDocs=docs.map(function(d,di){ var f=faltam.filter(function(x){return x.docs.indexOf(di)>=0;}); var pc=d.it.reduce(function(a,x){ return a+Object.keys(x.qt||{}).reduce(function(s,t){return s+x.qt[t];},0); },0); return {lbl:d.lbl,ok:!f.length,falta:f,pc:pc}; });
+  EST_ROTA={stops:stops,faltam:faltam,docs:stDocs,erros:erros,docsAll:docs,quando:_dstamp(),tot:ordN.reduce(function(a,k){return a+need[k].qtd;},0)};
+  box.innerHTML=estRotaHtml(EST_ROTA,false); $('estRotaPdf').style.display=stops.length||faltam.length?'':'none';
+}
+function _estQtdTxt(x){ return (x.tam==='?'?'':'tam. '+x.tam+': ')+x.qtd+(x.qtd>1?' peças':' peça'); }
+function _estDocsTxt(r,x){ return x.docs.map(function(di){ return r.docsAll[di].lbl.split(' · ')[0]; }).join(', '); }
+function estRotaHtml(r,pr){
+  var ink=pr?'#111':'var(--ink)', mut=pr?'#555':'var(--muted)', amb=pr?'#a15c00':'var(--f-amber)', grn=pr?'#0b6b3a':'var(--f-green)', ln=pr?'#bbb':'var(--line)';
+  var card=pr?'border:1px solid #bbb;border-radius:6px;padding:6px 9px;margin-top:6px':'background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-top:10px';
+  var h='';
+  if(pr) h+='<h1>Rota de separação — Dash</h1><p class="sub">'+_e0(r.quando)+' · '+r.docs.map(function(d){return _e0(d.lbl);}).join(' · ')+'</p>';
+  h+='<div style="margin-top:'+(pr?'4':'14')+'px;font-size:'+(pr?'12':'15')+'px;color:'+ink+';font-weight:700">'+r.stops.length+(r.stops.length===1?' parada':' paradas')+' · '+r.tot+(r.tot===1?' peça':' peças')+(r.faltam.length?' · <span style="color:'+amb+'">'+r.faltam.length+' item(ns) sem lugar no estoque</span>':'')+'</div>';
+  var sala='';
+  r.stops.forEach(function(s,i){ var sl=estSala(s.id);
+    if(sl!==sala){ sala=sl; h+='<div style="margin-top:'+(pr?'8':'16')+'px;font-size:'+(pr?'10.5':'12')+'px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:'+mut+'">'+sl+'</div>'; }
+    var ob=(EST&&EST.obs||{})[s.id];
+    h+='<div style="'+card+'"><div style="display:flex;gap:10px;align-items:baseline"><span style="font-size:'+(pr?'13':'17')+'px;font-weight:700;color:'+ink+'">'+(pr?'☐ ':'')+(i+1)+'. Caixa '+_e0(s.id)+'</span>'+(ob?'<span style="font-size:'+(pr?'9.5':'12')+'px;color:'+amb+'">⚠ '+_e0(ob)+'</span>':'')+'</div>'
+      +s.itens.map(function(x){ return '<div style="padding:'+(pr?'2px 0 0 14px':'6px 0 0 4px')+';font-size:'+(pr?'11':'14.5')+'px;color:'+ink+'">'+(pr?'☐ ':'')+'<b>'+_e0(x.ref)+'</b> '+_e0(x.corNome||x.cor)+' — <b>'+_e0(_estQtdTxt(x))+'</b>'
+        +(x.ambig?' <span style="color:'+amb+'">(cor “'+_e0(x.cor)+'”: confira entre '+_e0(x.ambig.join(', '))+')</span>':'')
+        +'<span style="color:'+mut+';font-size:'+(pr?'9.5':'12.5')+'px"> · '+_e0(_estDocsTxt(r,x))+(x.alt.length?' · se faltar: '+_e0(x.alt.join(', ')):'')+'</span></div>'; }).join('')+'</div>'; });
+  if(r.faltam.length) h+='<div style="'+card+';border-color:'+(pr?'#d9a35b':'rgba(224,150,45,.5)')+'"><div style="font-weight:700;color:'+amb+';font-size:'+(pr?'12':'15')+'px">Faltando — procurar em outro lugar</div>'
+    +r.faltam.map(function(x){ return '<div style="padding-top:4px;font-size:'+(pr?'11':'14')+'px;color:'+ink+'">'+(pr?'☐ ':'')+'<b>'+_e0(x.ref)+'</b> '+_e0(x.cor)+' — '+_e0(_estQtdTxt(x))+' <span style="color:'+mut+'">('+_e0(x.falta)+' · '+_e0(_estDocsTxt(r,x))+')</span></div>'; }).join('')+'</div>';
+  h+='<div style="margin-top:'+(pr?'8':'16')+'px;font-size:'+(pr?'11.5':'14')+'px;font-weight:700;color:'+ink+'">Depois da rota</div>'
+    +r.docs.map(function(d){ return '<div style="padding-top:3px;font-size:'+(pr?'11':'14')+'px;color:'+(d.ok?grn:amb)+'">'+(d.ok?'✓ ':'✗ ')+_e0(d.lbl)+(d.pc?' ('+d.pc+(d.pc>1?' peças':' peça')+')':'')+' — '+(d.ok?'tudo localizado no estoque':'incompleto: falta '+_e0(d.falta.map(function(x){return x.ref+' '+(x.cor||'')+' '+_estQtdTxt(x);}).join('; ')))+'</div>'; }).join('');
+  if(r.erros.length) h+='<div style="margin-top:10px;font-size:'+(pr?'10.5':'13')+'px;color:'+amb+'">'+r.erros.map(function(e){return '⚠ '+_e0(e);}).join('<br>')+'</div>';
+  h+='<div style="margin-top:10px;font-size:'+(pr?'9.5':'12')+'px;color:'+mut+'">A base não registra quantas peças há dentro de cada caixa: “tudo localizado” quer dizer que todas as referências/cores estão em alguma caixa. Confira as quantidades na hora; se faltar, use as caixas de “se faltar”.</div>';
+  return h; }
+function estRotaPdf(){ if(!EST_ROTA) return; _openPrint(_prDoc('Rota de separação — Dash',estRotaHtml(EST_ROTA,true),false)); }
 function estMic(){
   var SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR)return;
   var r=new SR(), b=$('estMic'); r.lang='pt-BR'; r.interimResults=false; r.maxAlternatives=1;
@@ -1725,6 +1840,9 @@ function estEditOpen(){
     if(/\d{4}/.test(v.replace(/\s/g,''))||/^(caixa\s*)?[a-z]\s*\d{1,2}$/i.test(v)||(!/\d/.test(v)&&v.length>=4)) t=setTimeout(estGo,450); else estRender(null); });
   q.addEventListener('keydown',function(e){ if(e.key==='Enter'){ clearTimeout(t); estGo(); } });
   $('estGoBtn').onclick=estGo; $('estMic').onclick=estMic; $('estEdit').onclick=estEditOpen;
+  document.querySelectorAll('#estAbas .estAba').forEach(function(b){ b.onclick=function(){ estAba(b.getAttribute('data-aba')); }; });
+  $('estRotaGo').onclick=estRotaGo; $('estRotaPdf').onclick=estRotaPdf;
+  $('estRotaLimpar').onclick=function(){ $('estRotaTxt').value=''; $('estRotaRes').innerHTML=''; $('estRotaPdf').style.display='none'; EST_ROTA=null; try{ localStorage.removeItem('est_rota_txt'); }catch(e){} };
   $('estFotoBtn').onclick=function(){ $('estFoto').click(); };
   $('estFoto').onchange=function(){ var f=this.files&&this.files[0]; this.value=''; if(f) estFoto(f); };
 }());
