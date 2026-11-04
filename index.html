@@ -277,7 +277,11 @@
       <summary style="cursor:pointer">Configuração da publicação (token do GitHub)</summary>
       <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;max-width:560px">
         <div id="ghTokenState"></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="ghTokenInp" type="password" placeholder="cole o token aqui (github_pat_...)" autocomplete="off" style="flex:1;min-width:240px"><button id="ghTokenSave" class="ubtn">Salvar token</button><button id="ghTokenDel" class="ubtn danger">Remover token</button></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="ghTokenInp" type="password" placeholder="cole o token aqui (github_pat_...)" autocomplete="off" style="flex:1;min-width:240px"><button id="ghTokenSave" class="ubtn">Salvar só neste navegador</button><button id="ghTokenDel" class="ubtn danger">Remover deste navegador</button></div>
+        <div id="ghTokenPanel" style="display:none;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface2)">
+          <div style="color:var(--ink);font-size:13px"><b>Guardar no painel para todos</b> — quem movimenta o estoque e quem usa a Produção (checklist compartilhado) passa a usar este token em qualquer computador, sem colar um por um. Ele fica criptografado; vale depois de <b>Publicar alterações</b>.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><button id="ghTokenPanelSave" class="ubtn">Guardar o token acima no painel</button><button id="ghTokenPanelDel" class="ubtn danger">Tirar o token do painel</button></div>
+        </div>
         <div style="font-size:12px;line-height:1.5">O token fica guardado só neste navegador. Para criar: GitHub &rarr; Settings &rarr; Developer settings &rarr; Personal access tokens &rarr; Fine-grained tokens &rarr; Generate new token. Em <i>Repository access</i> escolha só o repositório <b>paineldash</b>; em <i>Permissions</i> &rarr; <i>Contents</i>, marque <b>Read and write</b>.</div>
         <button id="saveFileBtn" class="ubtn" style="align-self:flex-start">&#11015; Baixar o arquivo do painel (alternativa manual)</button>
       </div>
@@ -1447,7 +1451,7 @@ function estRenderMov(){
     }
     h+=((!ghToken()||EST_TOK_EDIT)
       ?'<div style="font-size:12.5px;color:var(--f-amber);margin-top:14px">'+(ghToken()?'Cole o token novo do GitHub:':'Este aparelho ainda não tem o token do GitHub. Cole aqui uma vez:')+' <div style="display:flex;gap:8px;margin-top:6px"><input id="emTok" type="password" placeholder="github_pat_..." style="'+inp+';font-size:14px"><button class="ubtn" id="emTokSave">Salvar</button>'+(ghToken()?'<button class="ubtn" id="emTokCancel">Cancelar</button>':'')+'</div></div>'
-      :'<div style="font-size:12px;color:var(--muted);margin-top:14px">Token do GitHub configurado neste aparelho · <button class="linkbtn" id="emTokChg">trocar token</button></div>')
+      :'<div style="font-size:12px;color:var(--muted);margin-top:14px">'+(GH_PANEL_TOKEN&&!GH_TOK_BAD[GH_PANEL_TOKEN]?'Token do GitHub guardado no painel pelo administrador':'Token do GitHub configurado neste aparelho')+' · <button class="linkbtn" id="emTokChg">trocar token</button></div>')
       +'<button id="emGo" style="width:100%;margin-top:16px;background:var(--f-green);border:none;color:#0c241a;font-weight:700;padding:14px;border-radius:10px;cursor:pointer;font-size:16px">Lançar '+(EST_TAB==='entrada'?'entrada':'saída')+'</button>'
       +'<div id="emSt" style="font-size:14px;margin-top:10px;min-height:16px"></div></details>';
   }
@@ -2029,19 +2033,31 @@ var CONTACTS_KEY='__contatos', CONTACTS={};
 // e-mails dos usuários: KEYS.ct cifrado com a chave CONTACTS_KEY (só quem tem a Base de Dados lê)
 async function loadContacts(){ CONTACTS={}; try{ if(KEYS&&KEYS.ct&&SESSION.slots[CONTACTS_KEY]) CONTACTS=await decJSON(b64d(SESSION.slots[CONTACTS_KEY]),KEYS.ct)||{}; }catch(e){ CONTACTS={}; } }
 async function saveContacts(){ if(SESSION.m&&SESSION.sk&&!SESSION.sk[CONTACTS_KEY]) await adminMaintain(); if(!SESSION.sk||!SESSION.sk[CONTACTS_KEY]) throw new Error('sem a chave dos contatos — entre de novo como administrador.'); KEYS.ct=await encJSON(b64d(SESSION.sk[CONTACTS_KEY]),CONTACTS); USERS_DIRTY=true; }
-function userSlotList(u){
-  if(userCanBase(u)) return SLOTS.map(function(s){return s.key;}).concat([CONTACTS_KEY]).sort();
+// token do GitHub guardado no painel (KEYS.gt): quem grava no GitHub recebe a chave GT_KEY no pacote —
+// administrador/Base, quem movimenta o estoque e quem usa a Produção (checklist compartilhado)
+var GT_KEY='__ghtoken', GH_PANEL_TOKEN='', GH_PANEL_INFO=null;
+function userNeedsGT(u){ var m=Array.isArray(u&&u.modules)?u.modules:[]; return isAdmin(u)||userCanBase(u)||!!(u&&u.estMov)||m.indexOf('producao')>=0||m.indexOf('estoque')>=0; }
+function userSlotList(u){ var l=_userSlotList(u); if(userNeedsGT(u)) l=l.concat([GT_KEY]); return l.sort(); }
+function _userSlotList(u){
+  if(userCanBase(u)) return SLOTS.map(function(s){return s.key;}).concat([CONTACTS_KEY]);
   var m=Array.isArray(u.modules)?u.modules:['relatorios']; if(m.indexOf('relatorios')<0) return [];
   var pks=(u.panels==='*')?Object.keys(PANELS):(u.panels||[]);
-  return SLOTS.filter(function(s){return s.panels.some(function(p){return pks.indexOf(p)>=0;});}).map(function(s){return s.key;}).sort();
+  return SLOTS.filter(function(s){return s.panels.some(function(p){return pks.indexOf(p)>=0;});}).map(function(s){return s.key;});
 }
+async function loadPanelToken(){ GH_PANEL_TOKEN=''; GH_PANEL_INFO=null;
+  try{ if(KEYS&&KEYS.gt&&SESSION.slots[GT_KEY]){ var o=await decJSON(b64d(SESSION.slots[GT_KEY]),KEYS.gt); GH_PANEL_TOKEN=(o&&o.t)||''; GH_PANEL_INFO=o?{by:o.by,ts:o.ts}:null; } }catch(e){} }
+// admin: guarda o token no painel (vale depois de "Publicar alterações")
+async function savePanelToken(t){ if(!SESSION.m) throw new Error('só o administrador logado pode guardar o token no painel.');
+  if(!SESSION.sk[GT_KEY]) await adminMaintain();
+  KEYS.gt=t?await encJSON(b64d(SESSION.sk[GT_KEY]),{t:t,by:(current&&current.name)||currentUserKey,ts:Date.now()}):undefined; if(!t) delete KEYS.gt;
+  await adminMaintain(); USERS_DIRTY=true; await loadPanelToken(); }
 async function unlockUser(u,pass){ var pk=await pwKey(pass,u.k.s,u.k.it); return decObj(pk,u.k.wk); }
 async function openSession(u,ku){
   SESSION={ku:ku,slots:{},m:null,sk:null};
   if(!u.k||!u.k.bd) return;
   var bd=await decJSON(ku,u.k.bd); SESSION.slots=bd.slots||{};
   if(bd.m&&KEYS){ SESSION.m=b64d(bd.m); SESSION.sk=await decJSON(SESSION.m,KEYS.sk); SESSION.slots=Object.assign({},SESSION.sk); await adminMaintain(); }
-  await loadContacts();
+  await loadContacts(); await loadPanelToken();
 }
 async function rebuildBundle(u){
   var ku=await decObj(SESSION.m,u.k.ek); var sl=userSlotList(u); var slots={};
@@ -2058,7 +2074,7 @@ async function setUserPassword(u,pass){
 // admin: cria chaves de slots novos e refaz pacotes desatualizados
 async function adminMaintain(){
   if(!SESSION.m||!KEYS) return false; var changed=false;
-  SLOTS.map(function(s){return s.key;}).concat([CONTACTS_KEY]).forEach(function(k){ if(!SESSION.sk[k]){ SESSION.sk[k]=b64e(rnd(32)); changed=true; } });
+  SLOTS.map(function(s){return s.key;}).concat([CONTACTS_KEY,GT_KEY]).forEach(function(k){ if(!SESSION.sk[k]){ SESSION.sk[k]=b64e(rnd(32)); changed=true; } });
   if(changed) KEYS.sk=await encJSON(SESSION.m,SESSION.sk);
   var ks=Object.keys(USERS);
   for(var i=0;i<ks.length;i++){ var u=USERS[ks[i]]; if(!u.k||!u.k.ek)continue;
@@ -2278,14 +2294,22 @@ async function refreshManifestInfo(){ try{ PUB.manifest=await fetchManifest(); }
 /* ---- publicação direta no GitHub ---- */
 var GH_REPO=(function(){ var h=location.hostname, p=location.pathname.split('/').filter(Boolean); if(/\.github\.io$/i.test(h)&&p.length) return {owner:h.split('.')[0], repo:p[0]}; return {owner:'guilhermeabt', repo:'paineldash'}; })();
 var GH_BRANCH='main', GH_FILE='index.html';
-function ghToken(){ try{ return localStorage.getItem('painelop_ghtoken')||''; }catch(e){ return ''; } }
-function ghTokenUI(){ var s=$('ghTokenState'); if(!s)return; var t=ghToken();
-  s.innerHTML=t?'<span style="color:var(--f-green)">&#10003; Token configurado neste navegador.</span>':'<span style="color:var(--f-amber)">Nenhum token configurado — necessário para publicar.</span>';
+function ghTokenLocal(){ try{ return localStorage.getItem('painelop_ghtoken')||''; }catch(e){ return ''; } }
+// o token do painel vale para todos; o deste navegador fica de reserva (e vice-versa, se um deles vencer)
+var GH_TOK_BAD={};
+function ghTokens(){ return [GH_PANEL_TOKEN,ghTokenLocal()].filter(function(t,i,a){ return t&&a.indexOf(t)===i; }); }
+function ghToken(){ var l=ghTokens(), ok=l.filter(function(t){return !GH_TOK_BAD[t];}); return ok[0]||l[0]||''; }
+function ghTokenUI(){ var s=$('ghTokenState'); if(!s)return; var t=ghToken(), lo=ghTokenLocal();
+  s.innerHTML=(GH_PANEL_TOKEN?'<span style="color:var(--f-green)">&#10003; Token guardado no painel'+(GH_PANEL_INFO&&GH_PANEL_INFO.ts?' (por '+uEsc(GH_PANEL_INFO.by||'')+' em '+fmtTs(GH_PANEL_INFO.ts).split(' ')[0]+')':'')+' — vale para todos que movimentam o estoque e usam a Produção.</span><br>':'<span style="color:var(--f-amber)">Nenhum token guardado no painel: cada computador precisa do seu.</span><br>')
+    +(lo?'<span style="color:var(--f-green)">&#10003; Token configurado neste navegador.</span>':'<span style="color:var(--muted)">Nenhum token só deste navegador.</span>');
+  var bp=$('ghTokenPanel'); if(bp) bp.style.display=SESSION.m?'':'none';
   var b=$('ghTokenBox'); if(b&&!t)b.open=true; }
 async function gh(path,opts){
-  opts=opts||{}; var hd={'Authorization':'Bearer '+ghToken(),'Accept':opts.accept||'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
+  opts=opts||{}; var tok=ghToken(), hd={'Authorization':'Bearer '+tok,'Accept':opts.accept||'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
   if(opts.body)hd['Content-Type']='application/json';
   var r=await fetch('https://api.github.com/repos/'+GH_REPO.owner+'/'+GH_REPO.repo+path,{method:opts.method||'GET',headers:hd,body:opts.body?JSON.stringify(opts.body):undefined,cache:'no-store'});
+  // token vencido: marca e tenta de novo com o outro (painel ↔ navegador), se houver
+  if(r.status===401&&tok){ GH_TOK_BAD[tok]=1; if(ghToken()&&ghToken()!==tok) return gh(path,opts); }
   if(!r.ok){ var msg=''; try{ msg=(await r.json()).message||''; }catch(e){}
     var err=new Error(msg||('HTTP '+r.status)); err.status=r.status; throw err; }
   return opts.accept?r.text():r.json();
@@ -3549,6 +3573,99 @@ function openFichaModal(){
 }
 function ckLoad(){ try{ var o=JSON.parse(localStorage.getItem('prog_checklist')); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
 function ckSave(o){ try{ localStorage.setItem('prog_checklist', JSON.stringify(o)); }catch(e){} }
+
+/* ===== CHECKLIST COMPARTILHADO: o mesmo login vê o mesmo checklist em qualquer computador =====
+   Fica no ramo "checklists" do GitHub, em ck/<id do login>/, criptografado com a chave do login (só quem entra com ele lê).
+   index.json: { keys:{arquivo:{ts,by,del}}, ck:{campo:{ts,v,del}} } — os arquivos (PDF das OPs, Excels) vão em <chave>.bin;
+   as marcações/datas/números do checklist vão campo a campo, então duas pessoas mexendo ao mesmo tempo não se apagam. */
+var CK_SYNC_KEYS=['prog_checklist','prog_pedsel','prog_pecas','prog_ficha','prog_benef','prog_ops','prog_opsger','prog_opsped','prog_estoque','prog_tec','prog_tecnome','prog_reprog','prog_holidays'];
+var CK_BRANCH='checklists', CKS={on:false,uid:'',user:'',meta:null,timer:null,loop:null,busy:false,again:false,applying:false,status:'',quando:0,erro:''};
+var CK_GLOBAL={prog_pedsel:'__PROG_PEDSEL',prog_pecas:'__PROG_PECAS',prog_ficha:'__PROG_FICHA',prog_benef:'__PROG_BENEF',prog_ops:'__PROG_OPS',prog_opsger:'__PROG_OPSGER',prog_opsped:'__PROG_OPSPED',prog_estoque:'__PROG_ESTOQUE',prog_tec:'__TEC_OFICIAL',prog_tecnome:'__TEC_NOME',prog_reprog:'__PROG_REPROG'};
+(function(){ var S=Storage.prototype, si=S.setItem, ri=S.removeItem;
+  S.setItem=function(k,v){ si.apply(this,arguments); try{ if(CKS.on&&!CKS.applying&&this===window.localStorage&&CK_SYNC_KEYS.indexOf(k)>=0) ckSyncMark(k); }catch(e){} };
+  S.removeItem=function(k){ ri.apply(this,arguments); try{ if(CKS.on&&!CKS.applying&&this===window.localStorage&&CK_SYNC_KEYS.indexOf(k)>=0) ckSyncMark(k); }catch(e){} };
+}());
+function _ckLsSet(k,v){ CKS.applying=true; try{ if(v==null) localStorage.removeItem(k); else localStorage.setItem(k,v); }catch(e){} CKS.applying=false; }
+// campos do checklist que valem para todos (a aba aberta é de cada um)
+function _ckFlat(o){ var f={}; (function w(x,p){ Object.keys(x||{}).forEach(function(k){ var v=x[k], q=p?p+'.'+k:k; if(q==='tab') return;
+  if(v&&typeof v==='object'&&!Array.isArray(v)) w(v,q); else f[q]=v; }); })(o,''); return f; }
+function _ckUnflat(f,base){ var o={}; if(base&&base.tab) o.tab=base.tab; Object.keys(f).forEach(function(q){ var ps=q.split('.'), c=o; for(var i=0;i<ps.length-1;i++){ if(!c[ps[i]]||typeof c[ps[i]]!=='object') c[ps[i]]={}; c=c[ps[i]]; } c[ps[ps.length-1]]=f[q]; }); return o; }
+function _ckMetaKey(){ return 'ck_sync_meta:'+CKS.user; }
+function _ckMetaSave(){ try{ localStorage.setItem(_ckMetaKey(),JSON.stringify(CKS.meta)); }catch(e){} }
+function ckSyncMark(k){ var now=Date.now(), M=CKS.meta;
+  if(k==='prog_checklist'){ var nf={}; try{ nf=_ckFlat(JSON.parse(localStorage.getItem(k)||'{}')); }catch(e){}
+    var of=M.ckflat||{}; Object.keys(nf).concat(Object.keys(of)).forEach(function(q){ if(JSON.stringify(nf[q])!==JSON.stringify(of[q])) M.ckts[q]=now; }); M.ckflat=nf; }
+  else M.keys[k]={ts:now};
+  _ckMetaSave(); clearTimeout(CKS.timer); CKS.timer=setTimeout(function(){ ckSyncRun(); },2500); ckSyncUI('alterações para enviar…'); }
+async function _ckSha(s){ return hexOf(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))).slice(0,20); }
+async function _ckGz(str,dir){ var cs=dir?new CompressionStream('gzip'):new DecompressionStream('gzip'), b=dir?new TextEncoder().encode(str):str;
+  var out=await new Response(new Blob([b]).stream().pipeThrough(cs)).arrayBuffer(); return dir?new Uint8Array(out):new TextDecoder().decode(out); }
+async function _ckEnc(str){ var r=await encBytes(SESSION.ku,await _ckGz(str,true)); var u=new Uint8Array(12+r.ct.length); u.set(b64d(r.iv),0); u.set(r.ct,12); return u; }
+async function _ckDec(u8){ return _ckGz(await decBytes(SESSION.ku,b64e(u8.slice(0,12)),u8.slice(12)),false); }
+// lê um arquivo do ramo (bytes); sem token usa a API pública (repositório é público e o conteúdo é cifrado)
+async function _ckRead(path,ref){ var hd={'Accept':'application/vnd.github.raw+json'}, t=ghToken(); if(t) hd['Authorization']='Bearer '+t;
+  var r=await fetch('https://api.github.com/repos/'+GH_REPO.owner+'/'+GH_REPO.repo+'/contents/'+path+'?ref='+ref,{headers:hd,cache:'no-store'});
+  if(r.status===404) return null; if(!r.ok){ var e=new Error('HTTP '+r.status); e.status=r.status; throw e; } return new Uint8Array(await r.arrayBuffer()); }
+async function _ckHead(){ var hd={'Accept':'application/vnd.github+json'}, t=ghToken(); if(t) hd['Authorization']='Bearer '+t;
+  var r=await fetch('https://api.github.com/repos/'+GH_REPO.owner+'/'+GH_REPO.repo+'/git/ref/heads/'+CK_BRANCH,{headers:hd,cache:'no-store'});
+  if(r.status===404) return null; if(!r.ok){ var e=new Error('HTTP '+r.status); e.status=r.status; throw e; } return (await r.json()).object.sha; }
+async function _ckIndex(sha){ if(!sha) return null; var b=await _ckRead('ck/'+CKS.uid+'/index.bin',sha); return b?JSON.parse(await _ckDec(b)):null; }
+// traz para este computador o que está mais novo no GitHub
+async function _ckApply(ix,sha){ if(!ix) return false; var M=CKS.meta, mud=false, globs=[];
+  for(var k of Object.keys(ix.keys||{})){ if(k==='prog_checklist') continue; var r=ix.keys[k], l=M.keys[k]||{ts:0}; if(!(r.ts>l.ts)) continue;
+    if(r.del) _ckLsSet(k,null); else { var b=await _ckRead('ck/'+CKS.uid+'/'+k+'.bin',sha); if(!b) continue; _ckLsSet(k,await _ckDec(b)); }
+    M.keys[k]={ts:r.ts}; mud=true; if(CK_GLOBAL[k]) globs.push(k); }
+  var cur={}; try{ cur=JSON.parse(localStorage.getItem('prog_checklist')||'{}')||{}; }catch(e){}
+  var f=_ckFlat(cur), mc=false;
+  Object.keys(ix.ck||{}).forEach(function(q){ var r=ix.ck[q]; if(!(r.ts>(M.ckts[q]||0))) return; if(r.del) delete f[q]; else f[q]=r.v; M.ckts[q]=r.ts; mc=true; });
+  if(mc){ _ckLsSet('prog_checklist',JSON.stringify(_ckUnflat(f,cur))); M.ckflat=_ckFlat(_ckUnflat(f,cur)); mud=true; }
+  _ckMetaSave();
+  if(mud){ globs.forEach(function(k){ window[CK_GLOBAL[k]]=null; if(k==='prog_ops') window.__PROG_OPS_DT=''; }); try{ loadProgOps(); loadProgExtra(); }catch(e){}
+    var ae=document.activeElement, digit=ae&&/INPUT|TEXTAREA|SELECT/.test(ae.tagName)&&$('prodContent')&&$('prodContent').contains(ae);
+    if($('ckDate')&&!digit) try{ renderChecklist(); }catch(e){} }
+  return mud; }
+// envia o que mudou aqui e traz o que mudou lá (refaz em cima da versão mais nova se duas pessoas gravarem juntas)
+async function ckSyncRun(){ if(!CKS.on) return; if(CKS.busy){ CKS.again=true; return; } CKS.busy=true; CKS.again=false;
+  try{
+    for(var t=0;t<4;t++){
+      var sha=await _ckHead(), ix=await _ckIndex(sha)||{v:1,keys:{},ck:{}}, M=CKS.meta, novo=JSON.parse(JSON.stringify(ix)), tree=[], who=(current&&current.name)||CKS.user;
+      for(var k of Object.keys(M.keys)){ if(k==='prog_checklist') continue; var l=M.keys[k], r=ix.keys[k]||{ts:0}; if(!(l.ts>r.ts)) continue;
+        var v=null; try{ v=localStorage.getItem(k); }catch(e){}
+        if(v==null) novo.keys[k]={ts:l.ts,by:who,del:true};
+        else { var bl=await gh('/git/blobs',{method:'POST',body:{content:b64e(await _ckEnc(v)),encoding:'base64'}}); tree.push({path:'ck/'+CKS.uid+'/'+k+'.bin',mode:'100644',type:'blob',sha:bl.sha}); novo.keys[k]={ts:l.ts,by:who}; } }
+      var fl=M.ckflat||{}; Object.keys(M.ckts).forEach(function(q){ var lt=M.ckts[q], r=(ix.ck||{})[q]; if(r&&!(lt>r.ts)) return; novo.ck[q]=(q in fl)?{ts:lt,v:fl[q]}:{ts:lt,del:true}; });
+      if(!tree.length&&JSON.stringify(novo)===JSON.stringify(ix)){ await _ckApply(ix,sha); break; } // nada para enviar: só traz
+      if(!ghToken()){ await _ckApply(ix,sha); throw new Error('sem token do GitHub — peça ao administrador para guardar o token no painel.'); }
+      var bi=await gh('/git/blobs',{method:'POST',body:{content:b64e(await _ckEnc(JSON.stringify(novo))),encoding:'base64'}});
+      tree.push({path:'ck/'+CKS.uid+'/index.bin',mode:'100644',type:'blob',sha:bi.sha});
+      var body={tree:tree}; if(sha) body.base_tree=(await gh('/git/commits/'+sha)).tree.sha;
+      var tr=await gh('/git/trees',{method:'POST',body:body});
+      var nc=await gh('/git/commits',{method:'POST',body:{message:'Checklist: '+who,tree:tr.sha,parents:sha?[sha]:[]}});
+      try{ if(sha) await gh('/git/refs/heads/'+CK_BRANCH,{method:'PATCH',body:{sha:nc.sha,force:false}}); else await gh('/git/refs',{method:'POST',body:{ref:'refs/heads/'+CK_BRANCH,sha:nc.sha}}); }
+      catch(e){ if(e.status===422) continue; throw e; }
+      await _ckApply(novo,nc.sha); break; }
+    CKS.quando=Date.now(); CKS.erro=''; ckSyncUI('');
+  }catch(e){ CKS.erro=(e&&e.status===401)?'token do GitHub vencido — peça ao administrador um novo':((e&&e.message)||String(e)); ckSyncUI(''); }
+  finally{ CKS.busy=false; if(CKS.again) setTimeout(ckSyncRun,300); } }
+function ckSyncUI(msg){ var el=$('ckSyncSt'); if(!el) return; if(!CKS.on){ el.textContent=''; return; }
+  el.style.color=CKS.erro?'var(--f-amber)':'var(--muted)';
+  el.textContent=CKS.erro?'☁ Não sincronizou: '+CKS.erro:(msg?'☁ '+msg:(CKS.quando?'☁ Compartilhado com o login '+((current&&current.name)||CKS.user)+' · sincronizado às '+fmtTs(CKS.quando).split(' ')[1]:'☁ Sincronizando…')); }
+async function ckSyncStart(){ ckSyncStop();
+  if(!current||!SESSION.ku||!window.CompressionStream||!crypto.subtle) return;
+  var m=Array.isArray(current.modules)?current.modules:[]; if(!isAdmin(current)&&m.indexOf('producao')<0) return;
+  CKS.user=currentUserKey; CKS.uid=await _ckSha('ck:'+currentUserKey);
+  var meta=null; try{ meta=JSON.parse(localStorage.getItem(_ckMetaKey())||'null'); }catch(e){}
+  var dono=''; try{ dono=localStorage.getItem('ck_sync_owner')||''; }catch(e){}
+  if(dono&&dono!==currentUserKey&&!meta){ CK_SYNC_KEYS.forEach(function(k){ _ckLsSet(k,null); window[CK_GLOBAL[k]||'_x']=null; }); } // computador de outro login: começa limpo
+  if(!meta){ meta={keys:{},ckts:{},ckflat:{}}; // primeira vez neste computador: o que já existe aqui só vale se o GitHub não tiver nada
+    CK_SYNC_KEYS.forEach(function(k){ var v=null; try{ v=localStorage.getItem(k); }catch(e){} if(v==null) return;
+      if(k==='prog_checklist'){ try{ var f=_ckFlat(JSON.parse(v)); meta.ckflat=f; Object.keys(f).forEach(function(q){ meta.ckts[q]=1; }); }catch(e){} } else meta.keys[k]={ts:1}; }); }
+  CKS.meta=meta; CKS.on=true; _ckMetaSave(); try{ localStorage.setItem('ck_sync_owner',currentUserKey); }catch(e){}
+  ckSyncRun();
+  CKS.loop=setInterval(function(){ if(document.visibilityState==='visible') ckSyncRun(); },60000);
+  window.addEventListener('focus',_ckFocus); }
+function _ckFocus(){ if(CKS.on&&Date.now()-CKS.quando>15000) ckSyncRun(); }
+function ckSyncStop(){ CKS.on=false; clearTimeout(CKS.timer); clearInterval(CKS.loop); CKS.loop=null; window.removeEventListener('focus',_ckFocus); CKS.quando=0; CKS.erro=''; }
 function ckVals(){ var ps=window.__PROG_PEDSEL||[]; var peds={},pecas=0,valor=0; ps.forEach(function(r){ if(r.pedido)peds[r.pedido]=1; pecas+=r.qtd||0; valor+=r.valor||0; }); return {loaded:ps.length>0, pedidos:Object.keys(peds).length, pecas:pecas, valor:valor}; }
 function _kc(o){ return o?Object.keys(o).length:0; }
 function ckApplyAutos(s){ if(!s.dates)s.dates={}; CKL_STEPS.forEach(function(x){ if(x.auto && !(s.manual&&s.manual[x.id])){ var v=x.auto()||''; if(v)s.dates[x.id]=v; } }); }
@@ -3678,9 +3795,11 @@ function renderChecklist(){
   host.innerHTML='<div style="max-width:820px"><h2 style="margin:0 0 4px;color:var(--ink);font-weight:600">Checklist</h2>'
     +'<p style="color:var(--muted);margin:0 0 16px">Sua base da programação: faça os inputs e acompanhe as etapas. Fica salvo até você clicar em Limpar checklist.</p>'
     +'<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:16px"><label style="color:var(--muted);font-size:13px">Checklist iniciado em <input type="date" id="ckDate" value="'+(st.date||'')+'" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:7px;padding:6px 9px;margin-left:6px"></label><button id="ckRefresh" class="ubtn" style="background:var(--f-green);color:#0c241a;border:none;font-weight:600">\u21bb Atualizar análises</button><button id="ckClear" class="ubtn danger">Limpar checklist</button></div>'
+    +'<div id="ckSyncSt" style="font-size:12px;color:var(--muted);margin:-8px 0 12px;min-height:14px"></div>'
     +'<div style="display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:16px;flex-wrap:wrap">'+tabsHtml+'</div>'
     +body+'</div>';
   host.querySelectorAll('.cktab').forEach(function(b){ b.onclick=function(){ var s=ckLoad(); s.tab=b.getAttribute('data-tab'); ckSave(s); renderChecklist(); }; });
+  ckSyncUI('');
   var dt=$('ckDate'); if(dt)dt.onchange=function(){ var s=ckLoad(); s.date=dt.value; ckSave(s); };
   host.querySelectorAll('.ckbx').forEach(function(b){ b.onchange=function(){ var s=ckLoad(); if(!s.steps)s.steps={}; s.steps[b.getAttribute('data-id')]=b.checked; ckSave(s); renderChecklist(); }; });
   host.querySelectorAll('.ckin').forEach(function(inp){ inp.onchange=function(e){ var f=e.target.files&&e.target.files[0]; if(!f)return; var id=inp.getAttribute('data-id'); var step=null; CKL_STEPS.forEach(function(x){if(x.id===id)step=x;}); if(!step)return; step.load(f,function(){ var s=ckLoad(); if(!s.steps)s.steps={}; s.steps[id]=true; ckApplyAutos(s); ckSave(s); renderChecklist(); }); }; });
@@ -3689,17 +3808,21 @@ function renderChecklist(){
   host.querySelectorAll('.cktbl').forEach(function(inp){ inp.onchange=function(){ var s=ckLoad(); if(!s.table)s.table={}; var id=inp.getAttribute('data-id'), ri=inp.getAttribute('data-row'), ck=inp.getAttribute('data-col'); s.table[id]=s.table[id]||{}; s.table[id][ri]=s.table[id][ri]||{}; s.table[id][ri][ck]=inp.value; ckSave(s); }; });
   host.querySelectorAll('.cknum').forEach(function(inp){ inp.onchange=function(){ var s=ckLoad(); if(!s.nums)s.nums={}; s.nums[inp.getAttribute('data-id')]=inp.value; ckSave(s); renderChecklist(); }; });
   var rf=$('ckRefresh'); if(rf)rf.onclick=function(){ var s=ckLoad(); ckApplyAutos(s); ckSave(s); renderChecklist(); };
-  var cl=$('ckClear'); if(cl)cl.onclick=function(){ if(confirm('Limpar o checklist? Isso apaga a data, as marcações e os arquivos carregados no checklist.')){ ['prog_checklist','prog_pedsel','prog_pecas','prog_ficha','prog_benef','prog_ops','prog_opsger','prog_opsped','prog_estoque','prog_tec','prog_tecnome','prog_reprog'].forEach(function(k){ try{localStorage.removeItem(k);}catch(e){} }); window.__PROG_PEDSEL=null; window.__PROG_PECAS=null; window.__PROG_FICHA=null; window.__PROG_BENEF=null; window.__PROG_OPS=null; window.__PROG_OPS_DT=''; window.__PROG_OPSGER=null; window.__PROG_OPSPED=null; window.__PROG_ESTOQUE=null; window.__TEC_OFICIAL=null; window.__TEC_NOME=null; window.__PROG_REPROG=null; renderChecklist(); } };
+  var cl=$('ckClear'); if(cl)cl.onclick=function(){ if(confirm('Limpar o checklist? Isso apaga a data, as marcações e os arquivos carregados no checklist'+(CKS.on?' — para todos que usam este login, em qualquer computador.':'.'))){ ['prog_checklist','prog_pedsel','prog_pecas','prog_ficha','prog_benef','prog_ops','prog_opsger','prog_opsped','prog_estoque','prog_tec','prog_tecnome','prog_reprog'].forEach(function(k){ try{localStorage.removeItem(k);}catch(e){} }); window.__PROG_PEDSEL=null; window.__PROG_PECAS=null; window.__PROG_FICHA=null; window.__PROG_BENEF=null; window.__PROG_OPS=null; window.__PROG_OPS_DT=''; window.__PROG_OPSGER=null; window.__PROG_OPSPED=null; window.__PROG_ESTOQUE=null; window.__TEC_OFICIAL=null; window.__TEC_NOME=null; window.__PROG_REPROG=null; renderChecklist(); } };
 }
 function enterProd(){ if(!prodActive)prodActive=PRODSCREENS[0][0]; renderProdNav(); openProd(prodActive); }
 
-function startApp(user){ current=user; if(typeof SNAP_MODE!=='undefined'&&SNAP_MODE){ enterRelatorios(user); return; } showModules(); }
+function startApp(user){ current=user; if(typeof SNAP_MODE!=='undefined'&&SNAP_MODE){ enterRelatorios(user); return; } showModules(); try{ ckSyncStart(); }catch(e){} }
 (function(){
   var nb=document.getElementById('newUserBtn'); if(nb)nb.onclick=function(){ openUserForm(null); };
   var sf=document.getElementById('saveFileBtn'); if(sf)sf.onclick=downloadUsersFile;
   var pb=document.getElementById('publishUsersBtn'); if(pb)pb.onclick=publishUsers;
   var ts=document.getElementById('ghTokenSave'); if(ts)ts.onclick=function(){ var v=($('ghTokenInp').value||'').trim(); if(!v){ alert('Cole o token primeiro.'); return; } try{ localStorage.setItem('painelop_ghtoken',v); }catch(e){} $('ghTokenInp').value=''; ghTokenUI(); pubStatus(''); };
   var td=document.getElementById('ghTokenDel'); if(td)td.onclick=function(){ try{ localStorage.removeItem('painelop_ghtoken'); }catch(e){} ghTokenUI(); };
+  var tp=document.getElementById('ghTokenPanelSave'); if(tp)tp.onclick=async function(){ var v=($('ghTokenInp').value||'').trim()||ghTokenLocal(); if(!v){ alert('Cole o token no campo acima primeiro.'); return; }
+    try{ await savePanelToken(v); $('ghTokenInp').value=''; delete GH_TOK_BAD[v]; ghTokenUI(); renderUsers(); pubStatus('Token guardado no painel. Clique em <b>Publicar alterações</b> para valer para todos.','var(--f-amber)'); }catch(e){ alert((e&&e.message)||e); } };
+  var tq=document.getElementById('ghTokenPanelDel'); if(tq)tq.onclick=async function(){ if(!confirm('Tirar o token do painel? Cada computador vai precisar do seu token de novo.')) return;
+    try{ await savePanelToken(''); ghTokenUI(); renderUsers(); pubStatus('Token tirado do painel. Clique em <b>Publicar alterações</b>.','var(--f-amber)'); }catch(e){ alert((e&&e.message)||e); } };
   var ml=document.getElementById('modLogout'); if(ml)ml.onclick=function(){ $('modules').style.display='none'; var lb=document.getElementById('logoutBtn'); if(lb)lb.click(); };
   var tm=document.getElementById('toModules'); if(tm)tm.onclick=showModules;
   var pl=document.getElementById('prodLogout'); if(pl)pl.onclick=function(){ $('modProd').style.display='none'; var lb=document.getElementById('logoutBtn'); if(lb)lb.click(); };
@@ -3777,7 +3900,7 @@ $('recForm').addEventListener('submit',async function(e){
 });
 document.getElementById('logoutBtn').addEventListener('click',function(){
   current=null; currentUserKey=''; APPMODE=''; BASE_STASH=null; REL_STASH=null; REL_DIR=null; REL_NOTE=''; FC={fech:null,roms:[]}; fcRender(); CONTACTS={}; LOCAL={};
-  SESSION={ku:null,slots:{},m:null,sk:null}; PUB={manifest:null,loading:false,prog:'',err:'',noKey:[],fetchedAt:0};
+  SESSION={ku:null,slots:{},m:null,sk:null}; PUB={manifest:null,loading:false,prog:'',err:'',noKey:[],fetchedAt:0}; GH_PANEL_TOKEN=''; GH_PANEL_INFO=null; ckSyncStop();
   Object.keys(FILES).forEach(k=>delete FILES[k]); Object.keys(applied).forEach(k=>delete applied[k]);
   try{ localStorage.removeItem('painelop_user'); localStorage.removeItem('painelop_ku'); }catch(e){}
   $('app').style.display='none';
