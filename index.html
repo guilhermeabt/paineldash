@@ -2812,6 +2812,15 @@ function parsePedSel(aoa){
     out.push({pedido:ped,nome:String(g(r,'nome')||'').trim(),prev:d(g(r,'previsao_entrega')),programado:String(g(r,'programado')||'').trim(),tipo:String(g(r,'desc_tipo')||'').trim(),lote:String(g(r,'lote')||'').trim(),qtd:parseInt(g(r,'tot_qtde_entregar'),10)||0,valor:(function(vv){return (typeof vv==='number')?vv:(parseFloat(String(vv||'').replace(/\./g,'').replace(',','.'))||0);})(g(r,'tot_valor_entregar'))}); }
   return out;
 }
+// mesmo nº de pedido em linhas de clientes diferentes = nº errado no Excel (o painel conta pedidos distintos)
+function pedSelRepetidos(){ var g={}, ord=[];
+  (window.__PROG_PEDSEL||[]).forEach(function(r,i){ if(!g[r.pedido]){ g[r.pedido]=[]; ord.push(r.pedido); } g[r.pedido].push(r.nome||'(sem nome)'); });
+  return ord.filter(function(p){ var ns=g[p].map(function(n){return n.trim().toUpperCase();}); return ns.some(function(n){return n!==ns[0];}); }).map(function(p){ return {pedido:p,nomes:g[p]}; }); }
+function pedSelInfo(){ var ps=window.__PROG_PEDSEL||[], d={}; ps.forEach(function(r){ d[r.pedido]=1; }); var n=Object.keys(d).length, rep=pedSelRepetidos();
+  return (n!==ps.length?ps.length+' linhas · ':'')+n+' pedidos'; }
+function pedSelAviso(){ var rep=pedSelRepetidos(); if(!rep.length) return '';
+  return '⚠ Número de pedido repetido com clientes diferentes — o painel conta como 1 pedido só. Confira no Matriz, corrija o Excel e suba de novo: '
+    +rep.map(function(x){ return '<b>'+x.pedido+'</b> ('+x.nomes.map(function(s){return uEsc(s);}).join(' / ')+')'; }).join('; '); }
 function parsePecas(aoa){
   var hi=findHeader(aoa,['referencia','necessidade']); if(hi<0)return {};
   var m=colmap(aoa,hi); function g(r,k){var i=m[k];return i==null?'':r[i];}
@@ -3546,7 +3555,7 @@ function ckApplyAutos(s){ if(!s.dates)s.dates={}; CKL_STEPS.forEach(function(x){
 var CKL_DAYS=[['qua','Quarta-feira','#2eab86'],['qui','Quinta-feira','#4aa3e0'],['sex','Sexta-feira','#e0962d'],['seg','Segunda-feira','#b06ad0']];
 var CKL_STEPS=[
   {day:'qua',id:'in_pedsel',type:'input',label:'Fazer o input do arquivo Pedidos Selecionados Quarta',accept:'.xls,.xlsx',
-    loaded:function(){return (window.__PROG_PEDSEL||[]).length>0;}, info:function(){return (window.__PROG_PEDSEL||[]).length+' pedidos';},
+    loaded:function(){return (window.__PROG_PEDSEL||[]).length>0;}, info:function(){ return pedSelInfo(); }, warn:function(){ return pedSelAviso(); },
     load:function(f,cb){ readXlsx(f,function(aoa){ var r=parsePedSel(aoa); window.__PROG_PEDSEL=r; try{localStorage.setItem('prog_pedsel',JSON.stringify(r));}catch(e){} cb(); },cb); }},
   {day:'qua',id:'qtd_pedidos',type:'auto',label:'Quantidade de pedidos liberados para programar',get:function(v){return v.pedidos;}},
   {day:'qua',id:'qtd_pecas',type:'auto',label:'Quantidade de peças liberadas para programar',get:function(v){return v.pecas;}},
@@ -3648,7 +3657,8 @@ function renderChecklist(){
     if(s.type==='auto'){ var has,val; if(s.compute){ var c=s.compute(); has=c.has; val=c.value; } else { has=V.loaded; val=s.get(V); } var disp=has?(s.money?('R$ '+Number(val).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})):Number(val).toLocaleString('pt-BR')):'—';
       return wrap+'<span style="width:18px;text-align:center;font-size:15px;color:'+(has?'#2eab86':'var(--muted)')+'">'+(has?'✓':'○')+'</span>'+num+'<span style="color:var(--ink);flex:1">'+s.label+'</span><span style="font-weight:700;color:var(--ink);font-size:16px">'+disp+'</span></div>'; }
     if(s.type==='input'){ var done=!!st.steps[s.id]; var info=s.loaded()?s.info():'não carregado';
-      return wrap+'<span style="width:18px;text-align:center;font-size:15px;color:'+(done?'#2eab86':'var(--muted)')+'">'+(done?'✓':'○')+'</span>'+num+'<span style="color:var(--ink);flex:1">'+s.label+'</span><span style="color:var(--muted);font-size:12px;margin-right:4px">'+info+'</span><label class="ubtn" style="cursor:pointer">Selecionar<input type="file" class="ckin" data-id="'+s.id+'" accept="'+s.accept+'" style="display:none"></label></div>'; }
+      return wrap+'<span style="width:18px;text-align:center;font-size:15px;color:'+(done?'#2eab86':'var(--muted)')+'">'+(done?'✓':'○')+'</span>'+num+'<span style="color:var(--ink);flex:1">'+s.label+'</span><span style="color:var(--muted);font-size:12px;margin-right:4px">'+info+'</span><label class="ubtn" style="cursor:pointer">Selecionar<input type="file" class="ckin" data-id="'+s.id+'" accept="'+s.accept+'" style="display:none"></label></div>'
+        +(s.warn&&s.loaded()&&s.warn()?'<div style="margin:2px 0 8px 46px;padding:8px 12px;border-radius:8px;background:rgba(224,150,45,.12);border:1px solid rgba(224,150,45,.45);color:var(--f-amber);font-size:12.5px;line-height:1.5">'+s.warn()+'</div>':''); }
     if(s.type==='report'){ var d2=!!st.steps[s.id];
       return wrap+'<input type="checkbox" class="ckbx" data-id="'+s.id+'" '+(d2?'checked':'')+' style="width:18px;height:18px;cursor:pointer;accent-color:#2eab86">'+num+'<span style="color:var(--ink);flex:1'+(d2?';text-decoration:line-through;opacity:.55':'')+'">'+s.label+'</span><button class="ubtn ckrep" data-id="'+s.id+'">'+s.btn+'</button></div>'; }
     if(s.type==='number'){ var nv=(st.nums&&st.nums[s.id]!=null)?st.nums[s.id]:''; var ndone=nv!=='';
