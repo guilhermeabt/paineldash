@@ -2363,7 +2363,8 @@ function downloadUsersFile(){
   }catch(e){ alert('Erro ao gerar o arquivo: '+(e&&e.message||e)); }
 }
 var PRODSCREENS=[
- ['checklist','Checklist','&#9989;']
+ ['checklist','Checklist','&#9989;'],
+ ['previsao','Previsão de entrega','&#128197;']
 ];
 var prodActive=null;
 function renderProdNav(){
@@ -2378,6 +2379,7 @@ function openProd(key){
   prodActive=key; renderProdNav();
   if(key==='input_arquivos'){ renderInputArquivos(); return; }
   if(key==='checklist'){ renderChecklist(); return; }
+  if(key==='previsao'){ renderPrevisao(); return; }
   if(key==='auditoria'){ renderAuditoria(); return; }
   if(key==='impressao'){ renderImpressao(); return; }
   if(key==='cortar_junto'){ renderCortarJunto(); return; }
@@ -3484,7 +3486,30 @@ var CAL_HOLIDAYS_DEFAULT={
   '2026-11-20':'Consciência Negra (nacional)',
   '2026-12-08':'Imaculada Conceição (BH)',
   '2026-12-12':'Aniversário de Belo Horizonte (BH)',
-  '2026-12-25':'Natal (nacional)'
+  '2026-12-23':'Recesso de fim de ano (Dash)',
+  '2026-12-24':'Recesso de fim de ano (Dash)',
+  '2026-12-25':'Natal (nacional)',
+  '2026-12-28':'Recesso de fim de ano (Dash)',
+  '2026-12-29':'Recesso de fim de ano (Dash)',
+  '2026-12-30':'Recesso de fim de ano (Dash)',
+  '2026-12-31':'Recesso de fim de ano (Dash)',
+  '2027-01-01':'Confraternização Universal (nacional)',
+  '2027-02-08':'Carnaval',
+  '2027-02-09':'Carnaval',
+  '2027-02-10':'Quarta-feira de Cinzas',
+  '2027-03-26':'Sexta-feira Santa (nacional)',
+  '2027-04-21':'Tiradentes (nacional)',
+  '2027-05-01':'Dia do Trabalho (nacional)',
+  '2027-05-27':'Corpus Christi (BH)',
+  '2027-08-15':'Assunção de Nossa Senhora — padroeira de BH (BH)',
+  '2027-09-07':'Independência (nacional)',
+  '2027-10-12':'Nossa Senhora Aparecida (nacional)',
+  '2027-11-02':'Finados (nacional)',
+  '2027-11-15':'Proclamação da República (nacional)',
+  '2027-11-20':'Consciência Negra (nacional)',
+  '2027-12-08':'Imaculada Conceição (BH)',
+  '2027-12-12':'Aniversário de Belo Horizonte (BH)',
+  '2027-12-25':'Natal (nacional)'
 };
 /* Ajustes do usuário: {extra:{iso:label}, removed:{iso:1}} em localStorage 'prog_holidays' */
 function _calHolLoad(){ try{ var o=JSON.parse(localStorage.getItem('prog_holidays')); o=o&&typeof o==='object'?o:{}; o.extra=o.extra||{}; o.removed=o.removed||{}; return o; }catch(e){ return {extra:{},removed:{}}; } }
@@ -3551,8 +3576,8 @@ function calContent(dark){
   return cal + _calHolEditorHTML();
 }
 function calBody(dark){ return '<div id="calWrap">'+calContent(dark)+'</div>'; }
-function _calWire(m){
-  function refresh(){ var w=m.querySelector('#calWrap'); if(w){ w.innerHTML=calContent(true); _calWire(m); } }
+function _calWire(m,onChange){
+  function refresh(){ if(onChange){ onChange(); return; } var w=m.querySelector('#calWrap'); if(w){ w.innerHTML=calContent(true); _calWire(m); } }
   var add=m.querySelector('#calHolAdd');
   if(add) add.onclick=function(){ var dt=m.querySelector('#calHolDate'), nm=m.querySelector('#calHolName'); var iso=dt&&dt.value; if(!iso){ alert('Escolha uma data.'); return; } var o=_calHolLoad(); if(o.removed[iso]) delete o.removed[iso]; o.extra[iso]=(nm&&nm.value.trim())||'Feriado (manual)'; _calHolSave(o); refresh(); };
   var rst=m.querySelector('#calHolReset');
@@ -3566,6 +3591,57 @@ function calInnerPrint(){
 }
 function printCalendar(){ if(!computeCorteCalendar()){ alert('Suba o 08 (Acompanhamento de Beneficiador) no checklist.'); return; } _openPrint(_prDoc('Calendário de corte e facção — Dash', calInnerPrint(), true)); }
 function openCalendarModal(){ var m=openProgModal(calBody(true), printCalendar); _calWire(m); }
+
+/* ===== PREVISÃO DE ENTREGA: data de liberação → encerramento da produção (+30 dias úteis) =====
+   Substitui a planilha "Datas - Previsão de Entrega": 30 liberações (dias úteis seguidos a partir da data inicial,
+   em 6 colunas de 5) e, ao lado, o encerramento = WORKDAY(liberação, 30, feriados). Feriados = os do calendário de corte. */
+function _pvLoad(){ var o={}; try{ o=JSON.parse(localStorage.getItem('prog_prev'))||{}; }catch(e){} return o; }
+function _pvSave(o){ try{ localStorage.setItem('prog_prev',JSON.stringify(o)); }catch(e){} }
+function _pvProxSegunda(){ var d=new Date(); d.setHours(0,0,0,0); do{ d.setDate(d.getDate()+1); }while(d.getDay()!==1); return _calISO(d); }
+function _pvUtil(d){ return !_calWknd(d)&&!_isHol(_calISO(d)); }
+function computePrevisao(inicioISO,dias,semanas){
+  var d=new Date(inicioISO+'T00:00:00'); if(isNaN(d)) return null; var libs=[];
+  while(libs.length<semanas*5){ if(_pvUtil(d)) libs.push(new Date(d.getTime())); d.setDate(d.getDate()+1); }
+  var cols=[]; for(var i=0;i<semanas;i++) cols.push(libs.slice(i*5,i*5+5).map(function(l){ return {lib:l,enc:_calAddUteis(l,dias)}; }));
+  return cols; }
+var _PV_DIA=['dom','seg','ter','qua','qui','sex','sáb'];
+function _pvData(d,dia,longo){ return (dia?_PV_DIA[d.getDay()]+' ':'')+('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+(longo?d.getFullYear():String(d.getFullYear()).slice(-2)); }
+// uma tabela: 6 pares de colunas (Data liberação | Enc. da produção) × 5 linhas, igual à planilha
+function _pvTabela(cols,pr,fs){ var bd=pr?'#999':'var(--line)', hb=pr?'#e9e9e9':'var(--surface2)', ink=pr?'#111':'var(--ink)', mut=pr?'#444':'var(--muted)', enc=pr?'#0b4f8a':'var(--f-green)';
+  var th='border:1px solid '+bd+';padding:'+(pr?'3px 4px':'7px 8px')+';text-align:center;background:'+hb+';color:'+mut+';font-weight:700;font-size:'+(fs*0.82)+'px';
+  var td='border:1px solid '+bd+';padding:'+(pr?'3px 4px':'7px 8px')+';text-align:center;font-size:'+fs+'px;white-space:nowrap';
+  var h='<table style="width:100%;border-collapse:collapse'+(pr?';table-layout:fixed':'')+'"><thead><tr>'+cols.map(function(c,i){ return '<th style="'+th+(i?';border-left:2px solid '+(pr?'#555':'var(--muted)'):'')+'">Data liberação</th><th style="'+th+'">Enc. da produção</th>'; }).join('')+'</tr></thead><tbody>';
+  for(var r=0;r<5;r++) h+='<tr>'+cols.map(function(c,i){ var x=c[r]; return x?'<td style="'+td+';color:'+ink+(i?';border-left:2px solid '+(pr?'#555':'var(--muted)'):'')+'">'+_pvData(x.lib,!pr||fs>=11)+'</td><td style="'+td+';color:'+enc+';font-weight:700">'+_pvData(x.enc,!pr||fs>=11)+'</td>':'<td style="'+td+'"></td><td style="'+td+'"></td>'; }).join('')+'</tr>';
+  return h+'</tbody></table>'; }
+function renderPrevisao(){
+  var host=$('prodContent'), o=_pvLoad(), ini=o.inicio||_pvProxSegunda(), dias=o.dias||30, sem=o.semanas||6, cop=o.copias||5;
+  var cols=computePrevisao(ini,dias,sem), inp='background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:7px;padding:7px 9px;font-size:14px';
+  var ateEnc=cols?cols[cols.length-1][cols[cols.length-1].length-1]:null;
+  host.innerHTML='<div style="max-width:1100px"><h2 style="margin:0 0 4px;color:var(--ink);font-weight:600">Previsão de entrega</h2>'
+    +'<p style="color:var(--muted);font-size:13px;margin:0 0 14px">Para cada data de liberação do pedido, o encerramento da produção = liberação + <b>'+dias+' dias úteis</b> (pula sábado, domingo e feriados).</p>'
+    +'<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">'
+      +'<label style="font-size:12.5px;color:var(--muted)">Data inicial (1ª liberação)<br><input type="date" id="pvIni" value="'+ini+'" style="'+inp+'"></label>'
+      +'<label style="font-size:12.5px;color:var(--muted)">Dias úteis até o encerramento<br><input type="number" id="pvDias" min="1" max="120" value="'+dias+'" style="'+inp+';width:90px"></label>'
+      +'<label style="font-size:12.5px;color:var(--muted)">Semanas na tabela<br><input type="number" id="pvSem" min="1" max="12" value="'+sem+'" style="'+inp+';width:80px"></label>'
+      +'<label style="font-size:12.5px;color:var(--muted)">Cópias na folha impressa<br><input type="number" id="pvCop" min="1" max="8" value="'+cop+'" style="'+inp+';width:80px"></label>'
+      +'<button id="pvPrint" class="ubtn" style="background:var(--f-green);color:#0c241a;border:none;font-weight:600;padding:9px 16px">🖨 Imprimir / PDF</button>'
+    +'</div>'
+    +(cols?'<div style="overflow:auto">'+_pvTabela(cols,false,14)+'</div>'
+      +'<div style="color:var(--muted);font-size:12.5px;margin-top:8px">Liberações de '+_pvData(cols[0][0].lib,false,true)+' a '+_pvData(cols[cols.length-1][cols[cols.length-1].length-1].lib,false,true)+' · último encerramento '+_pvData(ateEnc.enc,false,true)+'.</div>'
+      :'<div style="color:var(--f-amber)">Escolha a data inicial.</div>')
+    +'<div id="pvHol">'+_calHolEditorHTML()+'</div></div>';
+  function salvar(){ var n=_pvLoad(); n.inicio=$('pvIni').value||ini; n.dias=Math.max(1,parseInt($('pvDias').value,10)||30); n.semanas=Math.min(12,Math.max(1,parseInt($('pvSem').value,10)||6)); n.copias=Math.min(8,Math.max(1,parseInt($('pvCop').value,10)||1)); _pvSave(n); renderPrevisao(); }
+  ['pvIni','pvDias','pvSem'].forEach(function(id){ $(id).onchange=salvar; });
+  $('pvCop').onchange=function(){ var n=_pvLoad(); n.copias=Math.min(8,Math.max(1,parseInt($('pvCop').value,10)||1)); _pvSave(n); };
+  $('pvPrint').onclick=function(){ var n=_pvLoad(); n.copias=Math.min(8,Math.max(1,parseInt($('pvCop').value,10)||1)); _pvSave(n); printPrevisao(); };
+  _calWire($('pvHol'),renderPrevisao);
+}
+// folha A4 deitada com N cópias da tabela (para recortar e entregar aos vendedores)
+function printPrevisao(){ var o=_pvLoad(), ini=o.inicio||_pvProxSegunda(), dias=o.dias||30, sem=o.semanas||6, n=o.copias||1, cols=computePrevisao(ini,dias,sem); if(!cols) return;
+  var fs=n<=1?15:n<=2?13:n<=3?12:n<=4?11:n<=5?10:9;
+  var um='<div style="font-size:'+(fs*0.95)+'px;font-weight:700;margin:0 0 3px">Previsão de entrega — Dash Uniformes <span style="font-weight:400;color:#555">(encerramento da produção = liberação + '+dias+' dias úteis)</span></div>'+_pvTabela(cols,true,fs);
+  var h=''; for(var i=0;i<n;i++) h+='<div style="'+(i?'border-top:1px dashed #999;padding-top:'+(fs*0.7)+'px;margin-top:'+(fs*0.7)+'px':'')+';page-break-inside:avoid">'+um+'</div>';
+  _openPrint(_prDoc('Previsão de entrega — Dash',h,true)); }
 function openFichaModal(){
   var m=openProgModal(fichaBody(), printFicha);
   var b=m.querySelector('#fcXlsx'); if(b)b.onclick=exportFichaXlsx;
@@ -3578,7 +3654,7 @@ function ckSave(o){ try{ localStorage.setItem('prog_checklist', JSON.stringify(o
    Fica no ramo "checklists" do GitHub, em ck/<id do login>/, criptografado com a chave do login (só quem entra com ele lê).
    index.json: { keys:{arquivo:{ts,by,del}}, ck:{campo:{ts,v,del}} } — os arquivos (PDF das OPs, Excels) vão em <chave>.bin;
    as marcações/datas/números do checklist vão campo a campo, então duas pessoas mexendo ao mesmo tempo não se apagam. */
-var CK_SYNC_KEYS=['prog_checklist','prog_pedsel','prog_pecas','prog_ficha','prog_benef','prog_ops','prog_opsger','prog_opsped','prog_estoque','prog_tec','prog_tecnome','prog_reprog','prog_holidays'];
+var CK_SYNC_KEYS=['prog_prev','prog_checklist','prog_pedsel','prog_pecas','prog_ficha','prog_benef','prog_ops','prog_opsger','prog_opsped','prog_estoque','prog_tec','prog_tecnome','prog_reprog','prog_holidays'];
 var CK_BRANCH='checklists', CKS={on:false,uid:'',user:'',meta:null,timer:null,loop:null,busy:false,again:false,applying:false,status:'',quando:0,erro:''};
 var CK_GLOBAL={prog_pedsel:'__PROG_PEDSEL',prog_pecas:'__PROG_PECAS',prog_ficha:'__PROG_FICHA',prog_benef:'__PROG_BENEF',prog_ops:'__PROG_OPS',prog_opsger:'__PROG_OPSGER',prog_opsped:'__PROG_OPSPED',prog_estoque:'__PROG_ESTOQUE',prog_tec:'__TEC_OFICIAL',prog_tecnome:'__TEC_NOME',prog_reprog:'__PROG_REPROG'};
 (function(){ var S=Storage.prototype, si=S.setItem, ri=S.removeItem;
