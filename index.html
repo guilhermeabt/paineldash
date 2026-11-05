@@ -3549,22 +3549,26 @@ function _calBlockHTML(title,rows,dark,scheme){
     +rows.map(function(x){return '<tr style="background:'+C.rowbg+'"><td style="'+td+'">'+dm(x.corteBr)+'</td><td style="'+td+'">'+dm(x.facBr)+'</td><td style="'+td+'">'+dm(x.entBr)+'</td></tr>';}).join('')
     +'</tbody></table></div>';
 }
+// recessos e dias da Dash (contagem de estoque, dia fechado…): os marcados "(Dash)" e os que a pessoa incluiu
+function _calEhDash(k,nome){ var o=_calHolLoad(); return /\(dash\)|recesso/i.test(nome||'')||(!!o.extra[k]&&!CAL_HOLIDAYS_DEFAULT[k]); }
 function _calHolEditorHTML(){
-  var hs=_calHols(), keys=Object.keys(hs).sort();
-  var rows=keys.map(function(k){
-    return '<li data-iso="'+k+'" style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid var(--line)">'
-      +'<span style="color:var(--muted);font-variant-numeric:tabular-nums;min-width:82px">'+_calBRs(k)+'</span>'
-      +'<span style="flex:1;color:var(--ink);font-size:12px">'+hs[k]+'</span>'
-      +'<button class="calHolDel" data-iso="'+k+'" title="Remover" style="background:none;border:1px solid var(--line);color:var(--f-red,#e66);border-radius:6px;cursor:pointer;line-height:1;padding:2px 7px">&times;</button></li>';
-  }).join('');
-  if(!keys.length) rows='<li style="color:var(--muted);padding:4px 0">Nenhum feriado cadastrado.</li>';
-  return '<details style="margin-top:18px;border:1px solid var(--line);border-radius:10px;padding:10px 14px">'
-    +'<summary style="cursor:pointer;color:var(--ink);font-weight:600;font-size:14px">Feriados considerados ('+keys.length+') — editar</summary>'
-    +'<p style="color:var(--muted);font-size:12px;margin:8px 0 4px">Feriados nacionais e de Belo Horizonte. Corte, facção e entrega (facção + 7 dias úteis) pulam essas datas. Adicione ou remova conforme precisar.</p>'
-    +'<ul style="list-style:none;margin:6px 0 10px;padding:0;max-height:180px;overflow:auto">'+rows+'</ul>'
+  var hs=_calHols(), keys=Object.keys(hs).sort(), DS=['dom','seg','ter','qua','qui','sex','sáb'];
+  function li(k){ return '<li data-iso="'+k+'" style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid var(--line)">'
+      +'<span style="color:var(--muted);font-variant-numeric:tabular-nums;min-width:110px">'+DS[new Date(k+'T00:00:00').getDay()]+' '+_calBRs(k)+'</span>'
+      +'<span style="flex:1;color:var(--ink);font-size:12px">'+uEsc(hs[k])+'</span>'
+      +'<button class="calHolDel" data-iso="'+k+'" title="Remover" style="background:none;border:1px solid var(--line);color:var(--f-red,#e66);border-radius:6px;cursor:pointer;line-height:1;padding:2px 7px">&times;</button></li>'; }
+  var dash=keys.filter(function(k){ return _calEhDash(k,hs[k]); }), fer=keys.filter(function(k){ return dash.indexOf(k)<0; });
+  var lista=function(ks,vazio){ return '<ul style="list-style:none;margin:4px 0 10px;padding:0;max-height:220px;overflow:auto">'+(ks.length?ks.map(li).join(''):'<li style="color:var(--muted);padding:4px 0;font-size:12px">'+vazio+'</li>')+'</ul>'; };
+  var rows='<div style="display:flex;gap:18px;flex-wrap:wrap">'
+    +'<div style="flex:1;min-width:260px"><div style="font-weight:600;color:var(--ink);font-size:13px;margin-top:6px">Recessos e dias da Dash ('+dash.length+')</div>'+lista(dash,'Nenhum. Inclua abaixo (ex.: contagem de estoque, dia em que a Dash fecha).')+'</div>'
+    +'<div style="flex:1;min-width:260px"><div style="font-weight:600;color:var(--ink);font-size:13px;margin-top:6px">Feriados nacionais e de BH ('+fer.length+')</div>'+lista(fer,'Nenhum feriado cadastrado.')+'</div></div>';
+  return '<details open style="margin-top:18px;border:1px solid var(--line);border-radius:10px;padding:10px 14px">'
+    +'<summary style="cursor:pointer;color:var(--ink);font-weight:600;font-size:14px">Dias não úteis considerados ('+keys.length+') — editar</summary>'
+    +'<p style="color:var(--muted);font-size:12px;margin:8px 0 4px">Além de sábado e domingo, as contas pulam estes dias (vale para o calendário de corte e facção e para a previsão de entrega). Inclua ou remova conforme precisar.</p>'
+    +rows
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'
       +'<label style="font-size:12px;color:var(--muted)">Data<br><input type="date" id="calHolDate" style="background:var(--surface2);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:5px 8px"></label>'
-      +'<label style="font-size:12px;color:var(--muted);flex:1;min-width:140px">Descrição (opcional)<br><input type="text" id="calHolName" placeholder="ex.: Feriado da empresa" style="width:100%;background:var(--surface2);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:5px 8px"></label>'
+      +'<label style="font-size:12px;color:var(--muted);flex:1;min-width:140px">Descrição (opcional)<br><input type="text" id="calHolName" placeholder="ex.: Contagem de estoque, Dash fechada" style="width:100%;background:var(--surface2);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:5px 8px"></label>'
       +'<button id="calHolAdd" style="background:var(--accent,#4a7);border:none;color:#fff;border-radius:7px;padding:7px 14px;cursor:pointer;font-weight:600">Adicionar</button>'
       +'<button id="calHolReset" style="background:none;border:1px solid var(--line);color:var(--muted);border-radius:7px;padding:7px 12px;cursor:pointer">Restaurar padrão</button>'
     +'</div></details>';
