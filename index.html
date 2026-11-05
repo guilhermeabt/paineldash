@@ -3926,21 +3926,58 @@ var GEST_UI={q:'',repr:'',ocultar:false};
 function gestRows(){ var b=_gjGet('gest_base',null); if(!b) return [];
   return b.rows.filter(function(m){ return !m.ext&&!m.fat; }).sort(function(a,c){ return (a.repr||'').localeCompare(c.repr||'','pt')||(a.cad<c.cad?-1:a.cad>c.cad?1:0); }); }
 // lê o relatório de pedidos NÃO aprovados do Matriz (o mesmo da Base: "11 — Não aprovados/Encerrados")
-function _gestLerArquivo(file){ return new Promise(function(ok,ko){ ensureXLSX(function(){ var rd=new FileReader(); rd.onload=function(e){ try{
-  var wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:true}), arr=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:null});
+// linhas do Excel → pedidos (só os campos que a Gestão usa)
+function _gestLinhas(arr){
   var hi=arr.findIndex(function(r){ return r&&r.map(String).indexOf('Pedido')>=0; }); if(hi<0) throw new Error('não achei a coluna "Pedido" — confira se é o relatório de pedidos do Matriz.');
   var idx={}; arr[hi].forEach(function(h,i){ if(h) idx[String(h).trim()]=i; });
   if(idx['Pedido Externo']==null) throw new Error('não achei a coluna "Pedido Externo" no arquivo.');
   var gf=function(r,c){ var v=parseFloat(r[idx[c]]); return isNaN(v)?0:v; }, dt=function(v){ return v instanceof Date&&!isNaN(v)?_calISO(v):(v?String(v).slice(0,10):''); }, out=[];
   for(var i=hi+1;i<arr.length;i++){ var r=arr[i]; if(!r||r[idx['Pedido']]==null||String(r[idx['Pedido']]).trim()==='') continue; var pe=r[idx['Pedido Externo']];
     out.push({num:String(r[idx['Pedido']]).trim(),cliente:String(r[idx['Cliente']]||'').trim().slice(0,60),repr:String(r[idx['Representante']]||'').trim(),cad:dt(r[idx['Cadastramento']]),qtd:gf(r,'Qtde Original'),ext:(pe!=null&&String(pe).trim()!=='')?1:0,fat:gf(r,'Qtde Faturado')>0?1:0}); }
-  if(!out.length) throw new Error('o arquivo não tem pedidos.'); ok(out); }catch(err){ ko(err); } }; rd.onerror=function(){ ko(new Error('não consegui ler o arquivo.')); }; rd.readAsArrayBuffer(file); },function(){ ko(new Error('não consegui carregar o leitor de Excel (sem internet?).')); }); }); }
-async function gestSubir(file,somar){ var st=$('gestSt'); if(st){ st.style.color='var(--muted)'; st.textContent='Lendo '+file.name+'…'; }
-  try{ var novos=await _gestLerArquivo(file), b=_gjGet('gest_base',null), rows=novos;
+  if(!out.length) throw new Error('o arquivo não tem pedidos.'); return out; }
+// lê o Excel num "trabalhador" em segundo plano: a tela não trava enquanto lê (se não der, lê do jeito normal)
+function _xlsxEmSegundoPlano(buf){ return new Promise(function(ok,ko){
+  var src="self.onmessage=function(e){try{importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');var wb=XLSX.read(new Uint8Array(e.data),{type:'array',cellDates:true});postMessage({ok:1,arr:XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:null})});}catch(err){postMessage({ok:0,err:String(err&&err.message||err)});}};";
+  var w; try{ w=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'}))); }catch(e){ ko(e); return; }
+  var t=setTimeout(function(){ w.terminate(); ko(new Error('demorou demais')); },240000);
+  w.onmessage=function(e){ clearTimeout(t); w.terminate(); if(e.data&&e.data.ok) ok(e.data.arr); else ko(new Error((e.data&&e.data.err)||'falhou')); };
+  w.onerror=function(e){ clearTimeout(t); w.terminate(); ko(new Error((e&&e.message)||'falhou')); };
+  w.postMessage(buf,[buf]); }); }
+// dá tempo da tela se redesenhar entre as etapas (o setTimeout garante que segue mesmo com a aba em segundo plano)
+function _gestPinta(){ return new Promise(function(r){ var f=false, go=function(){ if(!f){ f=true; setTimeout(r,0); } }; try{ requestAnimationFrame(go); }catch(e){} setTimeout(go,60); }); }
+// etapas mostradas enquanto o arquivo sobe
+var GEST_ETAPAS=['Arquivo recebido','Carregando o leitor de Excel','Lendo o arquivo','Separando os pedidos da Gestão','Salvando no seu login','Montando a tabela'], GEST_PROG=null;
+function _gestProg(i,pct,extra,erro){ GEST_PROG={i:i,pct:pct,extra:extra||'',erro:erro||'',t0:(GEST_PROG&&GEST_PROG.t0)||Date.now()}; _gestProgDraw(); }
+function _gestProgDraw(){ var el=$('gestProg'); if(!el) return; var P=GEST_PROG; if(!P){ el.innerHTML=''; return; }
+  var seg=Math.round((Date.now()-P.t0)/1000), lendo=P.i===2&&!P.erro&&P.pct<100;
+  el.innerHTML='<div style="margin-top:12px;padding:12px 14px;border:1px solid '+(P.erro?'rgba(229,72,77,.5)':'var(--line)')+';border-radius:10px;background:var(--bg)">'
+    +'<div style="height:8px;border-radius:5px;background:var(--line);overflow:hidden;margin-bottom:10px"><div style="height:100%;width:'+P.pct+'%;background:'+(P.erro?'var(--danger)':'var(--f-green)')+';transition:width .3s'+(lendo?';animation:gestPulse 1.2s ease-in-out infinite':'')+'"></div></div>'
+    +GEST_ETAPAS.map(function(e,k){ var st=P.erro&&k===P.i?'✗':k<P.i||P.pct>=100?'✓':k===P.i?'●':'○', cor=P.erro&&k===P.i?'var(--danger)':k<P.i||P.pct>=100?'var(--f-green)':k===P.i?'var(--ink)':'var(--muted)';
+      return '<div style="font-size:13px;color:'+cor+';padding:2px 0;'+(k===P.i&&!P.erro&&P.pct<100?'font-weight:600':'')+'">'+st+' '+e+(k===P.i&&P.pct<100?(P.extra?' — '+uEsc(P.extra):'')+(lendo?' ('+seg+'s — arquivo grande pode levar até 1 minuto)':''):'')+'</div>'; }).join('')
+    +(P.erro?'<div style="margin-top:6px;color:var(--danger);font-size:13px">'+uEsc(P.erro)+'</div>':'')
+    +(P.pct>=100&&P.extra?'<div style="margin-top:6px;color:var(--f-green);font-size:13px;font-weight:600">'+uEsc(P.extra)+'</div>':'')+'</div>'; }
+var GEST_BUSY=false;
+async function gestSubir(file,somar){ if(GEST_BUSY) return; GEST_BUSY=true; GEST_PROG=null;
+  var tick=setInterval(function(){ if(GEST_PROG&&GEST_PROG.i===2&&GEST_PROG.pct<100) _gestProgDraw(); },1000);
+  document.querySelectorAll('#gestFileSub,#gestFileSom').forEach(function(x){ x.disabled=true; x.parentNode.style.opacity=.5; });
+  try{
+    _gestProg(0,5,file.name+' ('+(file.size/1048576).toFixed(1)+' MB)'); await _gestPinta();
+    _gestProg(1,12); var buf=await file.arrayBuffer(); await _gestPinta();
+    _gestProg(2,20,'em segundo plano'); var arr;
+    try{ arr=await _xlsxEmSegundoPlano(buf.slice(0)); }
+    catch(e){ _gestProg(2,30,'a tela pode parar por alguns segundos'); await _gestPinta(); await new Promise(function(ok,ko){ ensureXLSX(ok,function(){ ko(new Error('não consegui carregar o leitor de Excel (sem internet?).')); }); });
+      var wb=XLSX.read(new Uint8Array(buf),{type:'array',cellDates:true}); arr=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:null}); }
+    _gestProg(3,80,arr.length+' linhas no arquivo'); await _gestPinta();
+    var novos=_gestLinhas(arr), b=_gjGet('gest_base',null), rows=novos;
     if(somar&&b){ var by={}; b.rows.forEach(function(o){ by[o.num]=o; }); novos.forEach(function(o){ by[o.num]=o; }); rows=Object.keys(by).map(function(k){ return by[k]; }); }
+    _gestProg(4,90,rows.length+' pedidos'); await _gestPinta();
     _gjSet('gest_base',{rows:rows,nome:file.name,quando:Date.now(),por:(current&&current.name)||currentUserKey||'',modo:somar?'somado':'substituído'});
-    renderGestConc(); var s2=$('gestSt'); if(s2){ s2.style.color='var(--f-green)'; s2.textContent='✓ '+file.name+': '+novos.length+' pedidos lidos'+(somar?' e somados à base':'')+'.'; }
-  }catch(e){ var s3=$('gestSt'); if(s3){ s3.style.color='var(--danger)'; s3.textContent='Não consegui usar o arquivo: '+((e&&e.message)||e); } } }
+    _gestProg(5,96); await _gestPinta();
+    var n=gestRows().length;
+    GEST_PROG={i:6,pct:100,extra:'Pronto! '+novos.length+' pedidos lidos'+(somar?' e somados à base':'')+' · '+n+' na Gestão.',t0:GEST_PROG.t0};
+    renderGestConc();
+  }catch(e){ _gestProg(GEST_PROG?GEST_PROG.i:0,GEST_PROG?GEST_PROG.pct:0,'','Não consegui usar o arquivo: '+((e&&e.message)||e)); }
+  finally{ clearInterval(tick); GEST_BUSY=false; document.querySelectorAll('#gestFileSub,#gestFileSom').forEach(function(x){ x.disabled=false; x.parentNode.style.opacity=''; }); } }
 function _gestFiltradas(){ var rows=gestRows(), fila=new Set(_gNums(_gjGet('gest_fila',''))), done=new Set(_gjGet('gest_done',[])), q=_en(GEST_UI.q||'');
   return rows.filter(function(o){ if(GEST_UI.repr&&(o.repr||'(sem)')!==GEST_UI.repr) return false; if(GEST_UI.ocultar&&done.has(o.num)) return false;
     if(q&&_en(o.num+' '+o.cliente+' '+o.repr).indexOf(q)<0) return false; return true; }).map(function(o){ return Object.assign({fila:fila.has(_gNum(o.num)),done:done.has(o.num)},o); }); }
@@ -3955,7 +3992,7 @@ function renderGestConc(){
       +'<div style="color:var(--muted);font-size:12.5px;line-height:1.5;margin-bottom:10px">No Matriz, exporte o relatório de <b>pedidos não aprovados</b> (o mesmo que vai na Base como “Não Aprovados / Encerrados”) e suba aqui. Use <b>Substituir</b> com o relatório completo — assim os pedidos que já foram aprovados saem da lista. <b>Somar</b> serve para juntar um período a mais sem apagar o que já está.</div>'
       +(b?'<div style="font-size:13px;color:var(--ink);margin-bottom:10px">Base atual: <b>'+uEsc(b.nome)+'</b> · '+b.rows.length+' pedidos no arquivo · subido em '+fmtTs(b.quando)+(b.por?' por '+uEsc(b.por):'')+'</div>':'<div style="font-size:13px;color:var(--f-amber);margin-bottom:10px">Nenhum arquivo ainda. Suba o relatório para começar.</div>')
       +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><label class="ubtn" style="cursor:pointer;background:var(--f-green);color:#0c241a;border:none;font-weight:600">⬆ Substituir pelo arquivo novo<input type="file" id="gestFileSub" accept=".xls,.xlsx,.csv" style="display:none"></label>'
-      +'<label class="ubtn" style="cursor:pointer">＋ Somar ao que já tem<input type="file" id="gestFileSom" accept=".xls,.xlsx,.csv" style="display:none"></label><span id="gestSt" style="font-size:12.5px"></span></div></div>'
+      +'<label class="ubtn" style="cursor:pointer">＋ Somar ao que já tem<input type="file" id="gestFileSom" accept=".xls,.xlsx,.csv" style="display:none"></label><span id="gestSt" style="font-size:12.5px"></span></div><div id="gestProg"></div></div>'
     +'<div style="'+card+'"><div style="font-weight:600;color:var(--ink);margin-bottom:6px">2. Na fila da Gestão</div>'
       +'<textarea id="gestFila" rows="3" placeholder="Cole os números dos pedidos: 905922, 860372..." style="'+inp+';width:100%;box-sizing:border-box;resize:vertical">'+uEsc(_gjGet('gest_fila',''))+'</textarea>'
       +'<div style="color:var(--muted);font-size:12px;margin-top:4px">Nº do pedido (Matriz). Separe por vírgula, espaço ou linha.</div>'
@@ -3971,6 +4008,8 @@ function renderGestConc(){
       +(rows.length?rows.map(function(o){ return '<tr style="'+(o.done?'opacity:.5':'')+'"><td style="'+td+'">'+uEsc(o.repr||'(sem)')+'</td><td style="'+td+';white-space:nowrap">'+(o.cad?_calBRs(o.cad):'')+'</td><td style="'+td+';font-weight:600">'+uEsc(o.num)+'</td><td style="'+td+'">'+uEsc(o.cliente)+'</td><td style="'+td+';text-align:right">'+o.qtd.toLocaleString('pt-BR')+'</td><td style="'+td+';color:var(--f-green)">'+(o.fila?'✓ na fila':'')+'</td><td style="'+td+';text-align:center"><input type="checkbox" class="gestDone" data-n="'+uEsc(o.num)+'"'+(o.done?' checked':'')+'></td></tr>'; }).join('')
         :'<tr><td colspan="7" style="'+td+';color:var(--muted);text-align:center;padding:24px">'+(b?'Nenhum pedido com esses filtros.':'Suba o arquivo do Matriz para ver os pedidos.')+'</td></tr>')
     +'</tbody></table></div></div>';
+  if(!document.getElementById('gestPulseCss')){ var cs=document.createElement('style'); cs.id='gestPulseCss'; cs.textContent='@keyframes gestPulse{0%,100%{opacity:1}50%{opacity:.45}}'; document.head.appendChild(cs); }
+  _gestProgDraw();
   $('gestFileSub').onchange=function(){ var f=this.files&&this.files[0]; this.value=''; if(f) gestSubir(f,false); };
   $('gestFileSom').onchange=function(){ var f=this.files&&this.files[0]; this.value=''; if(f) gestSubir(f,true); };
   var tf; $('gestFila').oninput=function(){ var v=this.value; _gjSet('gest_fila',v); clearTimeout(tf); tf=setTimeout(function(){ var foco=document.activeElement&&document.activeElement.id; renderGestConc(); if(foco==='gestFila'){ var t=$('gestFila'); t.focus(); t.selectionStart=t.selectionEnd=t.value.length; } },700); };
