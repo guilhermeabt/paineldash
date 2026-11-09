@@ -1011,6 +1011,20 @@
    "ref": "CLF0772",
    "cor": "Dark Green",
    "mudou": true
+  },
+  {
+   "id": "mw99ljbmpn6j",
+   "ts": 1794228961811,
+   "by": "Mylena",
+   "user": "mylena",
+   "tipo": "saida",
+   "caixa": "A6",
+   "qtd": null,
+   "ref": "CLF0072",
+   "cor": "Azul Noite",
+   "esvaziou": false,
+   "desc": "(descricao nao cadastrada)",
+   "mudou": false
   }
  ]
 }
