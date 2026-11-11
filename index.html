@@ -570,7 +570,7 @@ function idbGet(k){ return idbReq('readonly',(st,res)=>{ const g=st.get(k); g.on
    O localStorage tem só ~5 MB por site e as planilhas/PDFs da Programação, Conciliação e Gestão enchiam esse espaço
    ("Não consegui salvar neste navegador"). Essas chaves passam a ficar no IndexedDB (centenas de MB), com uma cópia
    em memória para leitura imediata. O resto do painel continua usando localStorage.getItem/setItem normalmente. */
-var BIG_KEYS={}; ['p2_base','p2_pub','gest_base','prog_pedsel','prog_pecas','prog_ficha','prog_benef','prog_ops','prog_opsger','prog_opsped','prog_estoque','prog_tec','prog_tecnome','prog_reprog','est_state'].forEach(function(k){ BIG_KEYS[k]=1; });
+var BIG_KEYS={}; ['p2_base','p2_pub','gest_pub','gest_base','prog_pedsel','prog_pecas','prog_ficha','prog_benef','prog_ops','prog_opsger','prog_opsped','prog_estoque','prog_tec','prog_tecnome','prog_reprog','est_state'].forEach(function(k){ BIG_KEYS[k]=1; });
 var BIG_MEM={}, BIG_ON=false, BIG_DB=null;
 function _bigOpen(){ if(BIG_DB) return BIG_DB; BIG_DB=new Promise(function(ok,ko){ var rq; try{ rq=indexedDB.open('painelop_big',1); }catch(e){ return ko(e); }
   rq.onupgradeneeded=function(){ try{ rq.result.createObjectStore('kv'); }catch(e){} }; rq.onsuccess=function(){ ok(rq.result); }; rq.onerror=function(){ ko(rq.error); }; rq.onblocked=function(){ ko(new Error('bloqueado')); }; });
@@ -2085,9 +2085,12 @@ function userNeedsGT(u){ var m=Array.isArray(u&&u.modules)?u.modules:[]; return 
 function userSlotList(u){ var l=_userSlotList(u); if(userNeedsGT(u)) l=l.concat([GT_KEY]); return l.sort(); }
 function _userSlotList(u){
   if(userCanBase(u)) return SLOTS.map(function(s){return s.key;}).concat([CONTACTS_KEY]);
-  var m=Array.isArray(u.modules)?u.modules:['relatorios']; if(m.indexOf('relatorios')<0) return [];
-  var pks=(u.panels==='*')?Object.keys(PANELS):(u.panels||[]);
-  return SLOTS.filter(function(s){return s.panels.some(function(p){return pks.indexOf(p)>=0;});}).map(function(s){return s.key;});
+  var m=Array.isArray(u.modules)?u.modules:['relatorios'], l=[];
+  if(m.indexOf('relatorios')>=0){ var pks=(u.panels==='*')?Object.keys(PANELS):(u.panels||[]);
+    l=SLOTS.filter(function(s){return s.panels.some(function(p){return pks.indexOf(p)>=0;});}).map(function(s){return s.key;}); }
+  // módulo Gestão: a Conciliação da Gestão lê os arquivos publicados do Matriz (aprovados e não aprovados)
+  if(m.indexOf('gestao')>=0) ['aprovados','nao_aprovados'].forEach(function(k){ if(l.indexOf(k)<0) l.push(k); });
+  return l;
 }
 async function loadPanelToken(){ GH_PANEL_TOKEN=''; GH_PANEL_INFO=null;
   try{ if(KEYS&&KEYS.gt&&SESSION.slots[GT_KEY]){ var o=await decJSON(b64d(SESSION.slots[GT_KEY]),KEYS.gt); GH_PANEL_TOKEN=(o&&o.t)||''; GH_PANEL_INFO=o?{by:o.by,ts:o.ts}:null; } }catch(e){} }
@@ -4461,8 +4464,33 @@ function _gjSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){
 function _gNum(s){ return String(s==null?'':s).replace(/\D/g,'').replace(/^0+/,''); }
 function _gNums(t){ return String(t||'').split(/[^\d#]+/).map(_gNum).filter(Boolean); }
 var GEST_UI={q:'',repr:'',ocultar:false};
-function gestRows(){ var b=_gjGet('gest_base',null); if(!b) return [];
-  return b.rows.filter(function(m){ return !m.ext&&!m.fat; }).sort(function(a,c){ return (a.repr||'').localeCompare(c.repr||'','pt')||(a.cad<c.cad?-1:a.cad>c.cad?1:0); }); }
+/* Base publicada (Base de Dados → Matriz não aprovados e aprovados): o histórico vem de lá; a Gestão só sobe o
+   período novo. Os pedidos que aparecem nos aprovados publicados saem da lista. Resultado lido fica em gest_pub. */
+var GEST_PUB={estado:'',rows:[],aprov:{},ate:'',em:0,erro:''};
+async function _gestCarregaPub(){ if(GEST_PUB.estado==='lendo') return; GEST_PUB.estado='lendo'; GEST_PUB.erro='';
+  try{ var man=await fetchManifest(); if(!man||!man.slots) throw new Error('sem publicação');
+    var ts={}; ['nao_aprovados','aprovados'].forEach(function(k){ if(man.slots[k]&&SESSION.slots[k]) ts[k]=man.slots[k].ts||0; });
+    if(!ts.nao_aprovados) throw new Error('este login ainda não tem acesso aos arquivos publicados do Matriz');
+    var cache=_gjGet('gest_pub',null);
+    if(cache&&JSON.stringify(cache.ts)===JSON.stringify(ts)){ Object.assign(GEST_PUB,{rows:cache.rows,aprov:cache.aprov,ate:cache.ate,em:ts.nao_aprovados,estado:'ok'}); return; }
+    var rows=[], aprov={};
+    for(var k of Object.keys(ts)){ var e=man.slots[k], meta=await decJSON(b64d(SESSION.slots[k]),e.m);
+      for(var j=0;j<meta.files.length;j++){ var f=meta.files[j], ct=await getEncBlob(f.p), plain=await decBytes(b64d(SESSION.slots[k]),f.iv,ct);
+        var arr=await _p2LerPlanilha(new File([plain],f.n,{type:f.t||''})), ls=_gestLinhas(arr);
+        if(k==='aprovados') ls.forEach(function(o){ aprov[o.num]=1; }); else rows=rows.concat(ls); } }
+    var ate=''; rows.forEach(function(o){ if(o.cad>ate) ate=o.cad; });
+    rows=rows.filter(function(o){ return !o.ext; });
+    Object.assign(GEST_PUB,{rows:rows,aprov:aprov,ate:ate,em:ts.nao_aprovados,estado:'ok'});
+    _gjSet('gest_pub',{ts:ts,rows:rows,aprov:aprov,ate:ate}); }
+  catch(e){ GEST_PUB.estado='erro'; GEST_PUB.erro=(e&&e.message)||String(e); }
+  finally{ if(GEST_PUB.estado==='lendo') GEST_PUB.estado='erro'; if($('gestContent')&&gestActive==='conciliacao'&&!GEST_BUSY) try{ renderGestConc(); }catch(x){} } }
+// o que este login enviou (só o período novo); a versão antiga guardava o relatório inteiro e passa a valer a publicada
+function _gestLocal(){ var b=_gjGet('gest_base',null); if(!b) return null; b.rows=b.rows||[];
+  if(!b.v2&&GEST_PUB.estado==='ok'){ b.rows=[]; b.v2=1; b.antigo=1; } return b; }
+function gestRows(){ var b=_gestLocal(), pub=GEST_PUB.estado==='ok', by={};
+  if(pub) GEST_PUB.rows.forEach(function(o){ by[o.num]=o; });
+  if(b) b.rows.forEach(function(o){ by[o.num]=o; });
+  return Object.keys(by).map(function(k){ return by[k]; }).filter(function(m){ return !m.ext&&!m.fat&&!(pub&&GEST_PUB.aprov[m.num]); }).sort(function(a,c){ return (a.repr||'').localeCompare(c.repr||'','pt')||(a.cad<c.cad?-1:a.cad>c.cad?1:0); }); }
 // lê o relatório de pedidos NÃO aprovados do Matriz (o mesmo da Base: "11 — Não aprovados/Encerrados")
 // linhas do Excel → pedidos (só os campos que a Gestão usa)
 function _gestLinhas(arr){
@@ -4506,10 +4534,14 @@ async function gestSubir(file,somar){ if(GEST_BUSY) return; GEST_BUSY=true; GEST
     catch(e){ _gestProg(2,30,'a tela pode parar por alguns segundos'); await _gestPinta(); await new Promise(function(ok,ko){ ensureXLSX(ok,function(){ ko(new Error('não consegui carregar o leitor de Excel (sem internet?).')); }); });
       var wb=XLSX.read(new Uint8Array(buf),{type:'array',cellDates:true}); arr=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:null}); }
     _gestProg(3,80,arr.length+' linhas no arquivo'); await _gestPinta();
-    var novos=_gestLinhas(arr), b=_gjGet('gest_base',null), rows=novos;
-    if(somar&&b){ var by={}; b.rows.forEach(function(o){ by[o.num]=o; }); novos.forEach(function(o){ by[o.num]=o; }); rows=Object.keys(by).map(function(k){ return by[k]; }); }
+    // soma ao que já foi enviado (o histórico vem da base publicada); o mesmo pedido enviado de novo fica com a versão mais nova
+    if(GEST_PUB.estado!=='ok') await _gestCarregaPub();
+    var novos=_gestLinhas(arr), b=_gestLocal(), by={}, ate='';
+    if(b&&(somar||GEST_PUB.estado==='ok')) b.rows.forEach(function(o){ by[o.num]=o; });
+    novos.forEach(function(o){ if(o.cad>ate) ate=o.cad; if(!o.ext) by[o.num]=o; });
+    var rows=Object.keys(by).map(function(k){ return by[k]; });
     _gestProg(4,90,rows.length+' pedidos'); await _gestPinta();
-    _gjSet('gest_base',{rows:rows,nome:file.name,quando:Date.now(),por:(current&&current.name)||currentUserKey||'',modo:somar?'somado':'substituído'});
+    _gjSet('gest_base',{rows:rows,nome:file.name,quando:Date.now(),por:(current&&current.name)||currentUserKey||'',reg:novos.length,ate:ate,v2:GEST_PUB.estado==='ok'?1:0,modo:somar?'somado':'substituído'});
     _gestProg(5,96); await _gestPinta();
     var n=gestRows().length;
     GEST_PROG={i:6,pct:100,extra:'Pronto! '+novos.length+' pedidos lidos'+(somar?' e somados à base':'')+' · '+n+' na Gestão.',t0:GEST_PROG.t0};
@@ -4520,17 +4552,26 @@ function _gestFiltradas(){ var rows=gestRows(), fila=new Set(_gNums(_gjGet('gest
   return rows.filter(function(o){ if(GEST_UI.repr&&(o.repr||'(sem)')!==GEST_UI.repr) return false; if(GEST_UI.ocultar&&done.has(o.num)) return false;
     if(q&&_en(o.num+' '+o.cliente+' '+o.repr).indexOf(q)<0) return false; return true; }).map(function(o){ return Object.assign({fila:fila.has(_gNum(o.num)),done:done.has(o.num)},o); }); }
 function renderGestConc(){
-  var host=$('gestContent'); if(!host) return; var b=_gjGet('gest_base',null), todas=gestRows(), fila=new Set(_gNums(_gjGet('gest_fila',''))), rows=_gestFiltradas();
+  var host=$('gestContent'); if(!host) return; if(!GEST_PUB.estado) setTimeout(_gestCarregaPub,0);
+  var b=_gestLocal(), pubOk=GEST_PUB.estado==='ok', todas=gestRows(), fila=new Set(_gNums(_gjGet('gest_fila',''))), rows=_gestFiltradas();
   var nFila=todas.filter(function(o){ return fila.has(_gNum(o.num)); }).length, reps=todas.map(function(o){return o.repr||'(sem)';}).filter(function(v,i,a){return a.indexOf(v)===i;}).sort(function(a,c){return a.localeCompare(c,'pt');});
   var inp='background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px', card='background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:16px';
   var th='text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);color:var(--muted);font-weight:600;font-size:12.5px;position:sticky;top:0;background:var(--surface2)', td='padding:7px 10px;border-bottom:1px solid var(--line);font-size:13.5px;color:var(--ink)';
   host.innerHTML='<div style="max-width:1100px"><h2 style="margin:0 0 4px;color:var(--ink);font-weight:600">Conciliação da Gestão</h2>'
     +'<p style="color:var(--muted);font-size:13px;margin:0 0 16px">Pedidos <b>internos do Matriz</b> (sem Pedido Externo — não vieram da Shopify), <b>ainda não aprovados</b> e sem faturamento. Ficam sob gestão para aprovação/tratamento.</p>'
     +'<div style="'+card+'"><div style="font-weight:600;color:var(--ink);margin-bottom:6px">1. Arquivo do Matriz — pedidos NÃO aprovados</div>'
-      +'<div style="color:var(--muted);font-size:12.5px;line-height:1.5;margin-bottom:10px">No Matriz, exporte o relatório de <b>pedidos não aprovados</b> (o mesmo que vai na Base como “Não Aprovados / Encerrados”) e suba aqui. Use <b>Substituir</b> com o relatório completo — assim os pedidos que já foram aprovados saem da lista. <b>Somar</b> serve para juntar um período a mais sem apagar o que já está.</div>'
-      +(b?'<div style="font-size:13px;color:var(--ink);margin-bottom:10px">Base atual: <b>'+uEsc(b.nome)+'</b> · '+b.rows.length+' pedidos no arquivo · subido em '+fmtTs(b.quando)+(b.por?' por '+uEsc(b.por):'')+'</div>':'<div style="font-size:13px;color:var(--f-amber);margin-bottom:10px">Nenhum arquivo ainda. Suba o relatório para começar.</div>')
-      +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><label class="ubtn" style="cursor:pointer;background:var(--f-green);color:#0c241a;border:none;font-weight:600">⬆ Substituir pelo arquivo novo<input type="file" id="gestFileSub" accept=".xls,.xlsx,.csv" style="display:none"></label>'
-      +'<label class="ubtn" style="cursor:pointer">＋ Somar ao que já tem<input type="file" id="gestFileSom" accept=".xls,.xlsx,.csv" style="display:none"></label><span id="gestSt" style="font-size:12.5px"></span></div><div id="gestProg"></div></div>'
+      +(function(){ var meu=b&&!b.antigo&&b.quando?b:null, la=(meu&&meu.ate)||'', ate=(pubOk&&GEST_PUB.ate>la)?GEST_PUB.ate:la, s='';
+        if(GEST_PUB.estado===''||GEST_PUB.estado==='lendo') s+='<div style="font-size:12.5px;color:var(--muted);margin-bottom:6px">Buscando a base publicada…</div>';
+        else if(pubOk) s+='<div style="font-size:12.5px;color:var(--f-green);margin-bottom:6px">✓ Base publicada até '+_calBRs(GEST_PUB.ate)+' (publicada em '+fmtTs(GEST_PUB.em).split(' ')[0]+'). Os pedidos que já estão nos aprovados publicados saem da lista sozinhos.</div>';
+        else s+='<div style="font-size:12.5px;color:var(--f-amber);margin-bottom:6px">Base publicada indisponível'+(GEST_PUB.erro?' — '+uEsc(GEST_PUB.erro):'')+'. Use o relatório completo do Matriz.</div>';
+        if(meu) s+='<div style="font-size:12.5px;color:var(--f-green);margin-bottom:8px">✓ Você enviou: '+uEsc(meu.nome)+(meu.reg?' · '+meu.reg+' pedidos':'')+(meu.ate?' (até '+_calBRs(meu.ate)+')':'')+' · '+fmtTs(meu.quando)+(meu.por?' por '+uEsc(meu.por):'')+'</div>';
+        if(pubOk&&ate) s+='<div style="font-size:13px;color:var(--ink);background:rgba(74,163,223,.12);border:1px solid rgba(74,163,223,.4);border-radius:8px;padding:7px 10px;margin-bottom:10px;display:inline-block">Suba só os pedidos <b>não aprovados</b> do Matriz <b>a partir de '+_calBRs(ate)+'</b>. Soma ao que já existe — não precisa subir o histórico de novo.</div>';
+        else if(!pubOk&&GEST_PUB.estado==='erro') s+='<div style="color:var(--muted);font-size:12.5px;line-height:1.5;margin-bottom:10px">No Matriz, exporte o relatório de <b>pedidos não aprovados</b> e suba aqui. Use <b>Substituir</b> com o relatório completo — assim os pedidos já aprovados saem da lista. <b>Somar</b> junta um período a mais sem apagar o que já está.</div>';
+        return s; })()
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
+      +(pubOk?'<label class="ubtn" style="cursor:pointer;background:var(--f-green);color:#0c241a;border:none;font-weight:600">⬆ Subir o período novo<input type="file" id="gestFileSom" accept=".xls,.xlsx,.csv" style="display:none"></label>'
+        :'<label class="ubtn" style="cursor:pointer;background:var(--f-green);color:#0c241a;border:none;font-weight:600">⬆ Substituir pelo arquivo novo<input type="file" id="gestFileSub" accept=".xls,.xlsx,.csv" style="display:none"></label><label class="ubtn" style="cursor:pointer">＋ Somar ao que já tem<input type="file" id="gestFileSom" accept=".xls,.xlsx,.csv" style="display:none"></label>')
+      +'<span id="gestSt" style="font-size:12.5px"></span></div><div id="gestProg"></div></div>'
     +'<div style="'+card+'"><div style="font-weight:600;color:var(--ink);margin-bottom:6px">2. Na fila da Gestão</div>'
       +'<textarea id="gestFila" rows="3" placeholder="Cole os números dos pedidos: 905922, 860372..." style="'+inp+';width:100%;box-sizing:border-box;resize:vertical">'+uEsc(_gjGet('gest_fila',''))+'</textarea>'
       +'<div style="color:var(--muted);font-size:12px;margin-top:4px">Nº do pedido (Matriz). Separe por vírgula, espaço ou linha.</div>'
@@ -4544,11 +4585,11 @@ function renderGestConc(){
     +'<div style="overflow:auto;max-height:560px;border:1px solid var(--line);border-radius:10px"><table style="width:100%;border-collapse:collapse"><thead><tr>'
       +['Representante','Criação','Nº Matriz','Cliente','Quantidade','Fila da gestão','Tratado'].map(function(h){ return '<th style="'+th+'">'+h+'</th>'; }).join('')+'</tr></thead><tbody>'
       +(rows.length?rows.map(function(o){ return '<tr style="'+(o.done?'opacity:.5':'')+'"><td style="'+td+'">'+uEsc(o.repr||'(sem)')+'</td><td style="'+td+';white-space:nowrap">'+(o.cad?_calBRs(o.cad):'')+'</td><td style="'+td+';font-weight:600">'+uEsc(o.num)+'</td><td style="'+td+'">'+uEsc(o.cliente)+'</td><td style="'+td+';text-align:right">'+o.qtd.toLocaleString('pt-BR')+'</td><td style="'+td+';color:var(--f-green)">'+(o.fila?'✓ na fila':'')+'</td><td style="'+td+';text-align:center"><input type="checkbox" class="gestDone" data-n="'+uEsc(o.num)+'"'+(o.done?' checked':'')+'></td></tr>'; }).join('')
-        :'<tr><td colspan="7" style="'+td+';color:var(--muted);text-align:center;padding:24px">'+(b?'Nenhum pedido com esses filtros.':'Suba o arquivo do Matriz para ver os pedidos.')+'</td></tr>')
+        :'<tr><td colspan="7" style="'+td+';color:var(--muted);text-align:center;padding:24px">'+(b||pubOk?'Nenhum pedido com esses filtros.':'Suba o arquivo do Matriz para ver os pedidos.')+'</td></tr>')
     +'</tbody></table></div></div>';
   if(!document.getElementById('gestPulseCss')){ var cs=document.createElement('style'); cs.id='gestPulseCss'; cs.textContent='@keyframes gestPulse{0%,100%{opacity:1}50%{opacity:.45}}'; document.head.appendChild(cs); }
   _gestProgDraw();
-  $('gestFileSub').onchange=function(){ var f=this.files&&this.files[0]; this.value=''; if(f) gestSubir(f,false); };
+  if($('gestFileSub')) $('gestFileSub').onchange=function(){ var f=this.files&&this.files[0]; this.value=''; if(f) gestSubir(f,false); };
   $('gestFileSom').onchange=function(){ var f=this.files&&this.files[0]; this.value=''; if(f) gestSubir(f,true); };
   var tf; $('gestFila').oninput=function(){ var v=this.value; _gjSet('gest_fila',v); clearTimeout(tf); tf=setTimeout(function(){ var foco=document.activeElement&&document.activeElement.id; renderGestConc(); if(foco==='gestFila'){ var t=$('gestFila'); t.focus(); t.selectionStart=t.selectionEnd=t.value.length; } },700); };
   var tq; $('gestQ').oninput=function(){ GEST_UI.q=this.value; clearTimeout(tq); tq=setTimeout(function(){ renderGestConc(); var q=$('gestQ'); q.focus(); q.selectionStart=q.selectionEnd=q.value.length; },300); };
