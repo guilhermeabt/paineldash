@@ -4106,13 +4106,138 @@ function renderChecklist(){
 function enterProd(){ if(!prodActive)prodActive=PRODSCREENS[0][0]; renderProdNav(); openProd(prodActive); }
 
 /* ===== MÓDULO GESTÃO ===== */
-var GESTSCREENS=[ ['conciliacao','Conciliação','&#129534;'], ['logos','Logos para bordado','&#129525;'] ], gestActive=null;
+var GESTSCREENS=[ ['conciliacao','Conciliação','&#129534;'], ['conferencia','Conferência do pedido','&#9989;'], ['logos','Logos para bordado','&#129525;'] ], gestActive=null;
 function renderGestNav(){ var nav=$('gestNav'); if(!nav)return;
   nav.innerHTML=GESTSCREENS.map(function(s){ var on=(s[0]===gestActive);
     return '<button class="gestnavbtn" data-s="'+s[0]+'" style="text-align:left;background:'+(on?'var(--elev)':'none')+';border:1px solid '+(on?'var(--line)':'transparent')+';color:'+(on?'var(--ink)':'var(--muted)')+';padding:10px 12px;border-radius:9px;cursor:pointer;font-size:14px;display:flex;gap:10px;align-items:center"><span>'+s[2]+'</span>'+s[1]+'</button>'; }).join('');
   nav.querySelectorAll('.gestnavbtn').forEach(function(b){ b.onclick=function(){ openGest(b.getAttribute('data-s')); }; }); }
-function openGest(k){ gestActive=k; renderGestNav(); if(k==='conciliacao') renderGestConc(); else if(k==='logos') renderGestLogos(); }
+function openGest(k){ gestActive=k; renderGestNav(); if(k==='conciliacao') renderGestConc(); else if(k==='logos') renderGestLogos(); else if(k==='conferencia') renderGestConf(); }
 function enterGest(){ if(!gestActive)gestActive=GESTSCREENS[0][0]; renderGestNav(); openGest(gestActive); }
+
+/* ---- Conferência do pedido: sobe o PDF "Confirmação do Pedido" do Matriz e o painel confere
+   (1) grade x personalização — peças lançadas por tamanho e cor contra os nomes da personalização;
+   (2) conjuntos — calça/saia com blazer/colete no mesmo tecido e na mesma cor (no pedido e por pessoa).
+   Nada fica salvo. */
+var CONF={nome:'',ped:null,res:null,busy:false,msg:''};
+function _cfN(s){ return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[^A-Z0-9 ]+/g,' ').replace(/\s+/g,' ').trim(); }
+function _cfLev(a,b){ if(a===b) return 0; var m=a.length,n=b.length,d=[]; for(var i=0;i<=m;i++){ d[i]=[i]; } for(var j=0;j<=n;j++) d[0][j]=j;
+  for(i=1;i<=m;i++) for(j=1;j<=n;j++) d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1)); return d[m][n]; }
+function _cfMesmaCor(a,b){ a=_cfN(a); b=_cfN(b); if(!a||!b) return false; return a===b||_cfLev(a,b)<=Math.max(1,Math.floor(Math.min(a.length,b.length)/6)); }
+function _cfPessoa(s){ var t=_cfN(s).split(' ').filter(function(w){ return w.length>1||/\d/.test(w); }); return t.length>1?t[0]+' '+t[t.length-1]:(t[0]||''); }
+function _cfMesmaPessoa(a,b){ return a===b||(_cfLev(a,b)<=1&&a.length>5); }
+// texto do PDF em linhas (y) com a posição x de cada pedaço
+async function _cfLinhas(buf){ await new Promise(function(ok){ ensurePdfjs(ok); });
+  var pdf=await window.pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise, L=[];
+  for(var p=1;p<=pdf.numPages;p++){ var tc=await (await pdf.getPage(p)).getTextContent(), rows={};
+    tc.items.forEach(function(it){ var s=String(it.str||'').trim(); if(!s) return; var y=Math.round(it.transform[5]); (rows[y]=rows[y]||[]).push({x:Math.round(it.transform[4]),s:s}); });
+    Object.keys(rows).map(Number).sort(function(a,b){return b-a;}).forEach(function(y){ var it=rows[y].sort(function(a,b){return a.x-b.x;}); L.push({p:p,y:y,it:it,t:it.map(function(z){return z.s;}).join(' ')}); }); }
+  return L; }
+function _cfLer(L){ var P={numero:'',cliente:'',vendedor:'',digitado:'',entrega:'',totalPecas:null,itens:[]}, cur=null, pend=null, grade=null, modo='';
+  var novo=function(r){ cur={ref:r.ref,desc:r.desc,mat:r.mat||'',cod:'',cor:'',tam:[],grade:{},total:0,pers:[]}; P.itens.push(cur); grade=null; modo=''; };
+  for(var i=0;i<L.length;i++){ var l=L[i], t=l.t, m;
+    if((m=t.match(/CONFIRMA[ÇC][ÃA]O DO PEDIDO N[ºo°]?\s*(\d+)/i))){ P.numero=m[1]; continue; }
+    if(!P.itens.length){
+      if((m=t.match(/Raz[aã]o Social:\s*(.+)$/i))) P.cliente=m[1].trim();
+      if(/Digitado em:/i.test(t)&&L[i-1]){ var dd=L[i-1].t.match(/(\d\d\/\d\d\/\d{4})\s+(\d\d\/\d\d\/\d{4})/); if(dd){ P.digitado=dd[1]; P.entrega=dd[2]; } }
+      if(/Vendedor\(a\):/i.test(t)){ for(var q=i+1;q<=i+3&&q<L.length;q++){ if(!/:/.test(L[q].t)){ P.vendedor=L[q].t.trim(); break; } } } }
+    if((m=t.match(/Total de Pe[çc]as:\s*(\d+)/i))){ P.totalPecas=+m[1]; modo='fim'; continue; }
+    if(/Fechamento do Pedido/i.test(t)){ modo='fim'; continue; }
+    if(modo==='fim') continue;
+    if((m=t.match(/^([A-Z]{3}\d{4}[A-Z0-9]*)\s+-\s+(.+)$/))){ pend={ref:m[1],desc:m[2].trim()}; continue; }
+    if((m=t.match(/Material Principal\s*:\s*([A-Z0-9.]+)/i))){ if(pend) pend.mat=m[1]; else if(cur&&!cur.mat) cur.mat=m[1]; continue; }
+    if(/^Material Principal\s*:?\s*$/i.test(t)) continue;
+    if((m=t.match(/^([A-Z]{2}\.[A-Z]{2}\.\d+)\s*-?\s*$/))){ if(pend) pend.mat=m[1]; continue; } // código do tecido sozinho na linha (topo da página)
+    if((m=t.match(/^Cor:\s*(\S+)\s+(.+)$/i))){ if(pend){ novo(pend); pend=null; } if(cur){ cur.cod=m[1]; cur.cor=m[2].trim(); } continue; }
+    if(pend){ pend=null; } // era o cabeçalho repetido no topo da página
+    if(!cur) continue;
+    if(/^Total:/.test(t)){ grade=l.it.filter(function(z){ return !/^(Total:?|Preco|Preco Esp)$/i.test(z.s); }).map(function(z){ return {s:z.s,x:z.x}; }).filter(function(z){ return z.x<430; }); cur.tam=grade.map(function(z){return z.s;}); continue; }
+    if(grade&&/^\d/.test(t)&&!Object.keys(cur.grade).length){ var nums=l.it.filter(function(z){ return /^\d+$/.test(z.s)&&z.x<430; });
+      if(nums.length){ cur.total=+nums[0].s; nums.slice(1).forEach(function(z){ var b=null,bd=1e9; grade.forEach(function(g){ var d=Math.abs(g.x-z.x); if(d<bd){bd=d;b=g;} }); if(b) cur.grade[b.s]=(cur.grade[b.s]||0)+(+z.s); }); }
+      grade=null; continue; }
+    if(/^Personaliza[çc][ãa]o$/i.test(t)){ modo='pers'; continue; }
+    if(/^Total$/i.test(t)) continue;
+    if(modo==='pers'){ var tx=t.replace(/^PERSONALIZA[ÇC]A?O\s*/i,'').trim(); if(tx) cur.pers.push(tx); } }
+  return P; }
+// interpreta o bloco de personalização: quantas peças de cada cor por tamanho, e de quem
+function _cfPers(linhas,corItem){ var mult=1,corCab='',tam='',R=[], obs=[];
+  linhas.forEach(function(l){ var u=_cfN(l), m;
+    if((m=u.match(/^(\d+)\s+(.+?)\s+PARA CADA\b(.*)$/))){ mult=+m[1]; var c=m[3].match(/COR\s+(.+)$/); corCab=c?c[1].trim():''; return; }
+    if((m=u.match(/^TAMANHO\s+(\S+)/))){ tam=m[1]; return; }
+    var partes=l.split(/\s+-\s+/), nome=partes[0].trim(), resto=partes.slice(1).join(' - '), ru=_cfN(resto), pecas=[];
+    var so=ru.match(/SOMENTE\s+(\d+)/); var rc=/(\d+)\s+(?:[A-Z]+\s+)?COR\s+([A-Z ]+?)(?=\s+\d+\s|$)/g, x;
+    while((x=rc.exec(ru))) pecas.push({q:+x[1],cor:x[2].trim()});
+    if(!pecas.length) pecas.push({q:so?+so[1]:mult,cor:corCab||corItem});
+    pecas.forEach(function(pc){ R.push({tam:tam,nome:nome,pessoa:_cfPessoa(nome),q:pc.q,cor:pc.cor}); });
+    if(!tam) obs.push(l); });
+  return {pecas:R,semTam:obs}; }
+var CF_BAIXO=/\b(CALCA|SAIA|BERMUDA|SHORT|SHORTS)\b/, CF_CIMA=/\b(BLAZER|COLETE|PALETO|JAQUETA|CASACO|TERNO)\b/;
+function _cfConferir(P){ var porRef={};
+  P.itens.forEach(function(it){ (porRef[it.ref]=porRef[it.ref]||[]).push(it); });
+  var refs=Object.keys(porRef).map(function(ref){ var its=porRef[ref], blocos=[], vistos={};
+    its.forEach(function(it){ var k=it.pers.join('\n'); if(k&&!vistos[k]){ vistos[k]=1; blocos.push(it.pers); } });
+    var cores=its.map(function(it){return it.cor;}), unica=cores.length===1?cores[0]:'';
+    var pp=[], semTam=[]; blocos.forEach(function(b){ var r=_cfPers(b,unica); pp=pp.concat(r.pecas); semTam=semTam.concat(r.semTam); });
+    // casa a cor escrita na personalização com uma cor lançada na grade (aceita erro de digitação: DARK GRENN)
+    var semCor=[]; pp.forEach(function(x){ var c=null; its.forEach(function(it){ if(!c&&x.cor&&_cfMesmaCor(x.cor,it.cor)) c=it; }); x.item=c; if(!c) semCor.push(x); });
+    var linhas=its.map(function(it){ var esp={}, nomes={}; pp.forEach(function(x){ if(x.item!==it) return; esp[x.tam]=(esp[x.tam]||0)+x.q; (nomes[x.tam]=nomes[x.tam]||[]).push(x.nome+(x.q>1?' ×'+x.q:'')); });
+      var tams=it.tam.filter(function(s){ return (it.grade[s]||0)||(esp[s]||0); }); Object.keys(esp).forEach(function(s){ if(tams.indexOf(s)<0) tams.push(s); });
+      var dif=tams.filter(function(s){ return (it.grade[s]||0)!==(esp[s]||0); });
+      var somaG=it.tam.reduce(function(a,s){ return a+(it.grade[s]||0); },0);
+      return {it:it,esp:esp,nomes:nomes,tams:tams,dif:dif,temPers:blocos.length>0,somaG:somaG,totalOk:somaG===it.total}; });
+    return {ref:ref,desc:its[0].desc,linhas:linhas,semCor:semCor,semTam:semTam,pecas:pp}; });
+  // conjuntos: no pedido (tecido + cor) e por pessoa
+  var tipo=function(d){ var u=_cfN(d); return CF_BAIXO.test(u)?'baixo':(CF_CIMA.test(u)?'cima':''); };
+  var comb={cima:{},baixo:{}}; P.itens.forEach(function(it){ var tp=tipo(it.desc); if(!tp) return; var k=it.mat+'|'+_cfN(it.cor); (comb[tp][k]=comb[tp][k]||[]).push(it); });
+  var avisosPed=[]; if(Object.keys(comb.cima).length&&Object.keys(comb.baixo).length){
+    ['cima','baixo'].forEach(function(tp){ var out=tp==='cima'?'baixo':'cima'; Object.keys(comb[tp]).forEach(function(k){ if(comb[out][k]) return;
+      var it=comb[tp][k][0], parecido=Object.keys(comb[out]).filter(function(o){ return o.split('|')[1]===k.split('|')[1]; });
+      avisosPed.push({it:it,tp:tp,txt:parecido.length?('mesma cor, mas tecido diferente ('+it.mat+' × '+parecido.map(function(o){return o.split('|')[0];}).join(', ')+')'):('não há '+(tp==='cima'?'calça/saia':'blazer/colete')+' em '+it.cor+' no tecido '+it.mat)}); }); }); }
+  var gente=[]; refs.forEach(function(r){ var tp=tipo(r.desc); if(!tp) return; r.pecas.forEach(function(x){ if(!x.item||!x.pessoa) return;
+    var g=null; gente.forEach(function(p){ if(!g&&_cfMesmaPessoa(p.k,x.pessoa)) g=p; }); if(!g){ g={k:x.pessoa,nome:x.nome,cima:{},baixo:{}}; gente.push(g); }
+    var k=x.item.mat+'|'+_cfN(x.item.cor); (g[tp][k]=g[tp][k]||{cor:x.item.cor,mat:x.item.mat,ref:[]}); if(g[tp][k].ref.indexOf(r.ref)<0) g[tp][k].ref.push(r.ref); }); });
+  var avisosPes=gente.filter(function(g){ var a=Object.keys(g.cima), b=Object.keys(g.baixo); if(!a.length||!b.length) return false;
+    return a.some(function(k){return b.indexOf(k)<0;})||b.some(function(k){return a.indexOf(k)<0;}); });
+  var somaItens=P.itens.reduce(function(a,it){ return a+it.total; },0);
+  return {refs:refs,avisosPed:avisosPed,avisosPes:avisosPes,somaItens:somaItens}; }
+async function confAbrir(f){ if(!f) return; CONF.busy=true; CONF.msg='Lendo o pedido…'; CONF.res=null; renderGestConf(); await _gestPinta();
+  try{ if(!/\.pdf$/i.test(f.name)&&f.type!=='application/pdf') throw new Error('suba o PDF da Confirmação do Pedido');
+    var P=_cfLer(await _cfLinhas(await f.arrayBuffer())); if(!P.itens.length) throw new Error('não achei itens neste PDF — é a Confirmação do Pedido do Matriz?');
+    CONF.nome=f.name; CONF.ped=P; CONF.res=_cfConferir(P); CONF.msg=''; }
+  catch(e){ CONF.msg='Não deu certo: '+((e&&e.message)||e); }
+  CONF.busy=false; renderGestConf(); }
+function renderGestConf(){ var host=$('gestContent'); if(!host) return; var P=CONF.ped, R=CONF.res;
+  var ok='#2eab86', warn='var(--f-amber)', card='background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px';
+  var h='<div style="max-width:1050px"><h2 style="margin:0 0 4px;color:var(--ink);font-weight:600">Conferência do pedido</h2>'
+    +'<p style="color:var(--muted);margin:0 0 16px;max-width:75ch">Suba o PDF da <b>Confirmação do Pedido</b> do Matriz. O painel confere se a grade de cada peça bate com os nomes da personalização (por tamanho e cor) e se os conjuntos (calça ou saia com blazer ou colete) estão no mesmo tecido e na mesma cor. Nada fica salvo.</p>'
+    +'<label id="confDrop" style="display:flex;align-items:center;justify-content:center;gap:10px;border:2px dashed var(--line);border-radius:12px;padding:18px;cursor:pointer;color:var(--muted);margin-bottom:16px"><span style="font-size:20px">&#128196;</span><span>'+(P?'Trocar pedido — atual: <b style="color:var(--ink)">'+uEsc(CONF.nome)+'</b>':'Clique para escolher o PDF do pedido ou arraste aqui')+'</span><input type="file" id="confFile" accept="application/pdf,.pdf" style="display:none"></label>';
+  if(CONF.msg) h+='<div style="margin:0 0 12px;font-size:13px;color:'+(/^Não deu/.test(CONF.msg)?warn:'var(--muted)')+'">'+uEsc(CONF.msg)+'</div>';
+  if(P&&R){
+    var nDivG=R.refs.reduce(function(a,r){ return a+r.linhas.filter(function(x){return x.dif.length||!x.totalOk;}).length+(r.semCor.length?1:0); },0);
+    var nConj=R.avisosPed.length+R.avisosPes.length, totOk=P.totalPecas==null||P.totalPecas===R.somaItens;
+    var chip=function(bom,txt){ return '<span style="display:inline-block;padding:5px 12px;border-radius:999px;font-size:13px;font-weight:600;background:'+(bom?'rgba(46,171,134,.15)':'rgba(224,150,45,.15)')+';color:'+(bom?ok:warn)+'">'+(bom?'✓ ':'⚠ ')+txt+'</span>'; };
+    h+='<div style="'+card+'"><div style="display:flex;flex-wrap:wrap;gap:6px 22px;font-size:13.5px;color:var(--muted);margin-bottom:10px"><span>Pedido <b style="color:var(--ink)">'+uEsc(P.numero||'—')+'</b></span><span>'+uEsc(P.cliente||'')+'</span><span>Consultor(a): <b style="color:var(--ink)">'+uEsc(P.vendedor||'—')+'</b></span><span>Entrega: '+uEsc(P.entrega||'—')+'</span><span>'+P.itens.length+' itens · '+R.somaItens+' peças</span></div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:8px">'+chip(!nDivG,nDivG?nDivG+' item(ns) com grade diferente da personalização':'Grade bate com a personalização em todos os itens')+chip(!nConj,nConj?nConj+' aviso(s) de conjunto para confirmar com o consultor':'Conjuntos no mesmo tecido e cor')+(totOk?'':chip(false,'Total de peças do pedido ('+P.totalPecas+') diferente da soma dos itens ('+R.somaItens+')'))+'</div></div>';
+    if(nConj){ h+='<div style="'+card+';border-color:rgba(224,150,45,.5)"><div style="font-weight:600;color:'+warn+';margin-bottom:8px">Conjuntos para confirmar com o consultor</div><ul style="margin:0;padding-left:18px;font-size:13.5px;line-height:1.7;color:var(--ink)">'
+      +R.avisosPed.map(function(a){ return '<li><b>'+uEsc(a.it.ref)+'</b> '+uEsc(a.it.desc)+' · '+uEsc(a.it.cor)+': '+uEsc(a.txt)+'</li>'; }).join('')
+      +R.avisosPes.map(function(g){ var f=function(o){ return Object.keys(o).map(function(k){ return o[k].cor+' ('+o[k].mat+')'; }).join(', '); }; return '<li><b>'+uEsc(g.nome)+'</b>: blazer/colete em '+uEsc(f(g.cima))+' · calça/saia em '+uEsc(f(g.baixo))+'</li>'; }).join('')+'</ul></div>'; }
+    var hRuim='', hBom='', h0=h;
+    R.refs.forEach(function(r){ r.linhas.forEach(function(x){ var it=x.it, bad=x.dif.length||!x.totalOk; h='';
+      h+='<div style="'+card+(bad?';border-color:rgba(224,150,45,.5)':'')+'"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px"><div><b style="color:var(--ink)">'+uEsc(it.ref)+'</b> <span style="color:var(--ink)">'+uEsc(it.desc)+'</span><div style="font-size:12.5px;color:var(--muted)">Cor '+uEsc(it.cor)+' · tecido '+uEsc(it.mat||'—')+' · '+it.total+' peças</div></div>'
+        +'<span style="font-size:12.5px;font-weight:600;color:'+(bad?warn:ok)+'">'+(x.temPers?(bad?'⚠ diverge':'✓ confere'):'sem personalização')+'</span></div>';
+      if(x.temPers&&x.tams.length){ h+='<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:13px;min-width:100%"><tr><td style="color:var(--muted);padding:4px 8px">Tamanho</td>'+x.tams.map(function(s){ return '<td style="padding:4px 8px;text-align:center;font-weight:600;color:var(--ink)">'+uEsc(s)+'</td>'; }).join('')+'</tr>'
+        +'<tr><td style="color:var(--muted);padding:4px 8px">Grade</td>'+x.tams.map(function(s){ return '<td style="padding:4px 8px;text-align:center">'+(it.grade[s]||0)+'</td>'; }).join('')+'</tr>'
+        +'<tr><td style="color:var(--muted);padding:4px 8px">Personalização</td>'+x.tams.map(function(s){ var d=x.dif.indexOf(s)>=0; return '<td style="padding:4px 8px;text-align:center;'+(d?'background:rgba(224,150,45,.18);color:'+warn+';font-weight:700;border-radius:6px':'')+'">'+(x.esp[s]||0)+'</td>'; }).join('')+'</tr></table></div>';
+        if(x.dif.length) h+='<div style="font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.6">'+x.dif.map(function(s){ return '<b style="color:'+warn+'">Tam. '+uEsc(s)+'</b>: grade '+(it.grade[s]||0)+' × personalização '+(x.esp[s]||0)+(x.nomes[s]?' — '+uEsc(x.nomes[s].join(', ')):''); }).join('<br>')+'</div>'; }
+      if(!x.totalOk) h+='<div style="font-size:12.5px;color:'+warn+';margin-top:6px">A soma da grade ('+x.somaG+') não bate com o total do item ('+it.total+').</div>';
+      h+='</div>'; if(bad) hRuim+=h; else hBom+=h; });
+      if(r.semCor.length) hRuim+='<div style="'+card+';border-color:rgba(224,150,45,.5);font-size:13px"><b style="color:'+warn+'">'+uEsc(r.ref)+'</b>: personalização com cor que não está lançada na grade — '+uEsc(r.semCor.map(function(x){ return x.nome+' ('+x.q+' '+x.cor+', tam. '+x.tam+')'; }).join('; '))+'</div>'; });
+    h=h0+(hRuim?'<div style="font-weight:600;color:'+warn+';margin:4px 0 8px">Itens com divergência</div>'+hRuim:'')+(hBom?'<div style="font-weight:600;color:var(--muted);margin:14px 0 8px">Itens que conferem</div>'+hBom:'');
+  }
+  h+='</div>'; host.innerHTML=h;
+  var fi=$('confFile'); if(fi) fi.onchange=function(){ confAbrir(fi.files&&fi.files[0]); };
+  var dr=$('confDrop'); if(dr){ dr.ondragover=function(e){ e.preventDefault(); dr.style.borderColor='var(--f-green)'; }; dr.ondragleave=function(){ dr.style.borderColor='var(--line)'; };
+    dr.ondrop=function(e){ e.preventDefault(); dr.style.borderColor='var(--line)'; confAbrir(e.dataTransfer.files&&e.dataTransfer.files[0]); }; }
+}
 
 /* ---- Logos para bordado: o cliente manda a logo pequena/borrada (JPG, PNG ou PDF) e a matriz da Nayara não lê.
    Tudo roda neste navegador (a logo não sai da Dash): a imagem é redesenhada em vetor com poucas cores chapadas
