@@ -3878,13 +3878,20 @@ async function _ckRead(path,ref){ var hd={'Accept':'application/vnd.github.raw+j
 async function _ckHead(){ var hd={'Accept':'application/vnd.github+json'}, t=ghToken(); if(t) hd['Authorization']='Bearer '+t;
   var r=await fetch('https://api.github.com/repos/'+GH_REPO.owner+'/'+GH_REPO.repo+'/git/ref/heads/'+CK_BRANCH,{headers:hd,cache:'no-store'});
   if(r.status===404) return null; if(!r.ok){ var e=new Error('HTTP '+r.status); e.status=r.status; throw e; } return (await r.json()).object.sha; }
-async function _ckIndex(sha){ if(!sha) return null; var b=await _ckRead('ck/'+CKS.uid+'/index.bin',sha); return b?JSON.parse(await _ckDec(b)):null; }
+// Se o índice no GitHub foi gravado com outra chave (OperationError ao decifrar), ele não serve para ninguém deste login:
+// recomeça um índice novo com a chave atual — o que está em cada computador é reenviado e passa a valer para todos.
+async function _ckIndex(sha){ if(!sha) return null; var b=await _ckRead('ck/'+CKS.uid+'/index.bin',sha); if(!b) return null;
+  try{ return JSON.parse(await _ckDec(b)); }
+  catch(e){ if(e&&e.name==='OperationError'){ CKS.recomecou=true; return {v:1,keys:{},ck:{}}; } throw e; } }
 // traz para este computador o que está mais novo no GitHub
 async function _ckApply(ix,sha){ if(!ix) return false; var M=CKS.meta, mud=false, globs=[];
   for(var k of Object.keys(ix.keys||{})){ if(k==='prog_checklist') continue; var r=ix.keys[k], l=M.keys[k]||{ts:0}; if(!(r.ts>l.ts)) continue;
     // um arquivo que falha ao baixar não impede os demais nem as marcações do checklist
     try{ if(r.del){ if(!_ckLsSet(k,null)) throw new Error('sem espaço'); } else { var b=await _ckRead('ck/'+CKS.uid+'/'+k+'.bin',sha); if(!b) continue; if(!_ckLsSet(k,await _ckDec(b))) throw new Error('sem espaço'); } }
-    catch(e){ CKS.falhas.push(_ckNome(k)+' (receber: '+((e&&e.status)?'HTTP '+e.status:((e&&e.message)||e))+')'); continue; }
+    catch(e){
+      if(e&&e.name==='OperationError'){ // arquivo gravado com outra chave: ignora o de lá e reenvia o deste computador, se houver
+        var lv=null; try{ lv=localStorage.getItem(k); }catch(x){} M.keys[k]={ts:lv!=null?Math.max(Date.now(),r.ts+1):r.ts}; CKS.again=CKS.again||lv!=null; continue; }
+      CKS.falhas.push(_ckNome(k)+' (receber: '+((e&&e.status)?'HTTP '+e.status:((e&&e.message)||e))+')'); continue; }
     M.keys[k]={ts:r.ts}; mud=true; if(CK_GLOBAL[k]) globs.push(k); }
   var cur={}; try{ cur=JSON.parse(localStorage.getItem('prog_checklist')||'{}')||{}; }catch(e){}
   var f=_ckFlat(cur), mc=false;
