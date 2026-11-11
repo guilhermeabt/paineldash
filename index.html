@@ -570,7 +570,7 @@ function idbGet(k){ return idbReq('readonly',(st,res)=>{ const g=st.get(k); g.on
    O localStorage tem só ~5 MB por site e as planilhas/PDFs da Programação, Conciliação e Gestão enchiam esse espaço
    ("Não consegui salvar neste navegador"). Essas chaves passam a ficar no IndexedDB (centenas de MB), com uma cópia
    em memória para leitura imediata. O resto do painel continua usando localStorage.getItem/setItem normalmente. */
-var BIG_KEYS={}; ['p2_base','gest_base','prog_pedsel','prog_pecas','prog_ficha','prog_benef','prog_ops','prog_opsger','prog_opsped','prog_estoque','prog_tec','prog_tecnome','prog_reprog','est_state'].forEach(function(k){ BIG_KEYS[k]=1; });
+var BIG_KEYS={}; ['p2_base','p2_pub','gest_base','prog_pedsel','prog_pecas','prog_ficha','prog_benef','prog_ops','prog_opsger','prog_opsped','prog_estoque','prog_tec','prog_tecnome','prog_reprog','est_state'].forEach(function(k){ BIG_KEYS[k]=1; });
 var BIG_MEM={}, BIG_ON=false, BIG_DB=null;
 function _bigOpen(){ if(BIG_DB) return BIG_DB; BIG_DB=new Promise(function(ok,ko){ var rq; try{ rq=indexedDB.open('painelop_big',1); }catch(e){ return ko(e); }
   rq.onupgradeneeded=function(){ try{ rq.result.createObjectStore('kv'); }catch(e){} }; rq.onsuccess=function(){ ok(rq.result); }; rq.onerror=function(){ ko(rq.error); }; rq.onblocked=function(){ ko(new Error('bloqueado')); }; });
@@ -3704,10 +3704,47 @@ function printPrevisao(){ var o=_pvLoad(), ini=o.inicio||_pvProxSegunda(), dias=
    (não passa pelo PCP; os mistos ficam). Mesma regra da Conciliação dos Relatórios. Base começa com o histórico que vinha
    embutido na Conciliação e soma as exportações da Shopify; Matriz aprovados/não aprovados são substituídos a cada envio. */
 var P2_CUT='2026-03-01', P2_UI={q:'',mes:'',st:'',ocultar:false,ponte:''}, P2_BUSY=false, P2_PROG=null;
-function _p2Base(){ var b=_gjGet('p2_base',null); if(b) return b;
+function _p2Embutido(){
   try{ var P=PANELS.conciliacao, h=new TextDecoder().decode(Uint8Array.from(atob(P.b64),function(c){return c.charCodeAt(0);})), m=/<script[^>]*id="DATA"[^>]*>([\s\S]*?)<\/script>/.exec(h);
     if(m){ var d=JSON.parse(m[1]); return {shopify:d.shopify||[],matriz:(d.matriz||[]).map(function(x){return {ext:x.ext,num:x.num,cliente:x.cliente,cad:x.cad,prev:x.prev,base:x.base,fat:x.fat,uf:x.uf};}),meta:{origem:'histórico embutido até '+_calBRs(d.gerado||'')},embutido:1}; } }catch(e){}
   return {shopify:[],matriz:[],meta:{}}; }
+// o que foi enviado neste login (só o período novo); compartilhado entre os computadores do login
+function _p2Local(){ var b=_gjGet('p2_base',null); if(!b) return {shopify:[],matriz:[],meta:{},v2:1}; b.shopify=b.shopify||[]; b.matriz=b.matriz||[]; b.meta=b.meta||{};
+  // versão antiga guardava o histórico inteiro do Matriz aqui (substituído a cada envio): com a base publicada lida, ela passa a valer
+  if(!b.v2&&P2_PUB.estado==='ok'){ b.matriz=[]; delete b.meta.aprovados; delete b.meta.nao_aprovados; delete b.embutido; b.v2=1; }
+  return b; }
+/* Base publicada (Base de Dados → arquivos Shopify, Matriz aprovados e não aprovados): é o histórico completo que o
+   administrador já sobe. A Conciliação usa essa base e só pede o período depois dela. Guardo o resultado já lido
+   (p2_pub, no IndexedDB) para não ler as planilhas de novo enquanto não sair outra publicação. */
+var P2_PUB={estado:'',shopify:[],matriz:[],ate:{},em:{},erro:''}, P2_PUB_K=['shopify','aprovados','nao_aprovados'];
+function _p2Combina(){ var E=P2_PUB.estado==='ok'?null:_p2Embutido(), L=_p2Local(), sh={}, mt={};
+  var capas=E?[E]:[]; capas.push({shopify:P2_PUB.shopify,matriz:P2_PUB.matriz}); capas.push(L);
+  capas.forEach(function(c){ (c.shopify||[]).forEach(function(o){ sh[o.name]=o; });
+    (c.matriz||[]).forEach(function(m){ var a=mt[m.num]; if(!a||m.base==='aprovado'||a.base!=='aprovado') mt[m.num]=m; }); });
+  return {shopify:Object.keys(sh).map(function(k){return sh[k];}),matriz:Object.keys(mt).map(function(k){return mt[k];}),meta:L.meta}; }
+function _p2Ate(B){ var a={shopify:'',aprovados:'',nao_aprovados:''};
+  (B.shopify||[]).forEach(function(o){ if(o.date>a.shopify) a.shopify=o.date; });
+  (B.matriz||[]).forEach(function(m){ var k=m.base==='aprovado'?'aprovados':'nao_aprovados'; if(m.cad&&m.cad>a[k]) a[k]=m.cad; }); return a; }
+async function _p2CarregaPub(){ if(P2_PUB.estado==='lendo') return; P2_PUB.estado='lendo'; P2_PUB.erro='';
+  try{ var man=await fetchManifest(); if(!man||!man.slots) throw new Error('sem publicação');
+    var ts={}; P2_PUB_K.forEach(function(k){ if(man.slots[k]&&SESSION.slots[k]) ts[k]=man.slots[k].ts||0; });
+    if(!Object.keys(ts).length) throw new Error('este login não tem acesso aos arquivos publicados da Conciliação');
+    var cache=_gjGet('p2_pub',null);
+    if(cache&&JSON.stringify(cache.ts)===JSON.stringify(ts)){ Object.assign(P2_PUB,{shopify:cache.shopify,matriz:cache.matriz,ate:cache.ate,em:ts,estado:'ok'}); return; }
+    var sh=[], mt=[], ate={};
+    for(var i=0;i<P2_PUB_K.length;i++){ var k=P2_PUB_K[i]; if(!ts[k]) continue; var e=man.slots[k], meta=await decJSON(b64d(SESSION.slots[k]),e.m), fs=[];
+      for(var j=0;j<meta.files.length;j++){ var f=meta.files[j], ct=await getEncBlob(f.p), plain=await decBytes(b64d(SESSION.slots[k]),f.iv,ct); fs.push(new File([plain],f.n,{type:f.t||''})); }
+      if(k==='shopify'){ await new Promise(function(ok,ko){ ensureXLSX(ok,ko); }); fs=await expandShopZips(fs); }
+      for(var q=0;q<fs.length;q++){ var arr=await _p2LerPlanilha(fs[q]);
+        if(k==='shopify') sh=sh.concat(_p2Shopify(arr)); else mt=mt.concat(_p2Matriz(arr,k==='aprovados'?'aprovado':'nao_aprovado')); } }
+    var A=_p2Ate({shopify:sh,matriz:mt}); Object.keys(ts).forEach(function(k){ ate[k]=A[k]; });
+    mt=mt.filter(function(m){ return m.ext; }); // só os ligados a um pedido do site entram nas pontes
+    sh=sh.filter(function(o){ return o.date>=P2_CUT; });
+    Object.assign(P2_PUB,{shopify:sh,matriz:mt,ate:ate,em:ts,estado:'ok'});
+    _gjSet('p2_pub',{ts:ts,shopify:sh,matriz:mt,ate:ate}); }
+  catch(e){ P2_PUB.estado='erro'; P2_PUB.erro=(e&&e.message)||String(e); }
+  finally{ if(P2_PUB.estado==='lendo') P2_PUB.estado='erro'; if($('p2Prog')&&!P2_BUSY) try{ renderP2(); }catch(x){} } }
+function _p2Base(){ return _p2Combina(); }
 // pedidos de teste da implantação da Shopify (Raquel Fernandes / raquelotonif@gmail.com): ignorados nas duas pontes
 function _p2Lixo(o,cliente){ return /raquelotonif@gmail\.com/i.test(o.email||'')||/raquel\s*fernandes/i.test((o.nome||'')+' '+(cliente||'')); }
 function p2Calc(){ var B=_p2Base(), byExt={}, fila=new Set(_gNums(_gjGet('p2_fila',''))), bord=new Set(_gNums(_gjGet('p2_bordado',''))), done=new Set(_gjGet('p2_done',[]));
@@ -3737,13 +3774,21 @@ function renderP2(){
   var inp='background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px', card='background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:16px';
   var th='text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);color:var(--muted);font-weight:600;font-size:12.5px;position:sticky;top:0;background:var(--surface2)', td='padding:7px 10px;border-bottom:1px solid var(--line);font-size:13.5px;color:var(--ink)';
   // bloco "Arquivos necessários": o que cada ponte usa e se já foi enviado
-  var arq=function(k,t,dica,multi){ var m=M[k], tem=!!m||(k==='shopify'&&B.shopify.length);
-    return '<div style="flex:1;min-width:230px;border:1px solid '+(m?'rgba(46,171,134,.5)':'rgba(224,150,45,.5)')+';border-radius:10px;padding:10px 12px">'
-      +'<div style="font-weight:600;color:var(--ink);font-size:13.5px">'+(m?'✓ ':'⚠ ')+t+'</div>'
-      +'<div style="color:var(--muted);font-size:12px;margin:2px 0 6px">Usado na <b>Ponte 1 e na Ponte 2</b>. '+dica+'</div>'
-      +'<div style="font-size:12px;color:'+(m?'var(--f-green)':'var(--f-amber)')+';margin-bottom:8px">'+(m?'Enviado: '+uEsc(m.arquivo)+' · '+m.reg+' registros · '+fmtTs(m.quando)+(m.por?' por '+uEsc(m.por):''):(tem?'Ainda não enviado — usando só o histórico antigo (até 10/07/2026)':'Ainda não enviado'))+'</div>'
+  if(!P2_PUB.estado) setTimeout(_p2CarregaPub,0);
+  var pubOk=P2_PUB.estado==='ok';
+  var arq=function(k,t,oque,multi){ var m=M[k], pa=pubOk?(P2_PUB.ate[k]||''):'', la=(m&&m.ate)||'', ate=pa>la?pa:la, bom=!!(pa||m);
+    var st=P2_PUB.estado==='lendo'||P2_PUB.estado===''?'<span style="color:var(--muted)">Buscando a base publicada…</span>'
+      :(pa?'<span style="color:var(--f-green)">✓ Base publicada até '+_calBRs(pa)+(P2_PUB.em[k]?' (publicada em '+fmtTs(P2_PUB.em[k]).split(' ')[0]+')':'')+'</span>'
+          :'<span style="color:var(--f-amber)">Base publicada indisponível'+(P2_PUB.erro?' — '+uEsc(P2_PUB.erro):'')+'. Usando o histórico antigo (até 10/07/2026).</span>')
+      +(m?'<br><span style="color:var(--f-green)">✓ Você enviou: '+uEsc(m.arquivo)+' · '+m.reg+' registros'+(m.ate?' (até '+_calBRs(m.ate)+')':'')+' · '+fmtTs(m.quando)+(m.por?' por '+uEsc(m.por):'')+'</span>':'');
+    return '<div style="flex:1;min-width:230px;border:1px solid '+(bom?'rgba(46,171,134,.5)':'rgba(224,150,45,.5)')+';border-radius:10px;padding:10px 12px">'
+      +'<div style="font-weight:600;color:var(--ink);font-size:13.5px">'+(bom?'✓ ':'⚠ ')+t+'</div>'
+      +'<div style="font-size:12px;margin:4px 0 6px;line-height:1.5">'+st+'</div>'
+      +(ate?'<div style="font-size:13px;color:var(--ink);background:rgba(74,163,223,.12);border:1px solid rgba(74,163,223,.4);border-radius:8px;padding:7px 10px;margin-bottom:8px">Suba só '+oque+' <b>a partir de '+_calBRs(ate)+'</b>.</div>'
+          :'<div style="color:var(--muted);font-size:12px;margin-bottom:8px">Suba '+oque+'.</div>')
+      +'<div style="color:var(--muted);font-size:11.5px;margin-bottom:8px">Soma ao que já existe — não precisa subir o histórico de novo. Usado na Ponte 1 e na Ponte 2.</div>'
       +'<label class="ubtn" style="cursor:pointer;font-size:13px">⬆ Escolher arquivo'+(multi?'(s)':'')+'<input type="file" class="p2File" data-k="'+k+'" accept=".csv,.zip,.xls,.xlsx"'+(multi?' multiple':'')+' style="display:none"></label></div>'; };
-  var falt=['shopify','aprovados','nao_aprovados'].filter(function(k){ return !M[k]; });
+  var falt=['shopify','aprovados','nao_aprovados'].filter(function(k){ return !(pubOk&&P2_PUB.ate[k])&&!M[k]; });
   var tabs=P2_PONTES.map(function(p){ var on=p[0]===pon, cnt=p[0]==='p1'?C.falta.length:C.todos.length;
     return '<button class="p2tab" data-p="'+p[0]+'" style="padding:9px 16px;border:none;border-bottom:3px solid '+(on?p[2]:'transparent')+';background:'+(on?p[2]+'1f':'none')+';border-radius:8px 8px 0 0;cursor:pointer;font-weight:'+(on?'700':'600')+';color:'+(on?p[2]:p[2]+'99')+';font-size:14px">'+p[1]+' <span style="font-size:11px;opacity:.8">('+cnt+')</span></button>'; }).join('');
   var cols=pon==='p1'?['Pedido','Criação','Valor','Tag ERP','E-mail','UF','Tratado']:['Pedido','Nº Matriz','Cliente','Criação','Prev. Entrega','Valor','Status PCP','UF','Tratado'];
@@ -3754,11 +3799,11 @@ function renderP2(){
   host.innerHTML='<div style="max-width:1150px"><h2 style="margin:0 0 4px;color:var(--ink);font-weight:600">Conciliação de Pedidos — Shopify → Matriz → Produção</h2>'
     +'<p style="color:var(--muted);font-size:13px;margin:0 0 16px">Pedidos pagos na Shopify a partir de 01/03/2026. Pedidos de teste da implantação (Raquel Fernandes / raquelotonif@gmail.com) são ignorados'+(C.lixo?' — '+C.lixo+' fora da conta':'')+'.</p>'
     +'<div style="'+card+'"><div style="font-weight:600;color:var(--ink);margin-bottom:4px">Arquivos necessários para atualizar as pontes</div>'
-      +'<div style="font-size:12.5px;color:'+(falt.length?'var(--f-amber)':'var(--f-green)')+';margin-bottom:10px">'+(falt.length?'Falta enviar '+falt.length+' de 3 arquivos. As pontes só ficam em dia com os 3.':'✓ Os 3 arquivos foram enviados.')+'</div>'
+      +'<div style="font-size:12.5px;color:'+(falt.length?'var(--f-amber)':'var(--muted)')+';margin-bottom:10px">'+(falt.length?'Falta a base de '+falt.length+' de 3 arquivos.':'O histórico vem da base publicada. Para deixar as pontes em dia, suba só o período depois da data indicada em cada arquivo.')+'</div>'
       +'<div style="display:flex;gap:10px;flex-wrap:wrap">'
-      +arq('shopify','Shopify — exportação de pedidos','CSV ou o zip orders_export. Soma ao que já tem (exporte só o período novo).',false)
-      +arq('aprovados','Matriz — pedidos aprovados','Substitui os aprovados. Pode escolher vários arquivos (períodos).',true)
-      +arq('nao_aprovados','Matriz — pedidos NÃO aprovados','Substitui os não aprovados. Pode escolher vários arquivos.',true)
+      +arq('shopify','Shopify — exportação de pedidos','os pedidos da Shopify (CSV ou o zip orders_export)',false)
+      +arq('aprovados','Matriz — pedidos aprovados','os pedidos aprovados do Matriz',true)
+      +arq('nao_aprovados','Matriz — pedidos NÃO aprovados','os pedidos não aprovados do Matriz',true)
     +'</div><div id="p2Prog"></div></div>'
     +'<div style="display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:14px;flex-wrap:wrap">'+tabs+'</div>'
     +'<p style="color:var(--muted);font-size:13px;margin:0 0 12px">'+(pon==='p1'?'Pedidos <b>pagos na Shopify que não entraram no Matriz</b>. Travaram na integração — precisam ser lançados no ERP.':'Pedidos pagos <b>no Matriz como NÃO APROVADO e ainda sem faturamento</b> — parados aguardando o PCP. Pedidos <b>100% pronta entrega</b> ficam de fora (vão direto para a expedição); os <b>mistos</b> continuam.')+'</p>'
@@ -3832,11 +3877,14 @@ async function p2Subir(k,files){ if(P2_BUSY) return; P2_BUSY=true; P2_PROG=null;
       var arr=await _p2LerPlanilha(files[i]); _p2Prog(3,72,arr.length+' linhas'); await _gestPinta();
       lidos=lidos.concat(k==='shopify'?_p2Shopify(arr):_p2Matriz(arr,k==='aprovados'?'aprovado':'nao_aprovado')); }
     _p2Prog(3,82,lidos.length+(k==='shopify'?' pedidos da Shopify':' pedidos do Matriz')+' · juntando com a base'); await _gestPinta();
-    var B=_p2Base(); B.meta=B.meta||{};
-    if(k==='shopify'){ var by={}; B.shopify.forEach(function(o){ by[o.name]=o; }); lidos.forEach(function(o){ by[o.name]=o; }); B.shopify=Object.keys(by).map(function(x){return by[x];}); }
-    else { var base=k==='aprovados'?'aprovado':'nao_aprovado', mat=B.matriz.filter(function(m){ return m.base!==base; }).concat(lidos), bn={};
-      mat.forEach(function(m){ if(bn[m.num]==null||m.base==='aprovado') bn[m.num]=m; }); B.matriz=Object.keys(bn).map(function(x){return bn[x];}); }
-    B.meta[k]={arquivo:files.map(function(f){return f.name;}).join(', '),reg:lidos.length,quando:Date.now(),por:(current&&current.name)||currentUserKey||''}; delete B.embutido;
+    // soma ao que já foi enviado (o histórico vem da base publicada); o mesmo pedido enviado de novo fica com a versão mais nova
+    if(P2_PUB.estado!=='ok') await _p2CarregaPub();
+    var B=_p2Local();
+    if(k==='shopify'){ var by={}; B.shopify.forEach(function(o){ by[o.name]=o; }); lidos.filter(function(o){ return o.date>=P2_CUT; }).forEach(function(o){ by[o.name]=o; }); B.shopify=Object.keys(by).map(function(x){return by[x];}); }
+    else { var bn={}; B.matriz.forEach(function(m){ bn[m.num]=m; });
+      lidos.filter(function(m){ return m.ext; }).forEach(function(m){ var a=bn[m.num]; if(!a||m.base==='aprovado'||a.base!=='aprovado') bn[m.num]=m; }); B.matriz=Object.keys(bn).map(function(x){return bn[x];}); }
+    var aLid=_p2Ate(k==='shopify'?{shopify:lidos}:{matriz:lidos});
+    B.meta[k]={arquivo:files.map(function(f){return f.name;}).join(', '),reg:lidos.length,quando:Date.now(),por:(current&&current.name)||currentUserKey||'',ate:aLid[k]}; delete B.embutido;
     _p2Prog(4,90); await _gestPinta(); _gjSet('p2_base',B);
     _p2Prog(5,96); await _gestPinta();
     var C=p2Calc(); P2_PROG={i:6,pct:100,extra:'Pronto! '+lidos.length+' registros lidos · Ponte 1: '+C.falta.length+' faltando no Matriz · Ponte 2: '+C.todos.length+' parados no PCP.',t0:P2_PROG.t0}; renderP2();
