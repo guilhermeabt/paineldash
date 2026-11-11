@@ -3840,13 +3840,21 @@ function ckSave(o){ try{ localStorage.setItem('prog_checklist', JSON.stringify(o
    index.json: { keys:{arquivo:{ts,by,del}}, ck:{campo:{ts,v,del}} } — os arquivos (PDF das OPs, Excels) vão em <chave>.bin;
    as marcações/datas/números do checklist vão campo a campo, então duas pessoas mexendo ao mesmo tempo não se apagam. */
 var CK_SYNC_KEYS=['p2_base','p2_fila','p2_bordado','p2_done','gest_base','gest_fila','gest_done','prog_prev','prog_checklist','prog_pedsel','prog_pecas','prog_ficha','prog_benef','prog_ops','prog_opsger','prog_opsped','prog_estoque','prog_tec','prog_tecnome','prog_reprog','prog_holidays'];
-var CK_BRANCH='checklists', CKS={on:false,uid:'',user:'',meta:null,timer:null,loop:null,busy:false,again:false,applying:false,status:'',quando:0,erro:''};
+var CK_BRANCH='checklists', CKS={on:false,uid:'',user:'',meta:null,timer:null,loop:null,busy:false,again:false,applying:false,status:'',quando:0,erro:'',falhas:[],parcial:[],semEspaco:false};
 var CK_GLOBAL={prog_pedsel:'__PROG_PEDSEL',prog_pecas:'__PROG_PECAS',prog_ficha:'__PROG_FICHA',prog_benef:'__PROG_BENEF',prog_ops:'__PROG_OPS',prog_opsger:'__PROG_OPSGER',prog_opsped:'__PROG_OPSPED',prog_estoque:'__PROG_ESTOQUE',prog_tec:'__TEC_OFICIAL',prog_tecnome:'__TEC_NOME',prog_reprog:'__PROG_REPROG'};
 (function(){ var S=Storage.prototype, si=S.setItem, ri=S.removeItem;
-  S.setItem=function(k,v){ si.apply(this,arguments); try{ if(CKS.on&&!CKS.applying&&this===window.localStorage&&CK_SYNC_KEYS.indexOf(k)>=0) ckSyncMark(k); }catch(e){} };
+  S.setItem=function(k,v){
+    try{ si.apply(this,arguments); }
+    catch(e){ // navegador sem espaço: o dado não foi salvo aqui, então também não seria compartilhado — avisa na linha ☁
+      if(this===window.localStorage&&CK_SYNC_KEYS.indexOf(k)>=0){ CKS.semEspaco=_ckNome(k); try{ ckSyncUI(''); }catch(x){} } throw e; }
+    if(this===window.localStorage&&CKS.semEspaco===_ckNome(k)){ CKS.semEspaco=false; try{ ckSyncUI(''); }catch(x){} }
+    try{ if(CKS.on&&!CKS.applying&&this===window.localStorage&&CK_SYNC_KEYS.indexOf(k)>=0) ckSyncMark(k); }catch(e){} };
   S.removeItem=function(k){ ri.apply(this,arguments); try{ if(CKS.on&&!CKS.applying&&this===window.localStorage&&CK_SYNC_KEYS.indexOf(k)>=0) ckSyncMark(k); }catch(e){} };
 }());
-function _ckLsSet(k,v){ CKS.applying=true; try{ if(v==null) localStorage.removeItem(k); else localStorage.setItem(k,v); }catch(e){} CKS.applying=false; }
+function _ckLsSet(k,v){ var ok=true; CKS.applying=true; try{ if(v==null) localStorage.removeItem(k); else localStorage.setItem(k,v); }catch(e){ ok=false; } CKS.applying=false; return ok; }
+var CK_NOMES={p2_base:'Conciliação (base)',p2_fila:'Conciliação (fila)',p2_bordado:'Conciliação (bordado)',p2_done:'Conciliação (feitos)',gest_base:'Gestão (base)',gest_fila:'Gestão (fila)',gest_done:'Gestão (feitos)',prog_prev:'Previsão de entrega',prog_checklist:'marcações do checklist',prog_pedsel:'Pedidos Selecionados',prog_pecas:'Peças de Produção',prog_ficha:'Fichas Técnicas',prog_benef:'Acompanhamento de Beneficiador',prog_ops:'PDF das OPs',prog_opsger:'OPs geradas',prog_opsped:'OPs com pedidos',prog_estoque:'Estoque',prog_tec:'Tecidos',prog_tecnome:'Nomes de tecidos',prog_reprog:'Reprogramação',prog_holidays:'Dias não úteis'};
+function _ckNome(k){ return CK_NOMES[k]||k; }
+var CK_MAX=30*1024*1024; // arquivo cifrado acima disso não vai para o GitHub (ficaria lento ou seria recusado)
 // campos do checklist que valem para todos (a aba aberta é de cada um)
 function _ckFlat(o){ var f={}; (function w(x,p){ Object.keys(x||{}).forEach(function(k){ var v=x[k], q=p?p+'.'+k:k; if(q==='tab') return;
   if(v&&typeof v==='object'&&!Array.isArray(v)) w(v,q); else f[q]=v; }); })(o,''); return f; }
@@ -3874,7 +3882,9 @@ async function _ckIndex(sha){ if(!sha) return null; var b=await _ckRead('ck/'+CK
 // traz para este computador o que está mais novo no GitHub
 async function _ckApply(ix,sha){ if(!ix) return false; var M=CKS.meta, mud=false, globs=[];
   for(var k of Object.keys(ix.keys||{})){ if(k==='prog_checklist') continue; var r=ix.keys[k], l=M.keys[k]||{ts:0}; if(!(r.ts>l.ts)) continue;
-    if(r.del) _ckLsSet(k,null); else { var b=await _ckRead('ck/'+CKS.uid+'/'+k+'.bin',sha); if(!b) continue; _ckLsSet(k,await _ckDec(b)); }
+    // um arquivo que falha ao baixar não impede os demais nem as marcações do checklist
+    try{ if(r.del){ if(!_ckLsSet(k,null)) throw new Error('sem espaço'); } else { var b=await _ckRead('ck/'+CKS.uid+'/'+k+'.bin',sha); if(!b) continue; if(!_ckLsSet(k,await _ckDec(b))) throw new Error('sem espaço'); } }
+    catch(e){ CKS.falhas.push(_ckNome(k)+' (receber: '+((e&&e.status)?'HTTP '+e.status:((e&&e.message)||e))+')'); continue; }
     M.keys[k]={ts:r.ts}; mud=true; if(CK_GLOBAL[k]) globs.push(k); }
   var cur={}; try{ cur=JSON.parse(localStorage.getItem('prog_checklist')||'{}')||{}; }catch(e){}
   var f=_ckFlat(cur), mc=false;
@@ -3888,17 +3898,22 @@ async function _ckApply(ix,sha){ if(!ix) return false; var M=CKS.meta, mud=false
     var gc=$('gestContent'), gdig=ae&&/INPUT|TEXTAREA|SELECT/.test(ae.tagName)&&gc&&gc.contains(ae); if($('modGest')&&$('modGest').style.display!=='none'&&gestActive==='conciliacao'&&!gdig) try{ renderGestConc(); }catch(e){} }
   return mud; }
 // envia o que mudou aqui e traz o que mudou lá (refaz em cima da versão mais nova se duas pessoas gravarem juntas)
-async function ckSyncRun(){ if(!CKS.on) return; if(CKS.busy){ CKS.again=true; return; } CKS.busy=true; CKS.again=false;
+async function ckSyncRun(){ if(!CKS.on) return; if(CKS.busy){ CKS.again=true; return; } CKS.busy=true; CKS.again=false; CKS.falhas=[];
   try{
     for(var t=0;t<4;t++){
+      CKS.falhas=[];
       var sha=await _ckHead(), ix=await _ckIndex(sha)||{v:1,keys:{},ck:{}}, M=CKS.meta, novo=JSON.parse(JSON.stringify(ix)), tree=[], who=(current&&current.name)||CKS.user;
+      if(!ix.keys) ix.keys={}; if(!ix.ck) ix.ck={}; if(!novo.keys) novo.keys={}; if(!novo.ck) novo.ck={};
+      if(!ghToken()){ await _ckApply(ix,sha); throw new Error('sem token do GitHub — peça ao administrador para guardar o token no painel.'); }
       for(var k of Object.keys(M.keys)){ if(k==='prog_checklist') continue; var l=M.keys[k], r=ix.keys[k]||{ts:0}; if(!(l.ts>r.ts)) continue;
         var v=null; try{ v=localStorage.getItem(k); }catch(e){}
-        if(v==null) novo.keys[k]={ts:l.ts,by:who,del:true};
-        else { var bl=await gh('/git/blobs',{method:'POST',body:{content:b64e(await _ckEnc(v)),encoding:'base64'}}); tree.push({path:'ck/'+CKS.uid+'/'+k+'.bin',mode:'100644',type:'blob',sha:bl.sha}); novo.keys[k]={ts:l.ts,by:who}; } }
+        if(v==null){ novo.keys[k]={ts:l.ts,by:who,del:true}; continue; }
+        // cada arquivo vai sozinho: se um falhar (grande demais, rede), os outros e as marcações seguem
+        try{ var enc=await _ckEnc(v); if(enc.length>CK_MAX) throw new Error('arquivo grande demais ('+Math.round(enc.length/1048576)+' MB)');
+          var bl=await gh('/git/blobs',{method:'POST',body:{content:b64e(enc),encoding:'base64'}}); tree.push({path:'ck/'+CKS.uid+'/'+k+'.bin',mode:'100644',type:'blob',sha:bl.sha}); novo.keys[k]={ts:l.ts,by:who}; }
+        catch(e){ if(e&&e.status===401) throw e; CKS.falhas.push(_ckNome(k)+' ('+((e&&e.status)?'HTTP '+e.status:((e&&e.message)||e))+')'); } }
       var fl=M.ckflat||{}; Object.keys(M.ckts).forEach(function(q){ var lt=M.ckts[q], r=(ix.ck||{})[q]; if(r&&!(lt>r.ts)) return; novo.ck[q]=(q in fl)?{ts:lt,v:fl[q]}:{ts:lt,del:true}; });
       if(!tree.length&&JSON.stringify(novo)===JSON.stringify(ix)){ await _ckApply(ix,sha); break; } // nada para enviar: só traz
-      if(!ghToken()){ await _ckApply(ix,sha); throw new Error('sem token do GitHub — peça ao administrador para guardar o token no painel.'); }
       var bi=await gh('/git/blobs',{method:'POST',body:{content:b64e(await _ckEnc(JSON.stringify(novo))),encoding:'base64'}});
       tree.push({path:'ck/'+CKS.uid+'/index.bin',mode:'100644',type:'blob',sha:bi.sha});
       var body={tree:tree}; if(sha) body.base_tree=(await gh('/git/commits/'+sha)).tree.sha;
@@ -3907,12 +3922,20 @@ async function ckSyncRun(){ if(!CKS.on) return; if(CKS.busy){ CKS.again=true; re
       try{ if(sha) await gh('/git/refs/heads/'+CK_BRANCH,{method:'PATCH',body:{sha:nc.sha,force:false}}); else await gh('/git/refs',{method:'POST',body:{ref:'refs/heads/'+CK_BRANCH,sha:nc.sha}}); }
       catch(e){ if(e.status===422) continue; throw e; }
       await _ckApply(novo,nc.sha); break; }
-    CKS.quando=Date.now(); CKS.erro=''; ckSyncUI('');
+    CKS.quando=Date.now(); CKS.erro=''; CKS.parcial=CKS.falhas.slice(); ckSyncUI('');
   }catch(e){ CKS.erro=(e&&e.status===401)?'token do GitHub vencido — peça ao administrador um novo':((e&&e.message)||String(e)); ckSyncUI(''); }
-  finally{ CKS.busy=false; if(CKS.again) setTimeout(ckSyncRun,300); } }
-function ckSyncUI(msg){ var el=$('ckSyncSt'); if(!el) return; if(!CKS.on){ el.textContent=''; return; }
-  el.style.color=CKS.erro?'var(--f-amber)':'var(--muted)';
-  el.textContent=CKS.erro?'☁ Não sincronizou: '+CKS.erro:(msg?'☁ '+msg:(CKS.quando?'☁ Compartilhado com o login '+((current&&current.name)||CKS.user)+' · sincronizado às '+fmtTs(CKS.quando).split(' ')[1]:'☁ Sincronizando…')); }
+  finally{ CKS.busy=false; ckSyncUI(''); if(CKS.again) setTimeout(ckSyncRun,300); } }
+function ckSyncUI(msg){ var el=$('ckSyncSt'); if(!el) return; if(!CKS.on){ el.innerHTML=''; return; }
+  var erro=CKS.semEspaco?('este navegador ficou sem espaço e não guardou "'+CKS.semEspaco+'". Limpe o checklist ou apague arquivos antigos de outras abas.'+(CKS.erro?' Também: '+CKS.erro:'')):CKS.erro;
+  var parc=(!erro&&CKS.parcial&&CKS.parcial.length)?(' · menos: '+CKS.parcial.join('; ')+' — não foi compartilhado'):'';
+  var txt=erro?'☁ Não sincronizou: '+erro:(msg?'☁ '+msg:(CKS.busy?'☁ Sincronizando…':(CKS.quando?'☁ Compartilhado com o login '+((current&&current.name)||CKS.user)+' · sincronizado às '+fmtTs(CKS.quando).split(' ')[1]+parc:'☁ Sincronizando…')));
+  el.style.color=(erro||parc)?'var(--f-amber)':'var(--muted)';
+  el.innerHTML='';
+  var sp=document.createElement('span'); sp.textContent=txt; el.appendChild(sp);
+  var b=document.createElement('button'); b.className='ubtn'; b.textContent=CKS.busy?'Sincronizando…':'Sincronizar agora'; b.disabled=CKS.busy;
+  b.style.cssText='margin-left:10px;padding:3px 10px;font-size:12px';
+  b.onclick=function(){ CKS.quando=0; ckSyncRun(); setTimeout(function(){ ckSyncUI(''); },50); };
+  el.appendChild(b); }
 async function ckSyncStart(){ ckSyncStop();
   if(!current||!SESSION.ku||!window.CompressionStream||!crypto.subtle) return;
   var m=Array.isArray(current.modules)?current.modules:[]; if(!isAdmin(current)&&m.indexOf('producao')<0&&m.indexOf('gestao')<0) return;
