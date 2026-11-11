@@ -565,6 +565,33 @@ function matchSlot(name){
 function idbReq(mode,fn){ return new Promise((res)=>{ let rq; try{rq=indexedDB.open('painelop_fs',1);}catch(e){return res(null);} rq.onupgradeneeded=()=>{try{rq.result.createObjectStore('kv');}catch(e){}}; rq.onsuccess=()=>{ try{ const tx=rq.result.transaction('kv',mode); fn(tx.objectStore('kv'),res,tx); }catch(e){res(null);} }; rq.onerror=()=>res(null); rq.onblocked=()=>res(null); }); }
 function idbSet(k,v){ return idbReq('readwrite',(st,res,tx)=>{ try{st.put(v,k);}catch(e){} tx.oncomplete=()=>res(true); tx.onerror=()=>res(null); }); }
 function idbGet(k){ return idbReq('readonly',(st,res)=>{ const g=st.get(k); g.onsuccess=()=>res(g.result||null); g.onerror=()=>res(null); }); }
+
+/* ===== ARQUIVOS GRANDES FORA DO localStorage =====
+   O localStorage tem só ~5 MB por site e as planilhas/PDFs da Programação, Conciliação e Gestão enchiam esse espaço
+   ("Não consegui salvar neste navegador"). Essas chaves passam a ficar no IndexedDB (centenas de MB), com uma cópia
+   em memória para leitura imediata. O resto do painel continua usando localStorage.getItem/setItem normalmente. */
+var BIG_KEYS={}; ['p2_base','gest_base','prog_pedsel','prog_pecas','prog_ficha','prog_benef','prog_ops','prog_opsger','prog_opsped','prog_estoque','prog_tec','prog_tecnome','prog_reprog','est_state'].forEach(function(k){ BIG_KEYS[k]=1; });
+var BIG_MEM={}, BIG_ON=false, BIG_DB=null;
+function _bigOpen(){ if(BIG_DB) return BIG_DB; BIG_DB=new Promise(function(ok,ko){ var rq; try{ rq=indexedDB.open('painelop_big',1); }catch(e){ return ko(e); }
+  rq.onupgradeneeded=function(){ try{ rq.result.createObjectStore('kv'); }catch(e){} }; rq.onsuccess=function(){ ok(rq.result); }; rq.onerror=function(){ ko(rq.error); }; rq.onblocked=function(){ ko(new Error('bloqueado')); }; });
+  return BIG_DB; }
+function _bigTx(fn){ return _bigOpen().then(function(db){ return new Promise(function(ok,ko){ var tx=db.transaction('kv','readwrite'); fn(tx.objectStore('kv')); tx.oncomplete=function(){ ok(true); }; tx.onerror=function(){ ko(tx.error); }; tx.onabort=function(){ ko(tx.error); }; }); }); }
+function _bigPut(k,v){ _bigTx(function(st){ st.put(v,k); }).catch(function(e){ try{ console.warn('Não guardei '+k+' no banco do navegador:',e); }catch(x){} }); }
+function _bigDel(k){ _bigTx(function(st){ st.delete(k); }).catch(function(){}); }
+(function(){ var S=Storage.prototype, g=S.getItem, s=S.setItem, r=S.removeItem, tem=Object.prototype.hasOwnProperty;
+  var big=function(st,k){ return BIG_ON&&st===window.localStorage&&BIG_KEYS[k]===1; };
+  S.getItem=function(k){ if(big(this,k)&&tem.call(BIG_MEM,k)) return BIG_MEM[k]; return g.apply(this,arguments); };
+  S.setItem=function(k,v){ if(big(this,k)){ v=String(v); BIG_MEM[k]=v; _bigPut(k,v); try{ r.call(this,k); }catch(e){} return; } return s.apply(this,arguments); };
+  S.removeItem=function(k){ if(big(this,k)){ delete BIG_MEM[k]; _bigDel(k); } return r.apply(this,arguments); };
+  // na abertura: traz o que está no IndexedDB e muda para lá o que ainda estava no localStorage (libera espaço na hora)
+  window.BIG_READY=new Promise(function(fim){ var t=setTimeout(fim,4000);
+    _bigOpen().then(function(db){ return new Promise(function(ok,ko){ var tx=db.transaction('kv','readonly'), st=tx.objectStore('kv'), cur=st.openCursor();
+      cur.onsuccess=function(){ var c=cur.result; if(c){ if(typeof c.value==='string') BIG_MEM[c.key]=c.value; c.continue(); } else ok(); }; cur.onerror=function(){ ko(cur.error); }; }); })
+    .then(function(){ var mover={}; Object.keys(BIG_KEYS).forEach(function(k){ var v=null; try{ v=g.call(window.localStorage,k); }catch(e){} if(v==null) return;
+        if(!tem.call(BIG_MEM,k)){ BIG_MEM[k]=v; mover[k]=v; } });
+      return _bigTx(function(st){ Object.keys(mover).forEach(function(k){ st.put(mover[k],k); }); }).then(function(){
+        Object.keys(BIG_KEYS).forEach(function(k){ if(tem.call(BIG_MEM,k)){ try{ r.call(window.localStorage,k); }catch(e){} } }); }); })
+    .then(function(){ BIG_ON=true; clearTimeout(t); fim(); }, function(e){ BIG_MEM={}; try{ console.warn('IndexedDB indisponível, sigo no localStorage:',e); }catch(x){} clearTimeout(t); fim(); }); }); })();
 async function collectFiles(handle,acc,depth){
   for await (const e of handle.values()){
     if(e.kind==='file'){ if(/\.(xlsx|xls|csv)$/i.test(e.name)||SHOP_ZIPS.some(z=>z.re.test(e.name))){ try{ acc.push(await e.getFile()); }catch(_){}} }
@@ -4559,6 +4586,7 @@ document.getElementById('loginForm').addEventListener('submit',async function(e)
   try{ if(ku) await openSession(user,ku); else SESSION={ku:null,slots:{},m:null,sk:null}; }
   catch(_){ SESSION={ku:ku,slots:{},m:null,sk:null}; }
   rememberLogin(u,ku);
+  await window.BIG_READY;
   currentUserKey=u; startApp(user);
 });
 $('recToggle').addEventListener('click',function(){ var f=$('recForm'); f.style.display=f.style.display==='none'?'block':'none'; if(f.style.display==='block')$('recU').focus(); });
@@ -4593,7 +4621,7 @@ var _ec=$('expCancel'); if(_ec)_ec.addEventListener('click',closeExportModal);
 // auto-login (Lembrar-me)
 if(SNAPSHOT){ startSnapshot(); }
 else { try{ const _ru=localStorage.getItem('painelop_user'), _rk=localStorage.getItem('painelop_ku'); const _uu=_ru&&USERS[_ru];
-  if(_uu&&_uu.k&&_uu.k.wk){ if(_rk){ openSession(_uu,b64d(_rk)).then(function(){ currentUserKey=_ru; startApp(_uu); }).catch(function(){ try{localStorage.removeItem('painelop_ku');}catch(e){} }); } }
+  if(_uu&&_uu.k&&_uu.k.wk){ if(_rk){ openSession(_uu,b64d(_rk)).then(function(){ return window.BIG_READY; }).then(function(){ currentUserKey=_ru; startApp(_uu); }).catch(function(){ try{localStorage.removeItem('painelop_ku');}catch(e){} }); } }
   else if(_uu&&_uu.pass&&!cryptoOn()){ currentUserKey=_ru; startApp(_uu); } }catch(e){} }
 </script>
 </body>
