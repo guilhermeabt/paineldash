@@ -3784,7 +3784,7 @@ function renderP2(){
     return '<div style="flex:1;min-width:230px;border:1px solid '+(bom?'rgba(46,171,134,.5)':'rgba(224,150,45,.5)')+';border-radius:10px;padding:10px 12px">'
       +'<div style="font-weight:600;color:var(--ink);font-size:13.5px">'+(bom?'✓ ':'⚠ ')+t+'</div>'
       +'<div style="font-size:12px;margin:4px 0 6px;line-height:1.5">'+st+'</div>'
-      +(ate?'<div style="font-size:13px;color:var(--ink);background:rgba(74,163,223,.12);border:1px solid rgba(74,163,223,.4);border-radius:8px;padding:7px 10px;margin-bottom:8px">Suba só '+oque+' <b>a partir de '+_calBRs(ate)+'</b>.</div>'
+      +(ate&&k!=='shopify'?'<div style="font-size:13px;color:var(--ink);background:rgba(74,163,223,.12);border:1px solid rgba(74,163,223,.4);border-radius:8px;padding:7px 10px;margin-bottom:8px">Suba só '+oque+' <b>a partir de '+_calBRs(ate)+'</b>.</div>'
           :'<div style="color:var(--muted);font-size:12px;margin-bottom:8px">Suba '+oque+'.</div>')
       +'<div style="color:var(--muted);font-size:11.5px;margin-bottom:8px">Soma ao que já existe — não precisa subir o histórico de novo. Usado na Ponte 1 e na Ponte 2.</div>'
       +'<label class="ubtn" style="cursor:pointer;font-size:13px">⬆ Escolher arquivo'+(multi?'(s)':'')+'<input type="file" class="p2File" data-k="'+k+'" accept=".csv,.zip,.xls,.xlsx"'+(multi?' multiple':'')+' style="display:none"></label></div>'; };
