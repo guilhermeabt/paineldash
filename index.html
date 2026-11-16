@@ -2416,11 +2416,32 @@ var PRODSCREENS=[
  ['parados','Conciliação','&#129534;']
 ];
 var prodActive=null;
+/* ===== Conciliação semanal: as duas conciliações (Programação e Gestão) precisam rodar pelo menos 1 vez a cada 7 dias.
+   "Rodar" = subir um arquivo na aba. O "Ok, vou rodar hoje" adia o alerta e recomeça a contagem (vale para todos do login). */
+var CONC_DIAS=7;
+function _concStatus(tipo){ var run=0, por='', raw;
+  try{ if(tipo==='p2'){ raw=JSON.parse(localStorage.getItem('p2_base')||'null'); var M=(raw&&raw.meta)||{}; Object.keys(M).forEach(function(k){ var m=M[k]; if(m&&m.quando>run){ run=m.quando; por=m.por||''; } }); }
+       else { raw=JSON.parse(localStorage.getItem('gest_base')||'null'); if(raw&&raw.quando){ run=raw.quando; por=raw.por||''; } } }catch(e){}
+  var ack=null; try{ ack=JSON.parse(localStorage.getItem(tipo+'_alerta')||'null'); }catch(e){}
+  var ref=Math.max(run,(ack&&ack.ts)||0), now=Date.now();
+  return {run:run,por:por,ack:ack,ref:ref,dias:ref?Math.floor((now-ref)/864e5):null,atraso:!ref||now-ref>=CONC_DIAS*864e5,prox:ref?ref+CONC_DIAS*864e5:0}; }
+function _concData(ts){ return ts?fmtTs(ts).split(' ')[0]:''; }
+function _concBanner(tipo){ var s=_concStatus(tipo);
+  if(s.atraso) return '<div style="border:1px solid rgba(229,72,77,.55);background:rgba(229,72,77,.12);border-radius:12px;padding:12px 16px;margin-bottom:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">'
+    +'<span style="font-size:22px;color:#e5484d">⚠</span><div style="flex:1;min-width:240px"><div style="font-weight:700;color:#e5484d;font-size:14.5px">Conciliação em atraso — precisa rodar uma nova</div>'
+    +'<div style="font-size:13px;color:var(--ink);margin-top:2px">'+(s.run?'A última foi em <b>'+_concData(s.run)+'</b>'+(s.por?' por '+uEsc(s.por):'')+(s.dias!=null?' (há '+s.dias+' dias)':''):'Ainda não há registro de conciliação neste login')
+    +(s.ack&&s.ack.ts>s.run?' · alerta adiado em '+_concData(s.ack.ts)+(s.ack.por?' por '+uEsc(s.ack.por):''):'')+'. A conciliação deve rodar pelo menos uma vez a cada '+CONC_DIAS+' dias: suba os arquivos abaixo.</div></div>'
+    +'<button class="ubtn concOk" data-t="'+tipo+'" style="border-color:rgba(229,72,77,.6)">Ok, vou rodar hoje</button></div>';
+  return '<div style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px">✓ Última conciliação: <b style="color:var(--ink)">'+_concData(s.run)+'</b>'+(s.run?' às '+fmtTs(s.run).split(' ')[1]:'')+(s.por?' por '+uEsc(s.por):'')
+    +(s.ack&&s.ack.ts>s.run?' · alerta adiado em '+_concData(s.ack.ts)+(s.ack.por?' por '+uEsc(s.ack.por):''):'')+' · próxima até <b style="color:var(--ink)">'+_concData(s.prox)+'</b></div>'; }
+function _concWire(host,depois){ host.querySelectorAll('.concOk').forEach(function(b){ b.onclick=function(){ var t=b.getAttribute('data-t');
+  try{ localStorage.setItem(t+'_alerta',JSON.stringify({ts:Date.now(),por:(current&&current.name)||currentUserKey||''})); }catch(e){} depois(); }; }); }
+function _concIcone(){ return '<span title="Conciliação em atraso" style="margin-left:auto;color:#e5484d;font-size:15px;font-weight:700">⚠</span>'; }
 function renderProdNav(){
   var nav=$('prodNav'); if(!nav)return;
   nav.innerHTML=PRODSCREENS.map(function(s){
-    var on=(s[0]===prodActive);
-    return '<button class="prodnavbtn" data-s="'+s[0]+'" style="text-align:left;background:'+(on?'var(--elev)':'none')+';border:1px solid '+(on?'var(--line)':'transparent')+';color:'+(on?'var(--ink)':'var(--muted)')+';padding:10px 12px;border-radius:9px;cursor:pointer;font-size:14px;display:flex;gap:9px;align-items:center"><span style="font-size:16px">'+s[2]+'</span>'+s[1]+'</button>';
+    var on=(s[0]===prodActive), al=s[0]==='parados'&&_concStatus('p2').atraso;
+    return '<button class="prodnavbtn" data-s="'+s[0]+'" style="text-align:left;background:'+(on?'var(--elev)':'none')+';border:1px solid '+(on?'var(--line)':'transparent')+';color:'+(on?'var(--ink)':'var(--muted)')+';padding:10px 12px;border-radius:9px;cursor:pointer;font-size:14px;display:flex;gap:9px;align-items:center"><span style="font-size:16px">'+s[2]+'</span>'+s[1]+(al?_concIcone():'')+'</button>';
   }).join('');
   nav.querySelectorAll('.prodnavbtn').forEach(function(b){ b.onclick=function(){ openProd(b.getAttribute('data-s')); }; });
 }
@@ -3806,6 +3827,7 @@ function renderP2(){
     return s+'<td style="'+td+';text-align:center"><input type="checkbox" class="p2Done" data-n="'+uEsc(o.name)+'"'+(o.done?' checked':'')+'></td></tr>'; };
   host.innerHTML='<div style="max-width:1150px"><h2 style="margin:0 0 4px;color:var(--ink);font-weight:600">Conciliação de Pedidos — Shopify → Matriz → Produção</h2>'
     +'<p style="color:var(--muted);font-size:13px;margin:0 0 16px">Pedidos pagos na Shopify a partir de 01/03/2026. Pedidos de teste da implantação (Raquel Fernandes / raquelotonif@gmail.com) são ignorados'+(C.lixo?' — '+C.lixo+' fora da conta':'')+'.</p>'
+    +_concBanner('p2')
     +'<div style="'+card+'"><div style="font-weight:600;color:var(--ink);margin-bottom:4px">Arquivos necessários para atualizar as pontes</div>'
       +'<div style="font-size:12.5px;color:'+(falt.length?'var(--f-amber)':'var(--muted)')+';margin-bottom:10px">'+(falt.length?'Falta a base de '+falt.length+' de 3 arquivos.':'O histórico vem da base publicada. Para deixar as pontes em dia, suba só o período depois da data indicada em cada arquivo.')+'</div>'
       +'<div style="display:flex;gap:10px;flex-wrap:wrap">'
@@ -3834,6 +3856,7 @@ function renderP2(){
       +(rows.length?rows.map(linha).join(''):'<tr><td colspan="'+cols.length+'" style="'+td+';color:var(--muted);text-align:center;padding:24px">'+(B.matriz.length?'Nenhum pedido com esses filtros.':'Envie os arquivos do Matriz para ver as pontes.')+'</td></tr>')
     +'</tbody></table></div></div>';
   _p2ProgDraw();
+  _concWire(host,renderP2); renderProdNav();
   host.querySelectorAll('.p2tab').forEach(function(b){ b.onclick=function(){ P2_UI.ponte=b.getAttribute('data-p'); P2_UI.mes=''; P2_UI.st=''; try{ localStorage.setItem('p2_aba',P2_UI.ponte); }catch(e){} renderP2(); }; });
   host.querySelectorAll('.p2File').forEach(function(x){ x.onchange=function(){ var fs=[].slice.call(this.files||[]), k=this.getAttribute('data-k'); this.value=''; if(fs.length) p2Subir(k,fs); }; });
   var tm; ['p2Fila','p2Bord'].forEach(function(id){ var el=$(id); if(!el) return; el.oninput=function(){ _gjSet(id==='p2Fila'?'p2_fila':'p2_bordado',this.value); clearTimeout(tm); tm=setTimeout(function(){ var f=document.activeElement&&document.activeElement.id; renderP2(); if(f==='p2Fila'||f==='p2Bord'){ var t=$(f); t.focus(); t.selectionStart=t.selectionEnd=t.value.length; } },700); }; });
@@ -3922,7 +3945,7 @@ function ckSave(o){ try{ localStorage.setItem('prog_checklist', JSON.stringify(o
    Fica no ramo "checklists" do GitHub, em ck/<id do login>/, criptografado com a chave do login (só quem entra com ele lê).
    index.json: { keys:{arquivo:{ts,by,del}}, ck:{campo:{ts,v,del}} } — os arquivos (PDF das OPs, Excels) vão em <chave>.bin;
    as marcações/datas/números do checklist vão campo a campo, então duas pessoas mexendo ao mesmo tempo não se apagam. */
-var CK_SYNC_KEYS=['p2_base','p2_fila','p2_bordado','p2_done','gest_base','gest_fila','gest_done','prog_prev','prog_checklist','prog_pedsel','prog_pecas','prog_ficha','prog_benef','prog_ops','prog_opsger','prog_opsped','prog_estoque','prog_tec','prog_tecnome','prog_reprog','prog_holidays'];
+var CK_SYNC_KEYS=['p2_alerta','gest_alerta','p2_base','p2_fila','p2_bordado','p2_done','gest_base','gest_fila','gest_done','prog_prev','prog_checklist','prog_pedsel','prog_pecas','prog_ficha','prog_benef','prog_ops','prog_opsger','prog_opsped','prog_estoque','prog_tec','prog_tecnome','prog_reprog','prog_holidays'];
 var CK_BRANCH='checklists', CKS={on:false,uid:'',user:'',meta:null,timer:null,loop:null,busy:false,again:false,applying:false,status:'',quando:0,erro:'',falhas:[],parcial:[],semEspaco:false};
 var CK_GLOBAL={prog_pedsel:'__PROG_PEDSEL',prog_pecas:'__PROG_PECAS',prog_ficha:'__PROG_FICHA',prog_benef:'__PROG_BENEF',prog_ops:'__PROG_OPS',prog_opsger:'__PROG_OPSGER',prog_opsped:'__PROG_OPSPED',prog_estoque:'__PROG_ESTOQUE',prog_tec:'__TEC_OFICIAL',prog_tecnome:'__TEC_NOME',prog_reprog:'__PROG_REPROG'};
 (function(){ var S=Storage.prototype, si=S.setItem, ri=S.removeItem;
@@ -3985,7 +4008,8 @@ async function _ckApply(ix,sha){ if(!ix) return false; var M=CKS.meta, mud=false
     var ae=document.activeElement, digit=ae&&/INPUT|TEXTAREA|SELECT/.test(ae.tagName)&&$('prodContent')&&$('prodContent').contains(ae);
     if($('ckDate')&&!digit) try{ renderChecklist(); }catch(e){}
     if($('p2Prog')&&!digit&&!P2_BUSY) try{ renderP2(); }catch(e){}
-    var gc=$('gestContent'), gdig=ae&&/INPUT|TEXTAREA|SELECT/.test(ae.tagName)&&gc&&gc.contains(ae); if($('modGest')&&$('modGest').style.display!=='none'&&gestActive==='conciliacao'&&!gdig) try{ renderGestConc(); }catch(e){} }
+    var gc=$('gestContent'), gdig=ae&&/INPUT|TEXTAREA|SELECT/.test(ae.tagName)&&gc&&gc.contains(ae); if($('modGest')&&$('modGest').style.display!=='none'&&gestActive==='conciliacao'&&!gdig) try{ renderGestConc(); }catch(e){}
+    try{ renderProdNav(); renderGestNav(); }catch(e){} } // alerta de conciliação em atraso pode ter mudado em outro computador
   return mud; }
 // envia o que mudou aqui e traz o que mudou lá (refaz em cima da versão mais nova se duas pessoas gravarem juntas)
 async function ckSyncRun(){ if(!CKS.on) return; if(CKS.busy){ CKS.again=true; return; } CKS.busy=true; CKS.again=false; CKS.falhas=[];
@@ -4191,8 +4215,8 @@ function enterProd(){ if(!prodActive)prodActive=PRODSCREENS[0][0]; renderProdNav
 /* ===== MÓDULO GESTÃO ===== */
 var GESTSCREENS=[ ['conciliacao','Conciliação','&#129534;'], ['conferencia','Conferência do pedido','&#9989;'], ['logos','Logos para bordado','&#129525;'] ], gestActive=null;
 function renderGestNav(){ var nav=$('gestNav'); if(!nav)return;
-  nav.innerHTML=GESTSCREENS.map(function(s){ var on=(s[0]===gestActive);
-    return '<button class="gestnavbtn" data-s="'+s[0]+'" style="text-align:left;background:'+(on?'var(--elev)':'none')+';border:1px solid '+(on?'var(--line)':'transparent')+';color:'+(on?'var(--ink)':'var(--muted)')+';padding:10px 12px;border-radius:9px;cursor:pointer;font-size:14px;display:flex;gap:10px;align-items:center"><span>'+s[2]+'</span>'+s[1]+'</button>'; }).join('');
+  nav.innerHTML=GESTSCREENS.map(function(s){ var on=(s[0]===gestActive), al=s[0]==='conciliacao'&&_concStatus('gest').atraso;
+    return '<button class="gestnavbtn" data-s="'+s[0]+'" style="text-align:left;background:'+(on?'var(--elev)':'none')+';border:1px solid '+(on?'var(--line)':'transparent')+';color:'+(on?'var(--ink)':'var(--muted)')+';padding:10px 12px;border-radius:9px;cursor:pointer;font-size:14px;display:flex;gap:10px;align-items:center"><span>'+s[2]+'</span>'+s[1]+(al?_concIcone():'')+'</button>'; }).join('');
   nav.querySelectorAll('.gestnavbtn').forEach(function(b){ b.onclick=function(){ openGest(b.getAttribute('data-s')); }; }); }
 function openGest(k){ gestActive=k; renderGestNav(); if(k==='conciliacao') renderGestConc(); else if(k==='logos') renderGestLogos(); else if(k==='conferencia') renderGestConf(); }
 function enterGest(){ if(!gestActive)gestActive=GESTSCREENS[0][0]; renderGestNav(); openGest(gestActive); }
@@ -4559,6 +4583,7 @@ function renderGestConc(){
   var th='text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);color:var(--muted);font-weight:600;font-size:12.5px;position:sticky;top:0;background:var(--surface2)', td='padding:7px 10px;border-bottom:1px solid var(--line);font-size:13.5px;color:var(--ink)';
   host.innerHTML='<div style="max-width:1100px"><h2 style="margin:0 0 4px;color:var(--ink);font-weight:600">Conciliação da Gestão</h2>'
     +'<p style="color:var(--muted);font-size:13px;margin:0 0 16px">Pedidos <b>internos do Matriz</b> (sem Pedido Externo — não vieram da Shopify), <b>ainda não aprovados</b> e sem faturamento. Ficam sob gestão para aprovação/tratamento.</p>'
+    +_concBanner('gest')
     +'<div style="'+card+'"><div style="font-weight:600;color:var(--ink);margin-bottom:6px">1. Arquivo do Matriz — pedidos NÃO aprovados</div>'
       +(function(){ var meu=b&&!b.antigo&&b.quando?b:null, la=(meu&&meu.ate)||'', ate=(pubOk&&GEST_PUB.ate>la)?GEST_PUB.ate:la, s='';
         if(GEST_PUB.estado===''||GEST_PUB.estado==='lendo') s+='<div style="font-size:12.5px;color:var(--muted);margin-bottom:6px">Buscando a base publicada…</div>';
@@ -4597,6 +4622,7 @@ function renderGestConc(){
   $('gestOcultar').onchange=function(){ GEST_UI.ocultar=this.checked; renderGestConc(); };
   host.querySelectorAll('.gestDone').forEach(function(c){ c.onchange=function(){ var d=_gjGet('gest_done',[]), n=c.getAttribute('data-n'); d=d.filter(function(x){return x!==n;}); if(c.checked) d.push(n); _gjSet('gest_done',d); renderGestConc(); }; });
   $('gestExp').onclick=gestExportar;
+  _concWire(host,renderGestConc); renderGestNav();
 }
 // Excel igual ao da antiga aba Gestão: aba "Geral" + uma aba por representante
 function gestExportar(){ ensureXLSX(function(){ var rows=_gestFiltradas(); if(!rows.length){ alert('Nenhum pedido para exportar.'); return; }
