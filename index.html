@@ -262,6 +262,14 @@
     <main id="gestContent" style="flex:1;padding:30px;overflow:auto"></main>
   </div>
 </div>
+<div id="modOrc" style="display:none;min-height:100vh">
+  <header style="display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid var(--line)">
+    <button class="backMod" style="background:none;border:1px solid var(--line);color:var(--muted);padding:8px 14px;border-radius:8px;cursor:pointer">&larr; Módulos</button>
+    <div style="flex:1"><span class="logo-dash" style="font-size:20px">Dash<sup>&reg;</sup></span><span class="subtag" style="color:var(--muted);margin-left:8px;font-size:12px;text-transform:uppercase;letter-spacing:1px">Orçamento 2027</span></div>
+    <button class="logout" id="orcLogout">Sair</button>
+  </header>
+  <main id="orcContent" style="padding:30px;max-width:1100px;margin:0 auto"></main>
+</div>
 <div id="modUsers" style="display:none;min-height:100vh;padding:28px;max-width:1000px;margin:0 auto">
   <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px">
     <button class="backMod" style="background:none;border:1px solid var(--line);color:var(--muted);padding:8px 14px;border-radius:8px;cursor:pointer">&larr; Módulos</button>
@@ -1022,7 +1030,7 @@ var editingUser=null, USERS_DIRTY=false;
 function uEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function isAdmin(u){ return !!(u&&u.admin); }
 var USER_MODS=['relatorios','producao','gestao','faccao','estoque','base'];
-function userModules(u){ if(!u)return []; if(isAdmin(u))return ['relatorios','producao','gestao','faccao','estoque','base','usuarios']; var m=Array.isArray(u.modules)?u.modules:['relatorios']; return USER_MODS.filter(function(k){return m.indexOf(k)>=0;}); }
+function userModules(u){ if(!u)return []; if(isAdmin(u))return ['relatorios','producao','gestao','faccao','estoque','base','orcamento','usuarios']; var m=Array.isArray(u.modules)?u.modules:['relatorios']; return USER_MODS.filter(function(k){return m.indexOf(k)>=0;}); }
 var MODMETA={
  relatorios:{name:'Relatórios',desc:'Vendas, expedição, produção, conciliação, DRE e mais.',icon:'&#128202;'},
  producao:{name:'Programação da Produção',desc:'Planejamento e sequenciamento da produção.',icon:'&#127981;'},
@@ -1030,10 +1038,11 @@ var MODMETA={
  faccao:{name:'Fechamento da Facção',desc:'Conferir o fechamento do beneficiador contra os romaneios enviados.',icon:'&#129534;'},
  estoque:{name:'Localização do Estoque',desc:'Onde está cada referência do pronta entrega: sala grande (filas A a E) e salinha pequena (F a J).',icon:'&#128230;'},
  base:{name:'Base de Dados',desc:'Subir os arquivos e publicar os dados para todos os relatórios.',icon:'&#128451;'},
+ orcamento:{name:'Orçamento 2027',desc:'Simulador de lucro: cenário realista, premissas e projetos de redução de custo. Só o administrador vê.',icon:'&#128200;'},
  usuarios:{name:'Controle de Usuários',desc:'Cadastrar usuários, senhas e permissões.',icon:'&#128100;'}
 };
 var APPMODE='', BASE_STASH=null;
-function hideAllScreens(){ ['login','app','modules','modProd','modGest','modUsers','modFaccao','modEstoque'].forEach(function(id){var e=$(id); if(e)e.style.display='none';}); }
+function hideAllScreens(){ ['login','app','modules','modProd','modGest','modOrc','modUsers','modFaccao','modEstoque'].forEach(function(id){var e=$(id); if(e)e.style.display='none';}); }
 function showModules(){
   if(APPMODE==='base') BASE_STASH=Object.assign({},FILES); else if(APPMODE==='rel') REL_STASH=Object.assign({},FILES);
   APPMODE='';
@@ -1059,6 +1068,7 @@ function openModule(k){
   if(k==='relatorios'){ enterRelatorios(current); }
   else if(k==='producao'){ $('modProd').style.display='flex'; enterProd(); }
   else if(k==='gestao'){ $('modGest').style.display='flex'; enterGest(); }
+  else if(k==='orcamento'){ if(!isAdmin(current)){ showModules(); return; } $('modOrc').style.display='block'; orcEnter(); }
   else if(k==='base'){ enterBase(current); }
   else if(k==='estoque'){ estEnter(); }
   else if(k==='faccao'){ fcRender(); $('modFaccao').style.display='block'; }
@@ -2416,6 +2426,79 @@ var PRODSCREENS=[
  ['parados','Conciliação','&#129534;']
 ];
 var prodActive=null;
+/* ===== MÓDULO ORÇAMENTO 2027 (só administrador) =====
+   O código do site é público: os números (base do DRE, premissas, projetos) ficam em KEYS.orc, cifrados com a chave
+   mestra do administrador (SESSION.m). Aqui só existe a calculadora. Para carregar/atualizar, o administrador cola o
+   "código do orçamento" (texto base64 com o JSON) e publica em Controle de Usuários. */
+var ORC={dados:null,g:null,msg:'',erro:''};
+var ORC_IDS=['in','v','p','mp','fc','f','md','ds','nc','rs','t'];
+async function orcEnter(){ ORC.erro=''; ORC.dados=null;
+  try{ if(KEYS&&KEYS.orc&&SESSION.m) ORC.dados=await decJSON(SESSION.m,KEYS.orc); }catch(e){ ORC.erro='não consegui abrir os números guardados ('+((e&&e.message)||e)+').'; }
+  if(ORC.dados&&!ORC.g) ORC.g=Object.assign({},ORC.dados.realista||{});
+  orcRender(); }
+async function orcGuardar(txt){ var d;
+  try{ var limpo=String(txt||'').replace(/\s+/g,''); d=JSON.parse(limpo.charAt(0)==='{'?limpo:new TextDecoder().decode(Uint8Array.from(atob(limpo),function(c){return c.charCodeAt(0);}))); }
+  catch(e){ ORC.erro='o código não é válido — copie de novo o código inteiro.'; orcRender(); return; }
+  if(!d||!d.base||!d.realista){ ORC.erro='o código não tem a base do orçamento.'; orcRender(); return; }
+  if(!SESSION.m){ ORC.erro='só o administrador consegue guardar (entre de novo com o seu login).'; orcRender(); return; }
+  KEYS.orc=await encJSON(SESSION.m,d); USERS_DIRTY=true; ORC.dados=d; ORC.g=Object.assign({},d.realista); ORC.erro='';
+  ORC.msg='Números guardados cifrados. Para valer em qualquer computador, publique em Controle de Usuários.'; orcRender(); }
+function orcCalc(o){ var B=ORC.dados.base, R1=B.R0*(1+o.v/100), R2=R1*(1+o.inP/100)*(1+o.p/100);
+  var F=B.F0*(1+o.f/100)-o.md/1000+B.FOL*o.ds/100+B.DEM*o.inF/100+o.nc/1000+o.rs/1000;
+  return {R:R2,F:F,L:R2-(B.TX+o.t/100)*R2-B.MP*R1*(1-o.mp/100)-B.FC*R1*(1-o.fc/100)-B.OUT*R1-F-B.OT}; }
+function orcRender(){ var host=$('orcContent'); if(!host) return; var D=ORC.dados;
+  var inp='background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px', card='background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:16px';
+  var h='<h2 style="margin:0 0 4px;color:var(--ink);font-weight:600">Orçamento 2027</h2>';
+  if(ORC.msg) h+='<div style="margin:0 0 12px;padding:8px 12px;border-radius:8px;background:rgba(224,150,45,.12);border:1px solid rgba(224,150,45,.45);color:var(--f-amber);font-size:13px">'+uEsc(ORC.msg)+'</div>';
+  if(ORC.erro) h+='<div style="margin:0 0 12px;color:var(--danger);font-size:13px">'+uEsc(ORC.erro)+'</div>';
+  if(!D){ host.innerHTML=h+'<div style="'+card+'"><div style="font-weight:600;color:var(--ink);margin-bottom:6px">Carregar os números do orçamento</div>'
+      +'<div style="color:var(--muted);font-size:13px;line-height:1.5;margin-bottom:10px">Os números ficam cifrados com a sua chave de administrador — o código do site não guarda nenhum valor. Cole aqui o <b>código do orçamento</b> que o Claude te passou e clique em Guardar. Depois publique em Controle de Usuários.</div>'
+      +'<textarea id="orcCod" rows="5" style="'+inp+';width:100%;box-sizing:border-box;font-family:monospace;font-size:12px" placeholder="Cole o código aqui"></textarea>'
+      +'<div style="margin-top:10px"><button class="ubtn" id="orcGuardar" style="background:var(--f-green);color:#0c241a;border:none;font-weight:600">Guardar cifrado</button></div></div>';
+    $('orcGuardar').onclick=function(){ orcGuardar($('orcCod').value); }; return; }
+  var g=ORC.g, B=D.base, nf=function(x,d){ return x.toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d}); }, mi=function(x){ return (x<0?'−':'')+'R$ '+nf(Math.abs(x),2)+' mi'; };
+  var sg=function(x,d){ return (x>0?'+':x<0?'−':'')+nf(Math.abs(x),d==null?1:d).replace(/,0$/,'')+'%'; };
+  var ctl=function(id,label,min,max,step,txt,dica){ return '<div style="display:grid;grid-template-columns:minmax(0,1fr) 110px;gap:2px 10px;align-items:center;margin-bottom:10px"><label for="orc_'+id+'" style="font-size:13px;color:var(--ink)">'+label+'</label><span style="font-size:13px;font-weight:600;text-align:right;color:var(--ink)">'+txt+'</span>'
+    +'<input type="range" id="orc_'+id+'" data-k="'+id+'" class="orcR" min="'+min+'" max="'+max+'" step="'+step+'" value="'+g[id]+'" style="grid-column:1/-1;width:100%;accent-color:var(--f-green)">'+(dica?'<small style="grid-column:1/-1;font-size:11.5px;color:var(--muted)">'+dica+'</small>':'')+'</div>'; };
+  var z={v:0,inP:0,p:0,mp:0,fc:0,f:0,md:0,ds:0,inF:0,nc:0,rs:0,t:0};
+  var steps=[['Volume',{v:g.v}],['Preço: inflação',{inP:g.in}],['Preço: ganho real',{p:g.p}],['Matéria-prima',{mp:g.mp}],['Facção e terceiros',{fc:g.fc}],['Cortes nomeados',{f:g.f}],['Modelagem',{md:g.md}],['Dissídio na folha',{ds:g.ds}],['Inflação nos demais fixos',{inF:g.in}],['Novas contratações',{nc:g.nc}],['Rescisões e investimentos',{rs:g.rs}],['Imposto',{t:g.t}]];
+  var cur=Object.assign({},z), prev=orcCalc(cur).L, ponte=[['Lucro base 2026',prev,1]];
+  steps.forEach(function(s){ Object.assign(cur,s[1]); var x=orcCalc(cur).L; ponte.push([s[0],x-prev,0]); prev=x; });
+  var r=orcCalc(cur), meta=D.meta||2; ponte.push(['Lucro 2027',r.L,1]);
+  var mx=Math.max.apply(null,ponte.map(function(x){return Math.abs(x[1]);}).concat([0.01]));
+  var presets=[['base','Base 2026'],['real','Cenário realista (salvo)'],['vm','Realista com volume mantido']];
+  var kpi=function(l,v,c){ return '<div style="background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-width:0"><div style="font-size:12.5px;color:var(--muted)">'+l+'</div><div style="font-size:22px;font-weight:700;color:'+(c||'var(--ink)')+'">'+v+'</div></div>'; };
+  h+='<p style="color:var(--muted);font-size:13px;margin:0 0 14px">Simulador de lucro com a base de 2026 do DRE de caixa. O cenário realista salvo é o oficial'+(D.versao?' ('+uEsc(D.versao)+')':'')+'. Mexer nos controles não altera nada guardado.</p>'
+    +'<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:12px">'+kpi('Faturamento 2027',mi(r.R))+kpi('Custo fixo 2027',mi(r.F))+kpi('Lucro 2027',mi(r.L),r.L>=meta?'var(--f-green)':'')+kpi('Margem líquida',nf(r.L/r.R*100,1)+'%')+'</div>'
+    +'<div style="position:relative;height:12px;background:var(--line);border-radius:6px;overflow:hidden"><div style="position:absolute;inset:0 auto 0 0;width:'+Math.max(0,Math.min(100,r.L/(meta*1.25)*100))+'%;background:'+(r.L>=meta?'var(--f-green)':'var(--f-amber)')+'"></div><div style="position:absolute;top:0;bottom:0;left:80%;width:2px;background:var(--ink)"></div></div>'
+    +'<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin:4px 0 16px"><span>0</span><span>'+(r.L>=meta?'Meta de '+mi(meta)+' batida':'Faltam '+mi(meta-r.L)+' para a meta de '+mi(meta))+'</span><span>'+mi(meta*1.25)+'</span></div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'+presets.map(function(p){ return '<button class="ubtn orcP" data-p="'+p[0]+'">'+p[1]+'</button>'; }).join('')+'<button class="ubtn" id="orcSalvar" style="margin-left:auto">Salvar como cenário realista</button></div>'
+    +'<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px">'
+    +'<div style="'+card+'"><div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Vendas, preço e variável</div>'
+      +ctl('v','Volume de peças',-20,35,1,sg(g.v,0))+ctl('in','Inflação (IPCA)',0,12,0.1,sg(g.in),'Piso do reajuste de preço e correção dos demais fixos.')
+      +ctl('p','Ganho real no preço',0,10,0.5,sg(g.p),'Reajuste total: '+sg(Math.round(((1+g.in/100)*(1+g.p/100)-1)*1000)/10))
+      +ctl('mp','Economia em matéria-prima',0,20,1,'−'+g.mp+'%',nf(B.MP*100,1)+'% do faturamento.')+ctl('fc','Economia em facção e terceiros',0,20,1,'−'+g.fc+'%',nf(B.FC*100,1)+'% do faturamento.')
+      +ctl('t','Variação do imposto (p.p.)',-4,8,0.5,(g.t>0?'+':'')+nf(g.t,1).replace(/,0$/,'')+' p.p.')+'</div>'
+    +'<div style="'+card+'"><div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Custo fixo (base '+mi(B.F0)+')</div>'
+      +ctl('f','Cortes nomeados',-20,10,0.5,sg(g.f))+ctl('md','Modelagem (modelista → freelancers)',0,250,5,'−R$ '+g.md+' mil')
+      +ctl('ds','Dissídio na folha ('+mi(B.FOL)+')',0,12,0.5,sg(g.ds))+ctl('nc','Novas contratações',0,500,1,'R$ '+g.nc+' mil')+ctl('rs','Rescisões e investimentos',0,400,10,'R$ '+g.rs+' mil')+'</div></div>'
+    +'<div style="'+card+'"><div style="font-weight:600;color:var(--ink);margin-bottom:8px">Ponte do lucro: 2026 → 2027</div>'
+      +ponte.map(function(x){ var c=x[2]?'#4aa3df':(x[1]>=0?'var(--f-green)':'#e5484d'), z0=Math.abs(x[1])<0.0005;
+        return '<div style="display:grid;grid-template-columns:200px minmax(0,1fr) 110px;gap:12px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px'+(x[2]?';font-weight:700':'')+'"><span style="color:var(--ink)">'+x[0]+'</span><div style="height:12px"><div style="height:12px;border-radius:3px;width:'+(Math.abs(x[1])/mx*100).toFixed(1)+'%;background:'+c+'"></div></div><span style="text-align:right;color:'+(x[2]?'var(--ink)':z0?'var(--muted)':c)+'">'+(x[2]?mi(x[1]):z0?'—':(x[1]>0?'+':'')+mi(x[1]))+'</span></div>'; }).join('')+'</div>';
+  if(D.projetos&&D.projetos.length) h+='<div style="'+card+'"><div style="font-weight:600;color:var(--ink);margin-bottom:8px">Projetos a acompanhar mês a mês</div><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><tr>'+['Projeto','No lucro (ano)','Indicador mensal e meta'].map(function(c){ return '<th style="text-align:left;padding:6px 8px;color:var(--muted);border-bottom:1px solid var(--line)">'+c+'</th>'; }).join('')+'</tr>'
+    +D.projetos.map(function(p){ return '<tr>'+p.map(function(c,i){ return '<td style="padding:6px 8px;border-bottom:1px solid var(--line);color:var(--ink);'+(i===1?'white-space:nowrap':'')+'">'+uEsc(c)+'</td>'; }).join('')+'</tr>'; }).join('')+'</table></div></div>';
+  if(D.premissas&&D.premissas.length) h+='<div style="'+card+'"><div style="font-weight:600;color:var(--ink);margin-bottom:8px">Premissas do cenário realista</div><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'
+    +D.premissas.map(function(p){ return '<tr>'+p.map(function(c,i){ return '<td style="padding:6px 8px;border-bottom:1px solid var(--line);color:'+(i===2?'var(--muted)':'var(--ink)')+';'+(i===1?'white-space:nowrap;font-weight:600':'')+'">'+uEsc(c)+'</td>'; }).join('')+'</tr>'; }).join('')+'</table></div></div>';
+  h+='<div style="font-size:12px;color:var(--muted);margin-top:4px">'+(D.link?'Documento completo: <a href="'+uEsc(D.link)+'" target="_blank" rel="noopener" style="color:var(--f-green)">Orçamento Dash 2027</a> · ':'')+'<a href="#" id="orcTrocar" style="color:var(--muted)">Carregar um código novo</a></div>';
+  host.innerHTML=h;
+  // redesenha ao soltar o controle (redesenhar durante o arraste interromperia o movimento)
+  host.querySelectorAll('.orcR').forEach(function(s){ s.onchange=function(){ ORC.g[s.getAttribute('data-k')]=+s.value; var y=window.scrollY; orcRender(); window.scrollTo(0,y); var n=$('orc_'+s.getAttribute('data-k')); if(n) n.focus(); }; });
+  host.querySelectorAll('.orcP').forEach(function(b){ b.onclick=function(){ var p=b.getAttribute('data-p'), R=D.realista;
+    ORC.g=p==='base'?ORC_IDS.reduce(function(a,k){ a[k]=0; return a; },{}):Object.assign({},R,p==='vm'?{v:0}:{}); orcRender(); }; });
+  $('orcSalvar').onclick=async function(){ D.realista=Object.assign({},ORC.g); KEYS.orc=await encJSON(SESSION.m,D); USERS_DIRTY=true; ORC.msg='Cenário realista atualizado. Publique em Controle de Usuários para guardar de vez.'; orcRender(); };
+  $('orcTrocar').onclick=function(e){ e.preventDefault(); ORC.dados=null; ORC.g=null; ORC.msg=''; orcRender(); };
+}
+
 /* ===== Conciliação semanal: as duas conciliações (Programação e Gestão) precisam rodar pelo menos 1 vez a cada 7 dias.
    "Rodar" = subir um arquivo na aba. O "Ok, vou rodar hoje" adia o alerta e recomeça a contagem (vale para todos do login). */
 var CONC_DIAS=7;
@@ -4648,6 +4731,7 @@ function startApp(user){ current=user; if(typeof SNAP_MODE!=='undefined'&&SNAP_M
   var tm=document.getElementById('toModules'); if(tm)tm.onclick=showModules;
   var pl=document.getElementById('prodLogout'); if(pl)pl.onclick=function(){ $('modProd').style.display='none'; var lb=document.getElementById('logoutBtn'); if(lb)lb.click(); };
   var gl=document.getElementById('gestLogout'); if(gl)gl.onclick=function(){ $('modGest').style.display='none'; var lb=document.getElementById('logoutBtn'); if(lb)lb.click(); };
+  var ol=document.getElementById('orcLogout'); if(ol)ol.onclick=function(){ $('modOrc').style.display='none'; var lb=document.getElementById('logoutBtn'); if(lb)lb.click(); };
   document.querySelectorAll('.backMod').forEach(function(b){ b.onclick=function(){ showModules(); }; });
 }());
 
