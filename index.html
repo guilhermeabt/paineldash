@@ -4673,7 +4673,9 @@ function _gjGet(k,def){ try{ var v=localStorage.getItem(k); return v==null?def:J
 function _gjSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){ alert('Não consegui salvar neste navegador (arquivo grande demais?).'); } }
 function _gNum(s){ return String(s==null?'':s).replace(/\D/g,'').replace(/^0+/,''); }
 function _gNums(t){ return String(t||'').split(/[^\d#]+/).map(_gNum).filter(Boolean); }
-var GEST_UI={q:'',repr:'',ocultar:false};
+var GEST_UI={q:'',repr:'',ocultar:false,aberto:{}};
+// caixinha por representante: só o primeiro nome ("ANDREIA SOUZA" → "Andreia")
+function _gestRepNome(r){ var w=(String(r||'').replace(/^[\d\s\-–.:\/]+/,'').trim().split(/\s+/)[0]||''); return w?w.charAt(0).toUpperCase()+w.slice(1).toLowerCase():'(sem representante)'; }
 /* Base publicada (Base de Dados → Matriz não aprovados e aprovados): o histórico vem de lá; a Gestão só sobe o
    período novo. Os pedidos que aparecem nos aprovados publicados saem da lista. Resultado lido fica em gest_pub. */
 var GEST_PUB={estado:'',rows:[],aprov:{},ate:'',em:0,erro:''};
@@ -4759,7 +4761,7 @@ async function gestSubir(file,somar){ if(GEST_BUSY) return; GEST_BUSY=true; GEST
   }catch(e){ _gestProg(GEST_PROG?GEST_PROG.i:0,GEST_PROG?GEST_PROG.pct:0,'','Não consegui usar o arquivo: '+((e&&e.message)||e)); }
   finally{ clearInterval(tick); GEST_BUSY=false; document.querySelectorAll('#gestFileSub,#gestFileSom').forEach(function(x){ x.disabled=false; x.parentNode.style.opacity=''; }); } }
 function _gestFiltradas(){ var rows=gestRows(), fila=new Set(_gNums(_gjGet('gest_fila',''))), done=new Set(_gjGet('gest_done',[])), q=_en(GEST_UI.q||'');
-  return rows.filter(function(o){ if(GEST_UI.repr&&(o.repr||'(sem)')!==GEST_UI.repr) return false; if(GEST_UI.ocultar&&done.has(o.num)) return false;
+  return rows.filter(function(o){ if(GEST_UI.ocultar&&done.has(o.num)) return false;
     if(q&&_en(o.num+' '+o.cliente+' '+o.repr).indexOf(q)<0) return false; return true; }).map(function(o){ return Object.assign({fila:fila.has(_gNum(o.num)),done:done.has(o.num)},o); }); }
 function renderGestConc(){
   var host=$('gestContent'); if(!host) return; if(!GEST_PUB.estado) setTimeout(_gestCarregaPub,0);
@@ -4789,22 +4791,38 @@ function renderGestConc(){
       +'<div style="display:flex;gap:22px;margin-top:10px;font-size:14px;color:var(--ink)"><div><b id="gestNFila" style="color:var(--f-green);font-size:18px">'+nFila+'</b> na fila da gestão</div><div><b style="font-size:18px">'+todas.length+'</b> total na gestão</div></div></div>'
     +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'
       +'<input id="gestQ" type="search" placeholder="Buscar pedido, cliente, representante…" value="'+uEsc(GEST_UI.q)+'" style="'+inp+';flex:1;min-width:220px">'
-      +'<select id="gestRep" style="'+inp+'"><option value="">Todos os representantes</option>'+reps.map(function(r){ return '<option'+(r===GEST_UI.repr?' selected':'')+'>'+uEsc(r)+'</option>'; }).join('')+'</select>'
       +'<label style="font-size:13px;color:var(--muted);display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="gestOcultar"'+(GEST_UI.ocultar?' checked':'')+'> ocultar tratados</label>'
       +'<button id="gestExp" class="ubtn" style="background:var(--f-green);color:#0c241a;border:none;font-weight:600"'+(todas.length?'':' disabled')+'>⬇ Exportar Excel</button></div>'
-    +'<div style="color:var(--muted);font-size:12.5px;margin-bottom:6px">'+rows.length+' pedido(s) na lista'+(rows.length!==todas.length?' (de '+todas.length+')':'')+'.</div>'
-    +'<div style="overflow:auto;max-height:560px;border:1px solid var(--line);border-radius:10px"><table style="width:100%;border-collapse:collapse"><thead><tr>'
-      +['Representante','Criação','Nº Matriz','Cliente','Quantidade','Fila da gestão','Tratado'].map(function(h){ return '<th style="'+th+'">'+h+'</th>'; }).join('')+'</tr></thead><tbody>'
-      +(rows.length?rows.map(function(o){ return '<tr style="'+(o.done?'opacity:.5':'')+'"><td style="'+td+'">'+uEsc(o.repr||'(sem)')+'</td><td style="'+td+';white-space:nowrap">'+(o.cad?_calBRs(o.cad):'')+'</td><td style="'+td+';font-weight:600">'+uEsc(o.num)+'</td><td style="'+td+'">'+uEsc(o.cliente)+'</td><td style="'+td+';text-align:right">'+o.qtd.toLocaleString('pt-BR')+'</td><td style="'+td+';color:var(--f-green)">'+(o.fila?'✓ na fila':'')+'</td><td style="'+td+';text-align:center"><input type="checkbox" class="gestDone" data-n="'+uEsc(o.num)+'"'+(o.done?' checked':'')+'></td></tr>'; }).join('')
-        :'<tr><td colspan="7" style="'+td+';color:var(--muted);text-align:center;padding:24px">'+(b||pubOk?'Nenhum pedido com esses filtros.':'Suba o arquivo do Matriz para ver os pedidos.')+'</td></tr>')
-    +'</tbody></table></div></div>';
+    +(function(){
+      if(!rows.length) return '<div style="'+card+';color:var(--muted);text-align:center;padding:24px">'+(b||pubOk?'Nenhum pedido com esses filtros.':'Suba o arquivo do Matriz para ver os pedidos.')+'</div></div>';
+      var gr={}; rows.forEach(function(o){ var k=_gestRepNome(o.repr); (gr[k]=gr[k]||[]).push(o); });
+      var ks=Object.keys(gr).sort(function(a,c){ return gr[c].length-gr[a].length||a.localeCompare(c,'pt'); }), busca=!!(GEST_UI.q||'').trim();
+      var aberto=function(k){ return busca||!!GEST_UI.aberto[k]; };
+      var s='<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:6px 0 12px"><div style="font-size:15px;color:var(--ink)">Total de pedidos lidos na gestão: <b style="font-size:22px;color:var(--f-green)">'+rows.length+'</b>'+(rows.length!==todas.length?' <span style="color:var(--muted);font-size:13px">(de '+todas.length+')</span>':'')+'</div>'
+        +'<span style="color:var(--muted);font-size:12.5px">Clique num representante para ver os pedidos.</span>'
+        +'<span style="flex:1"></span>'+(busca?'':'<button class="ubtn" id="gestAbreTodos" style="font-size:12.5px;padding:5px 10px">'+(ks.every(aberto)?'Fechar todos':'Abrir todos')+'</button>')+'</div>'
+        +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:14px">'
+        +ks.map(function(k){ var L=gr[k], on=aberto(k), nd=L.filter(function(o){return o.done;}).length, nf=L.filter(function(o){return o.fila;}).length;
+          return '<button class="gestRepBox" data-k="'+uEsc(k)+'" style="text-align:left;cursor:pointer;background:'+(on?'rgba(46,170,110,.14)':'var(--surface2)')+';border:1px solid '+(on?'var(--f-green)':'var(--line)')+';border-radius:12px;padding:12px 14px;color:var(--ink);font:inherit">'
+            +'<div style="font-weight:600;font-size:14px;display:flex;justify-content:space-between;gap:6px"><span>'+uEsc(k)+'</span><span style="color:var(--muted)">'+(on?'▾':'▸')+'</span></div>'
+            +'<div style="font-size:24px;font-weight:700;color:var(--f-green);margin:2px 0">'+L.length+'</div>'
+            +'<div style="font-size:11.5px;color:var(--muted)">'+(L.length===1?'pedido':'pedidos')+(nf?' · '+nf+' na fila':'')+(nd?' · '+nd+' tratado'+(nd>1?'s':''):'')+'</div></button>'; }).join('')+'</div>';
+      ks.filter(aberto).forEach(function(k){ var L=gr[k], nomes=L.map(function(o){return o.repr||'(sem)';}).filter(function(v,i,a){return a.indexOf(v)===i;}), vr=nomes.length>1;
+        var cols=(vr?['Representante']:[]).concat(['Criação','Nº Matriz','Cliente','Quantidade','Fila da gestão','Tratado']);
+        s+='<div style="margin-bottom:14px"><div style="font-weight:600;color:var(--ink);margin:0 0 6px">'+uEsc(k)+' <span style="color:var(--muted);font-weight:400;font-size:13px">· '+L.length+' pedido(s)'+(vr?'':' · '+uEsc(nomes[0]))+'</span></div>'
+          +'<div style="overflow:auto;max-height:460px;border:1px solid var(--line);border-radius:10px"><table style="width:100%;border-collapse:collapse"><thead><tr>'
+          +cols.map(function(h){ return '<th style="'+th+'">'+h+'</th>'; }).join('')+'</tr></thead><tbody>'
+          +L.map(function(o){ return '<tr style="'+(o.done?'opacity:.5':'')+'">'+(vr?'<td style="'+td+'">'+uEsc(o.repr||'(sem)')+'</td>':'')+'<td style="'+td+';white-space:nowrap">'+(o.cad?_calBRs(o.cad):'')+'</td><td style="'+td+';font-weight:600">'+uEsc(o.num)+'</td><td style="'+td+'">'+uEsc(o.cliente)+'</td><td style="'+td+';text-align:right">'+o.qtd.toLocaleString('pt-BR')+'</td><td style="'+td+';color:var(--f-green)">'+(o.fila?'✓ na fila':'')+'</td><td style="'+td+';text-align:center"><input type="checkbox" class="gestDone" data-n="'+uEsc(o.num)+'"'+(o.done?' checked':'')+'></td></tr>'; }).join('')
+          +'</tbody></table></div></div>'; });
+      return s+'</div>'; })();
   if(!document.getElementById('gestPulseCss')){ var cs=document.createElement('style'); cs.id='gestPulseCss'; cs.textContent='@keyframes gestPulse{0%,100%{opacity:1}50%{opacity:.45}}'; document.head.appendChild(cs); }
   _gestProgDraw();
   if($('gestFileSub')) $('gestFileSub').onchange=function(){ var f=this.files&&this.files[0]; this.value=''; if(f) gestSubir(f,false); };
   $('gestFileSom').onchange=function(){ var f=this.files&&this.files[0]; this.value=''; if(f) gestSubir(f,true); };
   var tf; $('gestFila').oninput=function(){ var v=this.value; _gjSet('gest_fila',v); clearTimeout(tf); tf=setTimeout(function(){ var foco=document.activeElement&&document.activeElement.id; renderGestConc(); if(foco==='gestFila'){ var t=$('gestFila'); t.focus(); t.selectionStart=t.selectionEnd=t.value.length; } },700); };
   var tq; $('gestQ').oninput=function(){ GEST_UI.q=this.value; clearTimeout(tq); tq=setTimeout(function(){ renderGestConc(); var q=$('gestQ'); q.focus(); q.selectionStart=q.selectionEnd=q.value.length; },300); };
-  $('gestRep').onchange=function(){ GEST_UI.repr=this.value; renderGestConc(); };
+  host.querySelectorAll('.gestRepBox').forEach(function(bx){ bx.onclick=function(){ var k=bx.getAttribute('data-k'); if(GEST_UI.aberto[k]) delete GEST_UI.aberto[k]; else GEST_UI.aberto[k]=1; var y=window.scrollY; renderGestConc(); window.scrollTo(0,y); }; });
+  if($('gestAbreTodos')) $('gestAbreTodos').onclick=function(){ var fechar=this.textContent==='Fechar todos'; GEST_UI.aberto={}; if(!fechar) host.querySelectorAll('.gestRepBox').forEach(function(bx){ GEST_UI.aberto[bx.getAttribute('data-k')]=1; }); var y=window.scrollY; renderGestConc(); window.scrollTo(0,y); };
   $('gestOcultar').onchange=function(){ GEST_UI.ocultar=this.checked; renderGestConc(); };
   host.querySelectorAll('.gestDone').forEach(function(c){ c.onchange=function(){ var d=_gjGet('gest_done',[]), n=c.getAttribute('data-n'); d=d.filter(function(x){return x!==n;}); if(c.checked) d.push(n); _gjSet('gest_done',d); renderGestConc(); }; });
   $('gestExp').onclick=gestExportar;
