@@ -2511,17 +2511,49 @@ function orcRender(){ var host=$('orcContent'); if(!host) return; var D=ORC.dado
 /* ===== Conciliação semanal: as duas conciliações (Programação e Gestão) precisam rodar pelo menos 1 vez a cada 7 dias.
    "Rodar" = subir um arquivo na aba. O "Ok, vou rodar hoje" adia o alerta e recomeça a contagem (vale para todos do login). */
 var CONC_DIAS=7;
-function _concStatus(tipo){ var run=0, por='', raw;
+// o que este login sabe (base e "Ok, vou rodar hoje" deste login)
+function _concLocal(tipo){ var run=0, por='', raw;
   try{ if(tipo==='p2'){ raw=JSON.parse(localStorage.getItem('p2_base')||'null'); var M=(raw&&raw.meta)||{}; Object.keys(M).forEach(function(k){ var m=M[k]; if(m&&m.quando>run){ run=m.quando; por=m.por||''; } }); }
        else { raw=JSON.parse(localStorage.getItem('gest_base')||'null'); if(raw&&raw.quando){ run=raw.quando; por=raw.por||''; } } }catch(e){}
   var ack=null; try{ ack=JSON.parse(localStorage.getItem(tipo+'_alerta')||'null'); }catch(e){}
+  return {run:run,por:por,ack:ack}; }
+/* Conciliação feita por QUALQUER login vale para todos: cada computador grava em conc/status.json (ramo checklists)
+   a conciliação mais recente que conhece, cifrada com a chave dos pedidos aprovados (só quem usa as conciliações lê). */
+var CONC_G={p2:null,gest:null}, CONC_PATH='conc/status.json', CONC_BUSY=false;
+function _concKey(){ return (SESSION&&SESSION.slots&&SESSION.slots.aprovados)?b64d(SESSION.slots.aprovados):null; }
+async function concGlobalSync(tent){ var key=_concKey(); if(!key||CONC_BUSY) return; CONC_BUSY=true; var antes=JSON.stringify(CONC_G), outra=false;
+  try{ var sha=await _ckHead(), g={};
+    if(sha){ var b=await _ckRead(CONC_PATH,sha); if(b){ try{ g=await decJSON(key,JSON.parse(new TextDecoder().decode(b)))||{}; }catch(e){ g={}; } } }
+    var novo={}, mud=false;
+    ['p2','gest'].forEach(function(t){ var L=_concLocal(t), R=g[t]||{}, n={run:R.run||0,por:R.por||'',ack:R.ack||null};
+      if(L.run>n.run){ n.run=L.run; n.por=L.por; mud=true; }
+      if(L.ack&&L.ack.ts>((n.ack&&n.ack.ts)||0)){ n.ack=L.ack; mud=true; }
+      novo[t]=n; });
+    CONC_G=novo;
+    if(mud&&ghToken()){
+      var bl=await gh('/git/blobs',{method:'POST',body:{content:JSON.stringify(await encJSON(key,novo)),encoding:'utf-8'}});
+      var body={tree:[{path:CONC_PATH,mode:'100644',type:'blob',sha:bl.sha}]}; if(sha) body.base_tree=(await gh('/git/commits/'+sha)).tree.sha;
+      var tr=await gh('/git/trees',{method:'POST',body:body});
+      var nc=await gh('/git/commits',{method:'POST',body:{message:'Conciliação: '+((current&&current.name)||''),tree:tr.sha,parents:sha?[sha]:[]}});
+      try{ if(sha) await gh('/git/refs/heads/'+CK_BRANCH,{method:'PATCH',body:{sha:nc.sha,force:false}}); else await gh('/git/refs',{method:'POST',body:{ref:'refs/heads/'+CK_BRANCH,sha:nc.sha}}); }
+      catch(e){ if(e.status===422&&(tent||0)<3) outra=true; else throw e; } }
+  }catch(e){}
+  finally{ CONC_BUSY=false; }
+  if(outra) return concGlobalSync((tent||0)+1);
+  if(JSON.stringify(CONC_G)!==antes){ var ae=document.activeElement, dig=ae&&/INPUT|TEXTAREA|SELECT/.test(ae.tagName);
+    try{ renderProdNav(); renderGestNav(); }catch(e){}
+    if(!dig&&$('p2Prog')&&!P2_BUSY) try{ renderP2(); }catch(e){}
+    if(!dig&&$('modGest')&&$('modGest').style.display!=='none'&&gestActive==='conciliacao') try{ renderGestConc(); }catch(e){} } }
+function _concStatus(tipo){ var L=_concLocal(tipo), G=CONC_G[tipo]||{}, run=L.run, por=L.por, ack=L.ack;
+  if((G.run||0)>run){ run=G.run; por=G.por||''; }
+  if(G.ack&&G.ack.ts>((ack&&ack.ts)||0)) ack=G.ack;
   var ref=Math.max(run,(ack&&ack.ts)||0), now=Date.now();
   return {run:run,por:por,ack:ack,ref:ref,dias:ref?Math.floor((now-ref)/864e5):null,atraso:!ref||now-ref>=CONC_DIAS*864e5,prox:ref?ref+CONC_DIAS*864e5:0}; }
 function _concData(ts){ return ts?fmtTs(ts).split(' ')[0]:''; }
 function _concBanner(tipo){ var s=_concStatus(tipo);
   if(s.atraso) return '<div style="border:1px solid rgba(229,72,77,.55);background:rgba(229,72,77,.12);border-radius:12px;padding:12px 16px;margin-bottom:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">'
     +'<span style="font-size:22px;color:#e5484d">⚠</span><div style="flex:1;min-width:240px"><div style="font-weight:700;color:#e5484d;font-size:14.5px">Conciliação em atraso — precisa rodar uma nova</div>'
-    +'<div style="font-size:13px;color:var(--ink);margin-top:2px">'+(s.run?'A última foi em <b>'+_concData(s.run)+'</b>'+(s.por?' por '+uEsc(s.por):'')+(s.dias!=null?' (há '+s.dias+' dias)':''):'Ainda não há registro de conciliação neste login')
+    +'<div style="font-size:13px;color:var(--ink);margin-top:2px">'+(s.run?'A última foi em <b>'+_concData(s.run)+'</b>'+(s.por?' por '+uEsc(s.por):'')+(s.dias!=null?' (há '+s.dias+' dias)':''):'Ainda não há registro de conciliação')
     +(s.ack&&s.ack.ts>s.run?' · alerta adiado em '+_concData(s.ack.ts)+(s.ack.por?' por '+uEsc(s.ack.por):''):'')+'. A conciliação deve rodar pelo menos uma vez a cada '+CONC_DIAS+' dias: suba os arquivos abaixo.</div></div>'
     +'<button class="ubtn concOk" data-t="'+tipo+'" style="border-color:rgba(229,72,77,.6)">Ok, vou rodar hoje</button></div>';
   return '<div style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px">✓ Última conciliação: <b style="color:var(--ink)">'+_concData(s.run)+'</b>'+(s.run?' às '+fmtTs(s.run).split(' ')[1]:'')+(s.por?' por '+uEsc(s.por):'')
@@ -4130,7 +4162,7 @@ async function ckSyncRun(){ if(!CKS.on) return; if(CKS.busy){ CKS.again=true; re
       await _ckApply(novo,nc.sha); break; }
     CKS.quando=Date.now(); CKS.erro=''; CKS.parcial=CKS.falhas.slice(); ckSyncUI('');
   }catch(e){ CKS.erro=(e&&e.status===401)?'token do GitHub vencido — peça ao administrador um novo':((e&&e.message)||String(e)); ckSyncUI(''); }
-  finally{ CKS.busy=false; ckSyncUI(''); if(CKS.again) setTimeout(ckSyncRun,300); } }
+  finally{ CKS.busy=false; ckSyncUI(''); if(CKS.again) setTimeout(ckSyncRun,300); else concGlobalSync(); } }
 function ckSyncUI(msg){ var el=$('ckSyncSt'); if(!el) return; if(!CKS.on){ el.innerHTML=''; return; }
   var erro=CKS.semEspaco?('este navegador ficou sem espaço e não guardou "'+CKS.semEspaco+'". Limpe o checklist ou apague arquivos antigos de outras abas.'+(CKS.erro?' Também: '+CKS.erro:'')):CKS.erro;
   var parc=(!erro&&CKS.parcial&&CKS.parcial.length)?(' · menos: '+CKS.parcial.join('; ')+' — não foi compartilhado'):'';
