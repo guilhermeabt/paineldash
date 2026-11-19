@@ -4131,7 +4131,7 @@ function ckSave(o){ try{ localStorage.setItem('prog_checklist', JSON.stringify(o
    Fica no ramo "checklists" do GitHub, em ck/<id do login>/, criptografado com a chave do login (só quem entra com ele lê).
    index.json: { keys:{arquivo:{ts,by,del}}, ck:{campo:{ts,v,del}} } — os arquivos (PDF das OPs, Excels) vão em <chave>.bin;
    as marcações/datas/números do checklist vão campo a campo, então duas pessoas mexendo ao mesmo tempo não se apagam. */
-var CK_SYNC_KEYS=['p2_alerta','gest_alerta','p2_base','p2_fila','p2_bordado','p2_done','gest_base','gest_fila','gest_done','prog_prev','prog_checklist','prog_pedsel','prog_pecas','prog_ficha','prog_benef','prog_ops','prog_opsger','prog_opsped','prog_estoque','prog_tec','prog_tecnome','prog_reprog','prog_holidays'];
+var CK_SYNC_KEYS=['p2_alerta','gest_alerta','p2_base','p2_fila','p2_bordado','p2_done','gest_base','gest_done','prog_prev','prog_checklist','prog_pedsel','prog_pecas','prog_ficha','prog_benef','prog_ops','prog_opsger','prog_opsped','prog_estoque','prog_tec','prog_tecnome','prog_reprog','prog_holidays'];
 var CK_BRANCH='checklists', CKS={on:false,uid:'',user:'',meta:null,timer:null,loop:null,busy:false,again:false,applying:false,status:'',quando:0,erro:'',falhas:[],parcial:[],semEspaco:false};
 var CK_GLOBAL={prog_pedsel:'__PROG_PEDSEL',prog_pecas:'__PROG_PECAS',prog_ficha:'__PROG_FICHA',prog_benef:'__PROG_BENEF',prog_ops:'__PROG_OPS',prog_opsger:'__PROG_OPSGER',prog_opsped:'__PROG_OPSPED',prog_estoque:'__PROG_ESTOQUE',prog_tec:'__TEC_OFICIAL',prog_tecnome:'__TEC_NOME',prog_reprog:'__PROG_REPROG'};
 (function(){ var S=Storage.prototype, si=S.setItem, ri=S.removeItem;
@@ -4701,23 +4701,25 @@ function _gestLocal(){ var b=_gjGet('gest_base',null); if(!b) return null; b.row
   if(!b.v2&&GEST_PUB.estado==='ok'&&(b.quando||0)<=(GEST_PUB.em||0)){ b.rows=[]; b.v2=1; b.antigo=1; } return b; }
 /* Envios da Gestão valem para todos os logins: quem sobe o período novo grava no ramo "checklists" (gest/base.json),
    cifrado com a chave dos não aprovados do Matriz. Cada pedido guarda quando foi enviado (t): vale a versão mais nova. */
-var GEST_G={rows:{},ups:[],estado:'',erro:''}, GEST_G_PATH='gest/base.json', GEST_G_BUSY=false;
+var GEST_FILA_T=null, GEST_G={rows:{},ups:[],estado:'',erro:''}, GEST_G_PATH='gest/base.json', GEST_G_BUSY=false;
 function _gestGKey(){ return (SESSION&&SESSION.slots&&SESSION.slots.nao_aprovados)?b64d(SESSION.slots.nao_aprovados):null; }
 function _gestRowT(o,b){ return o.t||(b&&b.quando)||0; }
-function _gestGSig(){ return Object.keys(GEST_G.rows).length+'|'+JSON.stringify(GEST_G.ups)+'|'+GEST_G.estado+'|'+GEST_G.erro; }
+function _gestGSig(){ return Object.keys(GEST_G.rows).length+'|'+JSON.stringify(GEST_G.ups)+'|'+JSON.stringify(GEST_G.fila||null)+'|'+GEST_G.estado+'|'+GEST_G.erro; }
 async function gestGlobalSync(tent){ var key=_gestGKey(); if(!key) return; if(GEST_G_BUSY) return; GEST_G_BUSY=true;
   var antes=_gestGSig(), outra=false;
   try{ var sha=await _ckHead(), g=null;
     if(sha){ var bb=await _ckRead(GEST_G_PATH,sha); if(bb){ try{ g=await decJSON(key,JSON.parse(new TextDecoder().decode(bb))); }catch(e){ g=null; } } }
-    g=g||{}; g.rows=g.rows||{}; g.ups=g.ups||[];
-    var mud=false, L=_gestLocal();
+    g=g||{}; g.rows=g.rows||{}; g.ups=g.ups||[]; g.fila=g.fila||{v:'',ts:0,por:''};
+    var mud=false, L=_gestLocal(), fv=_gjGet('gest_fila',''), fts=+(localStorage.getItem('gest_fila_ts')||0)||(fv?1:0);
+    if(fts>(g.fila.ts||0)){ g.fila={v:fv,ts:fts,por:(current&&current.name)||''}; mud=true; }
+    else if((g.fila.ts||0)>fts&&!(document.activeElement&&document.activeElement.id==='gestFila')){ _gjSet('gest_fila',g.fila.v||''); try{ localStorage.setItem('gest_fila_ts',String(g.fila.ts)); }catch(e){} }
     if(L&&!L.antigo&&L.quando){
       L.rows.forEach(function(o){ if(o.ext) return; var t=_gestRowT(o,L), r=g.rows[o.num]; if(!r||(r.t||0)<t){ g.rows[o.num]=Object.assign({},o,{t:t}); mud=true; } });
       if(!g.ups.some(function(u){ return u.quando===L.quando; })){ g.ups.push({nome:L.nome||'',quando:L.quando,por:L.por||'',reg:L.reg||0,ate:L.ate||''}); mud=true; } }
     g.ups.sort(function(a,c){ return a.quando-c.quando; }); if(g.ups.length>40) g.ups=g.ups.slice(-40);
-    GEST_G={rows:g.rows,ups:g.ups,estado:'ok',erro:''};
+    GEST_G={rows:g.rows,ups:g.ups,fila:g.fila,estado:'ok',erro:''};
     if(mud){ if(!ghToken()) throw new Error('sem token do GitHub neste computador');
-      var bl=await gh('/git/blobs',{method:'POST',body:{content:JSON.stringify(await encJSON(key,{rows:g.rows,ups:g.ups})),encoding:'utf-8'}});
+      var bl=await gh('/git/blobs',{method:'POST',body:{content:JSON.stringify(await encJSON(key,{rows:g.rows,ups:g.ups,fila:g.fila})),encoding:'utf-8'}});
       var body={tree:[{path:GEST_G_PATH,mode:'100644',type:'blob',sha:bl.sha}]}; if(sha) body.base_tree=(await gh('/git/commits/'+sha)).tree.sha;
       var tr=await gh('/git/trees',{method:'POST',body:body});
       var nc=await gh('/git/commits',{method:'POST',body:{message:'Gestão: '+((current&&current.name)||''),tree:tr.sha,parents:sha?[sha]:[]}});
@@ -4856,7 +4858,7 @@ function renderGestConc(){
   _gestProgDraw();
   if($('gestFileSub')) $('gestFileSub').onchange=function(){ var f=this.files&&this.files[0]; this.value=''; if(f) gestSubir(f,false); };
   $('gestFileSom').onchange=function(){ var f=this.files&&this.files[0]; this.value=''; if(f) gestSubir(f,true); };
-  var tf; $('gestFila').oninput=function(){ var v=this.value; _gjSet('gest_fila',v); clearTimeout(tf); tf=setTimeout(function(){ var foco=document.activeElement&&document.activeElement.id; renderGestConc(); if(foco==='gestFila'){ var t=$('gestFila'); t.focus(); t.selectionStart=t.selectionEnd=t.value.length; } },700); };
+  var tf; $('gestFila').oninput=function(){ var v=this.value; _gjSet('gest_fila',v); try{ localStorage.setItem('gest_fila_ts',String(Date.now())); }catch(e){} clearTimeout(GEST_FILA_T); GEST_FILA_T=setTimeout(function(){ gestGlobalSync(); },1500); clearTimeout(tf); tf=setTimeout(function(){ var foco=document.activeElement&&document.activeElement.id; renderGestConc(); if(foco==='gestFila'){ var t=$('gestFila'); t.focus(); t.selectionStart=t.selectionEnd=t.value.length; } },700); };
   var tq; $('gestQ').oninput=function(){ if(document.activeElement!==this){ this.value=GEST_UI.q; return; } GEST_UI.q=this.value; clearTimeout(tq); tq=setTimeout(function(){ renderGestConc(); var q=$('gestQ'); q.focus(); q.selectionStart=q.selectionEnd=q.value.length; },300); };
   host.querySelectorAll('.gestMail').forEach(function(bt){ bt.onclick=function(e){ e.stopPropagation(); gestEmail(bt.getAttribute('data-k')); }; });
   host.querySelectorAll('.gestRepBox').forEach(function(bx){ bx.onkeydown=function(e){ if((e.key==='Enter'||e.key===' ')&&e.target===bx){ e.preventDefault(); bx.click(); } }; bx.onclick=function(){ var k=bx.getAttribute('data-k'); if(GEST_UI.aberto[k]) delete GEST_UI.aberto[k]; else GEST_UI.aberto[k]=1; var y=window.scrollY; renderGestConc(); window.scrollTo(0,y); }; });
@@ -4884,7 +4886,7 @@ function _gestEmailHtml(k,L){ var e=function(x){ return uEsc(String(x==null?'':x
     +'</table>'
     +'<p style="margin:0 0 4px">Exemplos de retorno: <i>aguardando OC do cliente</i>, <i>aguardando pagamento do PayLink</i>, <i>aguardando aprovação do cliente</i>, <i>pode excluir</i>.</p>'
     +'<p style="margin:10px 0 0">Aguardo seu retorno.</p></div>'; }
-function gestEmail(k){ var L=GEST_GR[k]||[]; if(!L.length) return; var old=$('gestMailBox'); if(old) old.remove();
+function gestEmail(k){ var L=(GEST_GR[k]||[]).filter(function(o){ return !o.fila; }); if(!L.length){ alert('Todos os pedidos de '+k+' já estão na fila da gestão — não há o que pedir no e-mail.'); return; } var old=$('gestMailBox'); if(old) old.remove();
   var assunto='PEDIDOS DIGITADOS MATRIZ SEM APROVAÇÃO — '+(k==='(sem representante)'?'':k.toUpperCase());
   var ov=document.createElement('div'); ov.id='gestMailBox'; ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:30px 12px;overflow:auto';
   ov.innerHTML='<div style="background:var(--surface2);border:1px solid var(--line);border-radius:14px;max-width:860px;width:100%;padding:18px 20px;box-sizing:border-box">'
