@@ -4224,7 +4224,7 @@ async function ckSyncRun(){ if(!CKS.on) return; if(CKS.busy){ CKS.again=true; re
       await _ckApply(novo,nc.sha); break; }
     CKS.quando=Date.now(); CKS.erro=''; CKS.parcial=CKS.falhas.slice(); ckSyncUI('');
   }catch(e){ CKS.erro=(e&&e.status===401)?'token do GitHub vencido — peça ao administrador um novo':((e&&e.message)||String(e)); ckSyncUI(''); }
-  finally{ CKS.busy=false; ckSyncUI(''); if(CKS.again) setTimeout(ckSyncRun,300); else concGlobalSync(); } }
+  finally{ CKS.busy=false; ckSyncUI(''); if(CKS.again) setTimeout(ckSyncRun,300); else { concGlobalSync(); gestGlobalSync(); } } }
 function ckSyncUI(msg){ var el=$('ckSyncSt'); if(!el) return; if(!CKS.on){ el.innerHTML=''; return; }
   var erro=CKS.semEspaco?('este navegador ficou sem espaço e não guardou "'+CKS.semEspaco+'". Limpe o checklist ou apague arquivos antigos de outras abas.'+(CKS.erro?' Também: '+CKS.erro:'')):CKS.erro;
   var parc=(!erro&&CKS.parcial&&CKS.parcial.length)?(' · menos: '+CKS.parcial.join('; ')+' — não foi compartilhado'):'';
@@ -4698,10 +4698,41 @@ async function _gestCarregaPub(){ if(GEST_PUB.estado==='lendo') return; GEST_PUB
   finally{ if(GEST_PUB.estado==='lendo') GEST_PUB.estado='erro'; if($('gestContent')&&gestActive==='conciliacao'&&!GEST_BUSY) try{ renderGestConc(); }catch(x){} } }
 // o que este login enviou (só o período novo); a versão antiga guardava o relatório inteiro e passa a valer a publicada
 function _gestLocal(){ var b=_gjGet('gest_base',null); if(!b) return null; b.rows=b.rows||[];
-  if(!b.v2&&GEST_PUB.estado==='ok'){ b.rows=[]; b.v2=1; b.antigo=1; } return b; }
-function gestRows(){ var b=_gestLocal(), pub=GEST_PUB.estado==='ok', by={};
-  if(pub) GEST_PUB.rows.forEach(function(o){ by[o.num]=o; });
-  if(b) b.rows.forEach(function(o){ by[o.num]=o; });
+  if(!b.v2&&GEST_PUB.estado==='ok'&&(b.quando||0)<=(GEST_PUB.em||0)){ b.rows=[]; b.v2=1; b.antigo=1; } return b; }
+/* Envios da Gestão valem para todos os logins: quem sobe o período novo grava no ramo "checklists" (gest/base.json),
+   cifrado com a chave dos não aprovados do Matriz. Cada pedido guarda quando foi enviado (t): vale a versão mais nova. */
+var GEST_G={rows:{},ups:[],estado:'',erro:''}, GEST_G_PATH='gest/base.json', GEST_G_BUSY=false;
+function _gestGKey(){ return (SESSION&&SESSION.slots&&SESSION.slots.nao_aprovados)?b64d(SESSION.slots.nao_aprovados):null; }
+function _gestRowT(o,b){ return o.t||(b&&b.quando)||0; }
+function _gestGSig(){ return Object.keys(GEST_G.rows).length+'|'+JSON.stringify(GEST_G.ups)+'|'+GEST_G.estado+'|'+GEST_G.erro; }
+async function gestGlobalSync(tent){ var key=_gestGKey(); if(!key) return; if(GEST_G_BUSY) return; GEST_G_BUSY=true;
+  var antes=_gestGSig(), outra=false;
+  try{ var sha=await _ckHead(), g=null;
+    if(sha){ var bb=await _ckRead(GEST_G_PATH,sha); if(bb){ try{ g=await decJSON(key,JSON.parse(new TextDecoder().decode(bb))); }catch(e){ g=null; } } }
+    g=g||{}; g.rows=g.rows||{}; g.ups=g.ups||[];
+    var mud=false, L=_gestLocal();
+    if(L&&!L.antigo&&L.quando){
+      L.rows.forEach(function(o){ if(o.ext) return; var t=_gestRowT(o,L), r=g.rows[o.num]; if(!r||(r.t||0)<t){ g.rows[o.num]=Object.assign({},o,{t:t}); mud=true; } });
+      if(!g.ups.some(function(u){ return u.quando===L.quando; })){ g.ups.push({nome:L.nome||'',quando:L.quando,por:L.por||'',reg:L.reg||0,ate:L.ate||''}); mud=true; } }
+    g.ups.sort(function(a,c){ return a.quando-c.quando; }); if(g.ups.length>40) g.ups=g.ups.slice(-40);
+    GEST_G={rows:g.rows,ups:g.ups,estado:'ok',erro:''};
+    if(mud){ if(!ghToken()) throw new Error('sem token do GitHub neste computador');
+      var bl=await gh('/git/blobs',{method:'POST',body:{content:JSON.stringify(await encJSON(key,{rows:g.rows,ups:g.ups})),encoding:'utf-8'}});
+      var body={tree:[{path:GEST_G_PATH,mode:'100644',type:'blob',sha:bl.sha}]}; if(sha) body.base_tree=(await gh('/git/commits/'+sha)).tree.sha;
+      var tr=await gh('/git/trees',{method:'POST',body:body});
+      var nc=await gh('/git/commits',{method:'POST',body:{message:'Gestão: '+((current&&current.name)||''),tree:tr.sha,parents:sha?[sha]:[]}});
+      try{ if(sha) await gh('/git/refs/heads/'+CK_BRANCH,{method:'PATCH',body:{sha:nc.sha,force:false}}); else await gh('/git/refs',{method:'POST',body:{ref:'refs/heads/'+CK_BRANCH,sha:nc.sha}}); }
+      catch(e){ if(e.status===422&&(tent||0)<3) outra=true; else throw e; } }
+  }catch(e){ if(GEST_G.estado!=='ok') GEST_G.estado='erro'; GEST_G.erro='não consegui compartilhar o envio com os outros logins ('+((e&&e.message)||e)+')'; }
+  finally{ GEST_G_BUSY=false; }
+  if(outra) return gestGlobalSync((tent||0)+1);
+  if(_gestGSig()!==antes){ var ae=document.activeElement, gc=$('gestContent'), dig=ae&&/INPUT|TEXTAREA|SELECT/.test(ae.tagName)&&gc&&gc.contains(ae);
+    if(!dig&&!GEST_BUSY&&$('modGest')&&$('modGest').style.display!=='none'&&gestActive==='conciliacao') try{ renderGestConc(); }catch(e){} } }
+function gestRows(){ var b=_gestLocal(), pub=GEST_PUB.estado==='ok', by={}, tt={};
+  var put=function(o,t){ if(by[o.num]&&tt[o.num]>t) return; by[o.num]=o; tt[o.num]=t; };
+  if(pub) GEST_PUB.rows.forEach(function(o){ put(o,GEST_PUB.em||0); });
+  Object.keys(GEST_G.rows||{}).forEach(function(k){ var o=GEST_G.rows[k]; put(o,o.t||0); });
+  if(b) b.rows.forEach(function(o){ put(o,_gestRowT(o,b)); });
   return Object.keys(by).map(function(k){ return by[k]; }).filter(function(m){ return !m.ext&&!m.fat&&!(pub&&GEST_PUB.aprov[m.num]); }).sort(function(a,c){ return (a.repr||'').localeCompare(c.repr||'','pt')||(a.cad<c.cad?-1:a.cad>c.cad?1:0); }); }
 // lê o relatório de pedidos NÃO aprovados do Matriz (o mesmo da Base: "11 — Não aprovados/Encerrados")
 // linhas do Excel → pedidos (só os campos que a Gestão usa)
@@ -4750,13 +4781,14 @@ async function gestSubir(file,somar){ if(GEST_BUSY) return; GEST_BUSY=true; GEST
     if(GEST_PUB.estado!=='ok') await _gestCarregaPub();
     var novos=_gestLinhas(arr), b=_gestLocal(), by={}, ate='';
     if(b&&(somar||GEST_PUB.estado==='ok')) b.rows.forEach(function(o){ by[o.num]=o; });
-    novos.forEach(function(o){ if(o.cad>ate) ate=o.cad; if(!o.ext) by[o.num]=o; });
+    var agora=Date.now(); novos.forEach(function(o){ if(o.cad>ate) ate=o.cad; o.t=agora; if(!o.ext) by[o.num]=o; });
     var rows=Object.keys(by).map(function(k){ return by[k]; });
     _gestProg(4,90,rows.length+' pedidos'); await _gestPinta();
-    _gjSet('gest_base',{rows:rows,nome:file.name,quando:Date.now(),por:(current&&current.name)||currentUserKey||'',reg:novos.length,ate:ate,v2:GEST_PUB.estado==='ok'?1:0,modo:somar?'somado':'substituído'});
-    _gestProg(5,96); await _gestPinta();
-    var n=gestRows().length;
-    GEST_PROG={i:6,pct:100,extra:'Pronto! '+novos.length+' pedidos lidos'+(somar?' e somados à base':'')+' · '+n+' na Gestão.',t0:GEST_PROG.t0};
+    _gjSet('gest_base',{rows:rows,nome:file.name,quando:agora,por:(current&&current.name)||currentUserKey||'',reg:novos.length,ate:ate,v2:GEST_PUB.estado==='ok'?1:0,modo:somar?'somado':'substituído'});
+    _gestProg(5,96,'compartilhando com os outros logins'); await _gestPinta();
+    await gestGlobalSync();
+    var n=gestRows().length, comp=GEST_G.estado==='ok'&&!GEST_G.erro&&GEST_G.ups.some(function(u){ return u.quando===agora; });
+    GEST_PROG={i:6,pct:100,extra:'Pronto! '+novos.length+' pedidos lidos'+(somar?' e somados à base':'')+' · '+n+' na Gestão'+(comp?' · vale para todos os logins.':'.'),t0:GEST_PROG.t0};
     renderGestConc();
   }catch(e){ _gestProg(GEST_PROG?GEST_PROG.i:0,GEST_PROG?GEST_PROG.pct:0,'','Não consegui usar o arquivo: '+((e&&e.message)||e)); }
   finally{ clearInterval(tick); GEST_BUSY=false; document.querySelectorAll('#gestFileSub,#gestFileSom').forEach(function(x){ x.disabled=false; x.parentNode.style.opacity=''; }); } }
@@ -4764,7 +4796,7 @@ function _gestFiltradas(){ var rows=gestRows(), fila=new Set(_gNums(_gjGet('gest
   return rows.filter(function(o){ if(GEST_UI.ocultar&&done.has(o.num)) return false;
     if(q&&_en(o.num+' '+o.cliente+' '+o.repr).indexOf(q)<0) return false; return true; }).map(function(o){ return Object.assign({fila:fila.has(_gNum(o.num)),done:done.has(o.num)},o); }); }
 function renderGestConc(){
-  var host=$('gestContent'); if(!host) return; if(!GEST_PUB.estado) setTimeout(_gestCarregaPub,0);
+  var host=$('gestContent'); if(!host) return; if(!GEST_PUB.estado) setTimeout(_gestCarregaPub,0); if(!GEST_G.estado){ GEST_G.estado='lendo'; setTimeout(gestGlobalSync,0); }
   var b=_gestLocal(), pubOk=GEST_PUB.estado==='ok', todas=gestRows(), fila=new Set(_gNums(_gjGet('gest_fila',''))), rows=_gestFiltradas();
   var nFila=todas.filter(function(o){ return fila.has(_gNum(o.num)); }).length, reps=todas.map(function(o){return o.repr||'(sem)';}).filter(function(v,i,a){return a.indexOf(v)===i;}).sort(function(a,c){return a.localeCompare(c,'pt');});
   var inp='background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px', card='background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:16px';
@@ -4773,11 +4805,15 @@ function renderGestConc(){
     +'<p style="color:var(--muted);font-size:13px;margin:0 0 16px">Pedidos <b>internos do Matriz</b> (sem Pedido Externo — não vieram da Shopify), <b>ainda não aprovados</b> e sem faturamento. Ficam sob gestão para aprovação/tratamento.</p>'
     +_concBanner('gest')
     +'<div style="'+card+'"><div style="font-weight:600;color:var(--ink);margin-bottom:6px">1. Arquivo do Matriz — pedidos NÃO aprovados</div>'
-      +(function(){ var meu=b&&!b.antigo&&b.quando?b:null, la=(meu&&meu.ate)||'', ate=(pubOk&&GEST_PUB.ate>la)?GEST_PUB.ate:la, s='';
+      +(function(){ var meu=b&&!b.antigo&&b.quando?b:null, ups=(GEST_G.ups||[]).slice(), s='';
+        if(meu&&!ups.some(function(u){ return u.quando===meu.quando; })) ups.push(meu);
+        ups.sort(function(x,y){ return x.quando-y.quando; }); var ult=ups[ups.length-1]||null, la=''; ups.forEach(function(u){ if((u.ate||'')>la) la=u.ate; });
+        var ate=(pubOk&&GEST_PUB.ate>la)?GEST_PUB.ate:la; meu=ult;
         if(GEST_PUB.estado===''||GEST_PUB.estado==='lendo') s+='<div style="font-size:12.5px;color:var(--muted);margin-bottom:6px">Buscando a base publicada…</div>';
         else if(pubOk) s+='<div style="font-size:12.5px;color:var(--f-green);margin-bottom:6px">✓ Base publicada até '+_calBRs(GEST_PUB.ate)+' (publicada em '+fmtTs(GEST_PUB.em).split(' ')[0]+'). Os pedidos que já estão nos aprovados publicados saem da lista sozinhos.</div>';
         else s+='<div style="font-size:12.5px;color:var(--f-amber);margin-bottom:6px">Base publicada indisponível'+(GEST_PUB.erro?' — '+uEsc(GEST_PUB.erro):'')+'. Use o relatório completo do Matriz.</div>';
-        if(meu) s+='<div style="font-size:12.5px;color:var(--f-green);margin-bottom:8px">✓ Você enviou: '+uEsc(meu.nome)+(meu.reg?' · '+meu.reg+' pedidos':'')+(meu.ate?' (até '+_calBRs(meu.ate)+')':'')+' · '+fmtTs(meu.quando)+(meu.por?' por '+uEsc(meu.por):'')+'</div>';
+        if(GEST_G.erro) s+='<div style="font-size:12.5px;color:var(--f-amber);margin-bottom:6px">⚠ '+uEsc(GEST_G.erro)+'</div>';
+        if(meu) s+='<div style="font-size:12.5px;color:var(--f-green);margin-bottom:8px">✓ Último envio: '+uEsc(meu.nome)+(meu.reg?' · '+meu.reg+' pedidos':'')+(meu.ate?' (até '+_calBRs(meu.ate)+')':'')+' · '+fmtTs(meu.quando)+(meu.por?' por '+uEsc(meu.por):'')+'</div>';
         if(pubOk&&ate) s+='<div style="font-size:13px;color:var(--ink);background:rgba(74,163,223,.12);border:1px solid rgba(74,163,223,.4);border-radius:8px;padding:7px 10px;margin-bottom:10px;display:inline-block">Suba só os pedidos <b>não aprovados</b> do Matriz <b>a partir de '+_calBRs(ate)+'</b>. Soma ao que já existe — não precisa subir o histórico de novo.</div>';
         else if(!pubOk&&GEST_PUB.estado==='erro') s+='<div style="color:var(--muted);font-size:12.5px;line-height:1.5;margin-bottom:10px">No Matriz, exporte o relatório de <b>pedidos não aprovados</b> e suba aqui. Use <b>Substituir</b> com o relatório completo — assim os pedidos já aprovados saem da lista. <b>Somar</b> junta um período a mais sem apagar o que já está.</div>';
         return s; })()
@@ -4790,7 +4826,7 @@ function renderGestConc(){
       +'<div style="color:var(--muted);font-size:12px;margin-top:4px">Nº do pedido (Matriz). Separe por vírgula, espaço ou linha.</div>'
       +'<div style="display:flex;gap:22px;margin-top:10px;font-size:14px;color:var(--ink)"><div><b id="gestNFila" style="color:var(--f-green);font-size:18px">'+nFila+'</b> na fila da gestão</div><div><b style="font-size:18px">'+todas.length+'</b> total na gestão</div></div></div>'
     +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'
-      +'<input id="gestQ" type="search" placeholder="Buscar pedido, cliente, representante…" value="'+uEsc(GEST_UI.q)+'" style="'+inp+';flex:1;min-width:220px">'
+      +'<input id="gestQ" type="search" autocomplete="off" name="gq_'+Date.now()+'" placeholder="Buscar pedido, cliente, representante…" value="'+uEsc(GEST_UI.q)+'" style="'+inp+';flex:1;min-width:220px">'
       +'<label style="font-size:13px;color:var(--muted);display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="gestOcultar"'+(GEST_UI.ocultar?' checked':'')+'> ocultar tratados</label>'
       +'<button id="gestExp" class="ubtn" style="background:var(--f-green);color:#0c241a;border:none;font-weight:600"'+(todas.length?'':' disabled')+'>⬇ Exportar Excel</button></div>'
     +(function(){
@@ -4820,7 +4856,7 @@ function renderGestConc(){
   if($('gestFileSub')) $('gestFileSub').onchange=function(){ var f=this.files&&this.files[0]; this.value=''; if(f) gestSubir(f,false); };
   $('gestFileSom').onchange=function(){ var f=this.files&&this.files[0]; this.value=''; if(f) gestSubir(f,true); };
   var tf; $('gestFila').oninput=function(){ var v=this.value; _gjSet('gest_fila',v); clearTimeout(tf); tf=setTimeout(function(){ var foco=document.activeElement&&document.activeElement.id; renderGestConc(); if(foco==='gestFila'){ var t=$('gestFila'); t.focus(); t.selectionStart=t.selectionEnd=t.value.length; } },700); };
-  var tq; $('gestQ').oninput=function(){ GEST_UI.q=this.value; clearTimeout(tq); tq=setTimeout(function(){ renderGestConc(); var q=$('gestQ'); q.focus(); q.selectionStart=q.selectionEnd=q.value.length; },300); };
+  var tq; $('gestQ').oninput=function(){ if(document.activeElement!==this){ this.value=GEST_UI.q; return; } GEST_UI.q=this.value; clearTimeout(tq); tq=setTimeout(function(){ renderGestConc(); var q=$('gestQ'); q.focus(); q.selectionStart=q.selectionEnd=q.value.length; },300); };
   host.querySelectorAll('.gestRepBox').forEach(function(bx){ bx.onclick=function(){ var k=bx.getAttribute('data-k'); if(GEST_UI.aberto[k]) delete GEST_UI.aberto[k]; else GEST_UI.aberto[k]=1; var y=window.scrollY; renderGestConc(); window.scrollTo(0,y); }; });
   if($('gestAbreTodos')) $('gestAbreTodos').onclick=function(){ var fechar=this.textContent==='Fechar todos'; GEST_UI.aberto={}; if(!fechar) host.querySelectorAll('.gestRepBox').forEach(function(bx){ GEST_UI.aberto[bx.getAttribute('data-k')]=1; }); var y=window.scrollY; renderGestConc(); window.scrollTo(0,y); };
   $('gestOcultar').onchange=function(){ GEST_UI.ocultar=this.checked; renderGestConc(); };
