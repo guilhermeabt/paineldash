@@ -4831,7 +4831,7 @@ function renderGestConc(){
       +'<button id="gestExp" class="ubtn" style="background:var(--f-green);color:#0c241a;border:none;font-weight:600"'+(todas.length?'':' disabled')+'>⬇ Exportar Excel</button></div>'
     +(function(){
       if(!rows.length) return '<div style="'+card+';color:var(--muted);text-align:center;padding:24px">'+(b||pubOk?'Nenhum pedido com esses filtros.':'Suba o arquivo do Matriz para ver os pedidos.')+'</div></div>';
-      var gr={}; rows.forEach(function(o){ var k=_gestRepNome(o.repr); (gr[k]=gr[k]||[]).push(o); });
+      var gr={}; rows.forEach(function(o){ var k=_gestRepNome(o.repr); (gr[k]=gr[k]||[]).push(o); }); GEST_GR=gr;
       var ks=Object.keys(gr).sort(function(a,c){ return gr[c].length-gr[a].length||a.localeCompare(c,'pt'); }), busca=!!(GEST_UI.q||'').trim();
       var aberto=function(k){ return busca||!!GEST_UI.aberto[k]; };
       var s='<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:6px 0 12px"><div style="font-size:15px;color:var(--ink)">Total de pedidos lidos na gestão: <b style="font-size:22px;color:var(--f-green)">'+rows.length+'</b>'+(rows.length!==todas.length?' <span style="color:var(--muted);font-size:13px">(de '+todas.length+')</span>':'')+'</div>'
@@ -4839,10 +4839,11 @@ function renderGestConc(){
         +'<span style="flex:1"></span>'+(busca?'':'<button class="ubtn" id="gestAbreTodos" style="font-size:12.5px;padding:5px 10px">'+(ks.every(aberto)?'Fechar todos':'Abrir todos')+'</button>')+'</div>'
         +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:14px">'
         +ks.map(function(k){ var L=gr[k], on=aberto(k), nd=L.filter(function(o){return o.done;}).length, nf=L.filter(function(o){return o.fila;}).length;
-          return '<button class="gestRepBox" data-k="'+uEsc(k)+'" style="text-align:left;cursor:pointer;background:'+(on?'rgba(46,170,110,.14)':'var(--surface2)')+';border:1px solid '+(on?'var(--f-green)':'var(--line)')+';border-radius:12px;padding:12px 14px;color:var(--ink);font:inherit">'
+          return '<div class="gestRepBox" role="button" tabindex="0" data-k="'+uEsc(k)+'" style="text-align:left;cursor:pointer;background:'+(on?'rgba(46,170,110,.14)':'var(--surface2)')+';border:1px solid '+(on?'var(--f-green)':'var(--line)')+';border-radius:12px;padding:12px 14px;color:var(--ink);font:inherit">'
             +'<div style="font-weight:600;font-size:14px;display:flex;justify-content:space-between;gap:6px"><span>'+uEsc(k)+'</span><span style="color:var(--muted)">'+(on?'▾':'▸')+'</span></div>'
             +'<div style="font-size:24px;font-weight:700;color:var(--f-green);margin:2px 0">'+L.length+'</div>'
-            +'<div style="font-size:11.5px;color:var(--muted)">'+(L.length===1?'pedido':'pedidos')+(nf?' · '+nf+' na fila':'')+(nd?' · '+nd+' tratado'+(nd>1?'s':''):'')+'</div></button>'; }).join('')+'</div>';
+            +'<div style="font-size:11.5px;color:var(--muted)">'+(L.length===1?'pedido':'pedidos')+(nf?' · '+nf+' na fila':'')+(nd?' · '+nd+' tratado'+(nd>1?'s':''):'')+'</div>'
+            +'<button class="gestMail ubtn" data-k="'+uEsc(k)+'" style="margin-top:8px;font-size:12px;padding:4px 9px;width:100%">✉ Enviar e-mail</button></div>'; }).join('')+'</div>';
       ks.filter(aberto).forEach(function(k){ var L=gr[k], nomes=L.map(function(o){return o.repr||'(sem)';}).filter(function(v,i,a){return a.indexOf(v)===i;}), vr=nomes.length>1;
         var cols=(vr?['Representante']:[]).concat(['Criação','Nº Matriz','Cliente','Quantidade','Fila da gestão','Tratado']);
         s+='<div style="margin-bottom:14px"><div style="font-weight:600;color:var(--ink);margin:0 0 6px">'+uEsc(k)+' <span style="color:var(--muted);font-weight:400;font-size:13px">· '+L.length+' pedido(s)'+(vr?'':' · '+uEsc(nomes[0]))+'</span></div>'
@@ -4857,13 +4858,51 @@ function renderGestConc(){
   $('gestFileSom').onchange=function(){ var f=this.files&&this.files[0]; this.value=''; if(f) gestSubir(f,true); };
   var tf; $('gestFila').oninput=function(){ var v=this.value; _gjSet('gest_fila',v); clearTimeout(tf); tf=setTimeout(function(){ var foco=document.activeElement&&document.activeElement.id; renderGestConc(); if(foco==='gestFila'){ var t=$('gestFila'); t.focus(); t.selectionStart=t.selectionEnd=t.value.length; } },700); };
   var tq; $('gestQ').oninput=function(){ if(document.activeElement!==this){ this.value=GEST_UI.q; return; } GEST_UI.q=this.value; clearTimeout(tq); tq=setTimeout(function(){ renderGestConc(); var q=$('gestQ'); q.focus(); q.selectionStart=q.selectionEnd=q.value.length; },300); };
-  host.querySelectorAll('.gestRepBox').forEach(function(bx){ bx.onclick=function(){ var k=bx.getAttribute('data-k'); if(GEST_UI.aberto[k]) delete GEST_UI.aberto[k]; else GEST_UI.aberto[k]=1; var y=window.scrollY; renderGestConc(); window.scrollTo(0,y); }; });
+  host.querySelectorAll('.gestMail').forEach(function(bt){ bt.onclick=function(e){ e.stopPropagation(); gestEmail(bt.getAttribute('data-k')); }; });
+  host.querySelectorAll('.gestRepBox').forEach(function(bx){ bx.onkeydown=function(e){ if((e.key==='Enter'||e.key===' ')&&e.target===bx){ e.preventDefault(); bx.click(); } }; bx.onclick=function(){ var k=bx.getAttribute('data-k'); if(GEST_UI.aberto[k]) delete GEST_UI.aberto[k]; else GEST_UI.aberto[k]=1; var y=window.scrollY; renderGestConc(); window.scrollTo(0,y); }; });
   if($('gestAbreTodos')) $('gestAbreTodos').onclick=function(){ var fechar=this.textContent==='Fechar todos'; GEST_UI.aberto={}; if(!fechar) host.querySelectorAll('.gestRepBox').forEach(function(bx){ GEST_UI.aberto[bx.getAttribute('data-k')]=1; }); var y=window.scrollY; renderGestConc(); window.scrollTo(0,y); };
   $('gestOcultar').onchange=function(){ GEST_UI.ocultar=this.checked; renderGestConc(); };
   host.querySelectorAll('.gestDone').forEach(function(c){ c.onchange=function(){ var d=_gjGet('gest_done',[]), n=c.getAttribute('data-n'); d=d.filter(function(x){return x!==n;}); if(c.checked) d.push(n); _gjSet('gest_done',d); renderGestConc(); }; });
   $('gestExp').onclick=gestExportar;
   _concWire(host,renderGestConc); renderGestNav();
 }
+/* E-mail para o representante: mesmo modelo que a Gestão já usa ("01 GESTÃO - Pedidos Não Aprovados Matriz"),
+   com a coluna "Retorno" em branco para o vendedor preencher na resposta. Copia formatado para colar no Gmail. */
+var GEST_GR={};
+function _gestEmailHtml(k,L){ var e=function(x){ return uEsc(String(x==null?'':x)); }, h=new Date().getHours(), oi=h<12?'Bom dia':h<18?'Boa tarde':'Boa noite';
+  var nomes=L.map(function(o){ return o.repr||''; }).filter(function(v,i,a){ return v&&a.indexOf(v)===i; }), hoje=_calBRs(_calISO(new Date()));
+  var bd='border:1px solid #9aa8b8;padding:4px 8px;font-family:Arial,sans-serif;font-size:12.5px;color:#1f2937', hd=bd+';background:#c9d9ee;font-weight:bold;text-align:center';
+  var ord=L.slice().sort(function(a,c){ return a.cad<c.cad?1:a.cad>c.cad?-1:0; });
+  return '<div style="font-family:Arial,sans-serif;font-size:13.5px;color:#1f2937;line-height:1.5">'
+    +'<p style="margin:0 0 10px">'+oi+', '+e(k==='(sem representante)'?'':k)+'! Tudo bem?</p>'
+    +'<p style="margin:0 0 10px">Segue a lista de pedidos digitados no <b>Matriz</b> que ainda estão <b>sem aprovação</b>. Preciso que você me informe, na coluna <b>Retorno</b>, se está dando continuidade em cada pedido ou se posso excluir.</p>'
+    +'<table cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:6px 0 12px">'
+    +'<tr><td colspan="5" style="'+bd+';background:#dbe6f3;font-weight:bold;text-align:center;font-size:13.5px">01 GESTÃO - Pedidos Não Aprovados Matriz</td></tr>'
+    +'<tr><td colspan="5" style="'+bd+';text-align:center">'+e(nomes.join(' / ')||k)+' · '+L.length+' pedido'+(L.length>1?'s':'')+' · '+hoje+'</td></tr>'
+    +'<tr><td style="'+hd+'">Data</td><td style="'+hd+'">Pedido</td><td style="'+hd+'">Cliente</td><td style="'+hd+'">Quantidade</td><td style="'+hd+';background:#fde68a">Retorno do representante</td></tr>'
+    +ord.map(function(o){ return '<tr><td style="'+bd+';white-space:nowrap">'+(o.cad?_calBRs(o.cad):'')+'</td><td style="'+bd+';font-weight:bold">'+e(o.num)+'</td><td style="'+bd+';white-space:nowrap">'+e(o.cliente)+'</td><td style="'+bd+';text-align:right">'+(+o.qtd||0).toLocaleString('pt-BR')+'</td><td style="'+bd+';background:#fff8d6;min-width:220px;width:240px">&nbsp;</td></tr>'; }).join('')
+    +'</table>'
+    +'<p style="margin:0 0 4px">Exemplos de retorno: <i>aguardando OC do cliente</i>, <i>aguardando pagamento do PayLink</i>, <i>aguardando aprovação do cliente</i>, <i>pode excluir</i>.</p>'
+    +'<p style="margin:10px 0 0">Aguardo seu retorno.</p></div>'; }
+function gestEmail(k){ var L=GEST_GR[k]||[]; if(!L.length) return; var old=$('gestMailBox'); if(old) old.remove();
+  var assunto='PEDIDOS DIGITADOS MATRIZ SEM APROVAÇÃO — '+(k==='(sem representante)'?'':k.toUpperCase());
+  var ov=document.createElement('div'); ov.id='gestMailBox'; ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:30px 12px;overflow:auto';
+  ov.innerHTML='<div style="background:var(--surface2);border:1px solid var(--line);border-radius:14px;max-width:860px;width:100%;padding:18px 20px;box-sizing:border-box">'
+    +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><div style="font-weight:600;color:var(--ink);font-size:16px;flex:1">✉ E-mail para '+uEsc(k)+' · '+L.length+' pedido(s)</div><button class="ubtn" id="gmFechar">Fechar</button></div>'
+    +'<div style="font-size:12.5px;color:var(--muted);margin-bottom:4px">Assunto</div>'
+    +'<div style="display:flex;gap:8px;margin-bottom:12px"><input id="gmAssunto" value="'+uEsc(assunto)+'" style="flex:1;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px"><button class="ubtn" id="gmCopAss">Copiar assunto</button></div>'
+    +'<div style="font-size:12.5px;color:var(--muted);margin-bottom:4px">Mensagem (dá para editar aqui antes de copiar)</div>'
+    +'<div id="gmCorpo" contenteditable="true" style="background:#fff;border-radius:10px;padding:16px 18px;max-height:56vh;overflow:auto;outline:none">'+_gestEmailHtml(k,L)+'</div>'
+    +'<div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap"><button class="ubtn" id="gmCopiar" style="background:var(--f-green);color:#0c241a;border:none;font-weight:600">📋 Copiar e-mail</button><span id="gmSt" style="font-size:13px;color:var(--muted)">Depois, no Gmail: Escrever → cole o assunto e a mensagem (Ctrl+V).</span></div></div>';
+  document.body.appendChild(ov);
+  var fechar=function(){ ov.remove(); document.removeEventListener('keydown',esc); }, esc=function(ev){ if(ev.key==='Escape') fechar(); };
+  document.addEventListener('keydown',esc); ov.onclick=function(ev){ if(ev.target===ov) fechar(); }; $('gmFechar').onclick=fechar;
+  var st=function(t,ok){ var x=$('gmSt'); x.textContent=t; x.style.color=ok?'var(--f-green)':'var(--danger)'; };
+  $('gmCopAss').onclick=async function(){ try{ await navigator.clipboard.writeText($('gmAssunto').value); st('✓ Assunto copiado.',1); }catch(e){ $('gmAssunto').select(); document.execCommand('copy'); st('✓ Assunto copiado.',1); } };
+  $('gmCopiar').onclick=async function(){ var c=$('gmCorpo'), html=c.innerHTML, txt=c.innerText;
+    try{ await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([txt],{type:'text/plain'})})]); st('✓ E-mail copiado. Agora é só colar no Gmail (Ctrl+V).',1); }
+    catch(e){ try{ var r=document.createRange(); r.selectNodeContents(c); var sel=getSelection(); sel.removeAllRanges(); sel.addRange(r); var ok=document.execCommand('copy'); sel.removeAllRanges(); st(ok?'✓ E-mail copiado. Agora é só colar no Gmail (Ctrl+V).':'Não consegui copiar: selecione a mensagem e use Ctrl+C.',ok); }
+      catch(x){ st('Não consegui copiar: selecione a mensagem e use Ctrl+C.',0); } } }; }
 // Excel igual ao da antiga aba Gestão: aba "Geral" + uma aba por representante
 function gestExportar(){ ensureXLSX(function(){ var rows=_gestFiltradas(); if(!rows.length){ alert('Nenhum pedido para exportar.'); return; }
   var toRow=function(o){ return {'Representante':o.repr||'(sem)','Criação':o.cad?_calBRs(o.cad):'','Nº Matriz':o.num,'Cliente':o.cliente,'Quantidade':o.qtd,'Fila da gestão':o.fila?'Sim':'','Tratado':o.done?'Sim':''}; };
