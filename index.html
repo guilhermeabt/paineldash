@@ -964,7 +964,7 @@ function renderRelStatus(){
   wrap.innerHTML=html;
   const bv=$('baseView'); bv.innerHTML=''; bv.appendChild(wrap);
   const rb=$('reloadPubBtn'); if(rb) rb.addEventListener('click',loadPublished);
-  ['relPickBtn','relPickBtn2'].forEach(id=>{ const b=$(id); if(b) b.addEventListener('click',relPickFolder); });
+  ['relPickBtn','relPickBtn2','relPickBtn3'].forEach(id=>{ const b=$(id); if(b) b.addEventListener('click',relPickFolder); });
   const ub=$('relUpdBtn'); if(ub) ub.addEventListener('click',relUpdateFolder);
   const fi=$('relFolderInp'); if(fi) fi.addEventListener('change',async e=>{ const top=[...e.target.files].filter(f=>{const rp=f.webkitRelativePath||'';return !rp||rp.split('/').length<=2;}); if(top[0]&&top[0].webkitRelativePath) relSetName(top[0].webkitRelativePath.split('/')[0]); await relApplyFiles(await expandShopZips(top)); });
   wrap.querySelectorAll('input[type=file][data-lslot]').forEach(inp=>inp.addEventListener('change',e=>{ if(e.target.files&&e.target.files.length) localUpload(inp.dataset.lslot,e.target.files); }));
@@ -988,8 +988,11 @@ async function relUpdateFolder(){
   REL_NOTE='Abrindo a sua pasta…'; renderBase();
   if(!REL_DIR){ try{ REL_DIR=await idbGet('dirRel:'+currentUserKey); }catch(e){} }
   if(!REL_DIR||!REL_DIR.queryPermission) return relPickFolder();
-  let pm='';
+  let pm='', esperando=true;
+  // se o navegador ficar esperando a resposta da permissão (janelinha escondida/ignorada), avisa e oferece escolher a pasta de novo
+  const tw=setTimeout(function(){ if(!esperando) return; REL_NOTE=_relMsg('var(--f-amber)','<span style="color:var(--f-amber)"><b>O navegador está esperando você liberar a pasta.</b></span> Procure no alto da tela, perto do endereço do site, a pergunta “Permitir que o site veja os arquivos?” e clique em <b>Permitir</b>.<div style="margin-top:8px">Não aparece nada? <button class="apply-btn" id="relPickBtn3" style="padding:6px 12px">📁 Escolher a pasta de novo</button></div>'); renderBase(); },5000);
   try{ pm=await REL_DIR.queryPermission({mode:'read'}); if(pm!=='granted') pm=await REL_DIR.requestPermission({mode:'read'}); }catch(e){ pm='erro'; }
+  esperando=false; clearTimeout(tw);
   if(pm!=='granted'){ REL_NOTE=_relMsg('var(--f-amber)','<span style="color:var(--f-amber)"><b>O navegador não liberou a leitura da pasta '+escapeHtml(relDirName()||REL_DIR.name||'')+'.</b></span> Clique de novo em <b>Atualizar pela pasta</b> e, na janelinha do navegador, escolha <b>Permitir</b> (ou “Permitir em todas as visitas”). Se a janelinha não aparecer, use <b>trocar pasta</b> e escolha a pasta de novo.'); renderBase(); return; }
   await relReadDir(REL_DIR);
 }
