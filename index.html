@@ -2317,6 +2317,9 @@ async function loadPublished(){
   finally{ PUB.loading=false; PUB.prog=''; renderNav(); renderBase(); }
 }
 async function readFileBytes(f){ for(var n=0;n<3;n++){ try{ var b=new Uint8Array(await f.arrayBuffer()); if(b.length||!f.size) return b; }catch(e){} await new Promise(function(ok){setTimeout(ok,300);}); } return null; }
+// arquivo que mudou no disco depois de lido (salvo de novo no Excel, OneDrive sincronizou): pega a versão atual na pasta
+async function _relerDaPasta(f){ try{ if(!dirHandle) dirHandle=await idbGet('dir'); if(!dirHandle||!dirHandle.getFileHandle) return null;
+  if((await dirHandle.queryPermission({mode:'read'}))!=='granted') return null; return await (await dirHandle.getFileHandle(f.name)).getFile(); }catch(e){ return null; } }
 function pubDataStatus(html,color){ var s=$('pubDataStatus'); if(s){ s.style.color=color||'var(--muted)'; s.innerHTML=html; } }
 async function publishData(){
   if(!userCanBase(current)){ alert('Você não tem acesso à Base de Dados.'); return; }
@@ -2343,7 +2346,10 @@ async function publishData(){
       var files=filesArr(s.key), meta=[];
       for(var j=0;j<files.length;j++){ var f=files[j]; step++;
         pubDataStatus('Preparando '+step+' de '+total+': '+uEsc(f.name)+'…');
-        var bytes=await readFileBytes(f); if(!bytes){ miss.push(f.name); continue; }
+        var bytes=await readFileBytes(f);
+        if(!bytes){ var nf=await _relerDaPasta(f); if(nf&&(bytes=await readFileBytes(nf))){ // troca pela versão nova também na tela
+            if(Array.isArray(FILES[s.key])){ var ix=FILES[s.key].indexOf(f); if(ix>=0) FILES[s.key][ix]=nf; } else if(FILES[s.key]===f) FILES[s.key]=nf; f=nf; } }
+        if(!bytes){ miss.push(f.name); continue; }
         var h=hexOf(await crypto.subtle.digest('SHA-256',bytes));
         var same=old.filter(function(x){return x.h===h&&prevSha[x.p];})[0];
         if(same){ meta.push(Object.assign({},same,{n:f.name,lm:f.lastModified||same.lm})); nSame++; continue; }
@@ -2353,7 +2359,7 @@ async function publishData(){
         newBlobs[p]=bl.sha; nUp++;
         meta.push({n:f.name,t:f.type||'',lm:f.lastModified||0,sz:f.size,h:h,p:p,iv:enc.iv}); }
       if(meta.length) slots[s.key]={ts:Date.now(),n:meta.length,ps:meta.map(function(x){return x.p;}),m:await encJSON(raw,{files:meta})}; }
-    if(miss.length) throw new Error('não consegui ler: '+miss.join(', ')+'. Se estiverem só na nuvem (OneDrive), baixe para o computador e tente de novo.');
+    if(miss.length) throw new Error('não consegui ler: '+miss.join(', ')+'. Isso acontece quando o arquivo é salvo de novo (ou o OneDrive o atualiza) depois de ler a pasta, ou quando ele está só na nuvem. Clique em Ler a pasta / Atualizar e publique de novo; se continuar, abra a pasta no Windows e escolha "Sempre manter neste dispositivo".');
     var who=(current&&current.name)||currentUserKey;
     var man={v:1,ts:Date.now(),by:who,slots:slots,up:loaded.map(function(s){return s.key;})};
     var tree=[{path:'manifest.json',mode:'100644',type:'blob',content:JSON.stringify(man)}];
