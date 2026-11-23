@@ -974,38 +974,56 @@ function renderRelStatus(){
 var REL_DIR=null, REL_NOTE='';
 function relDirName(){ try{ return localStorage.getItem('dirRelName:'+currentUserKey)||''; }catch(e){ return ''; } }
 function relSetName(n){ try{ localStorage.setItem('dirRelName:'+currentUserKey,n); }catch(e){} }
+// mensagens da pasta: sempre aparece alguma coisa (antes, permissão negada ou arquivos antigos passavam calados)
+function _relMsg(cor,html){ return '<div style="border:1px solid '+cor+';border-radius:8px;padding:8px 10px;line-height:1.5">'+html+'</div>'; }
 async function relPickFolder(){
   if(!window.showDirectoryPicker){ const fi=$('relFolderInp'); if(fi) fi.click(); return; }
-  let h; try{ h=await window.showDirectoryPicker(); }catch(e){ return; } // cancelou
+  let h; try{ h=await window.showDirectoryPicker(); }
+  catch(e){ if(e&&e.name==='AbortError') return; // cancelou
+    REL_NOTE=_relMsg('var(--f-amber)','<span style="color:var(--f-amber)">O navegador não abriu a escolha de pasta'+(e&&e.message?' ('+escapeHtml(e.message)+')':'')+'. Clique de novo no botão.</span>'); renderBase(); return; }
   REL_DIR=h; relSetName(h.name); try{ await idbSet('dirRel:'+currentUserKey,h); }catch(e){}
   await relReadDir(h);
 }
 async function relUpdateFolder(){
+  REL_NOTE='Abrindo a sua pasta…'; renderBase();
   if(!REL_DIR){ try{ REL_DIR=await idbGet('dirRel:'+currentUserKey); }catch(e){} }
   if(!REL_DIR||!REL_DIR.queryPermission) return relPickFolder();
-  try{ let pm=await REL_DIR.queryPermission({mode:'read'}); if(pm!=='granted') pm=await REL_DIR.requestPermission({mode:'read'}); if(pm!=='granted') return relPickFolder(); }catch(e){ return relPickFolder(); }
+  let pm='';
+  try{ pm=await REL_DIR.queryPermission({mode:'read'}); if(pm!=='granted') pm=await REL_DIR.requestPermission({mode:'read'}); }catch(e){ pm='erro'; }
+  if(pm!=='granted'){ REL_NOTE=_relMsg('var(--f-amber)','<span style="color:var(--f-amber)"><b>O navegador não liberou a leitura da pasta '+escapeHtml(relDirName()||REL_DIR.name||'')+'.</b></span> Clique de novo em <b>Atualizar pela pasta</b> e, na janelinha do navegador, escolha <b>Permitir</b> (ou “Permitir em todas as visitas”). Se a janelinha não aparecer, use <b>trocar pasta</b> e escolha a pasta de novo.'); renderBase(); return; }
   await relReadDir(REL_DIR);
 }
 async function relReadDir(h){
   REL_NOTE='Lendo a pasta…'; renderBase();
-  let files=[]; try{ await collectFiles(h,files,0); }catch(e){ REL_NOTE='<span style="color:var(--danger)">Não consegui ler a pasta: '+escapeHtml(e&&e.message||e)+'</span>'; renderBase(); return; }
-  await relApplyFiles(await expandShopZips(files));
+  let files=[]; try{ await collectFiles(h,files,0); }
+  catch(e){ const nf=e&&(e.name==='NotFoundError'||e.name==='NotReadableError');
+    REL_NOTE=_relMsg('var(--danger)','<span style="color:var(--danger)"><b>Não consegui ler a pasta '+escapeHtml(h&&h.name||'')+'</b>'+(nf?' — ela foi movida, renomeada ou apagada?':': '+escapeHtml(e&&e.message||e))+'</span> Use <b>trocar pasta</b> e escolha a pasta onde estão os arquivos.'); renderBase(); return; }
+  await relApplyFiles(await expandShopZips(files),h&&h.name);
 }
-async function relApplyFiles(list){
-  const vis=visibleSlots(current).map(s=>s.key), cands={};
-  [...list].filter(f=>/\.(xlsx|xls|xlsm|csv)$/i.test(f.name)).forEach(f=>{ const k=matchSlot(f.name); if(k&&vis.indexOf(k)>=0)(cands[k]=cands[k]||[]).push(f); });
-  const usados=[], mantidos=[];
+async function relApplyFiles(list,pasta){
+  const vis=visibleSlots(current).map(s=>s.key), cands={}, todos=[...list].filter(f=>/\.(xlsx|xls|xlsm|csv)$/i.test(f.name)), semNome=[];
+  todos.forEach(f=>{ const k=matchSlot(f.name); if(k&&vis.indexOf(k)>=0)(cands[k]=cands[k]||[]).push(f); else if(!k) semNome.push(f.name); });
+  const usados=[], mantidos=[], dt=t=>t?fmtTs(t):'?';
   Object.keys(cands).forEach(k=>{
     let fs=cands[k].slice().sort((a,b)=>(b.lastModified||0)-(a.lastModified||0)); if(!isMulti(k)) fs=[fs[0]];
     const novo=Math.max.apply(null,fs.map(f=>f.lastModified||0)), pub=(PUB.pubLm&&PUB.pubLm[k])||0;
-    if(pub&&novo<=pub){ mantidos.push(slotLabel(k)); return; } // o publicado é igual ou mais novo: vale a publicação
-    LOCAL[k]={at:Date.now(),files:fs}; FILES[k]=isMulti(k)?fs.slice():fs[0]; usados.push(slotLabel(k));
+    if(pub&&novo<=pub){ mantidos.push('<b>'+escapeHtml(slotLabel(k))+'</b> — o da pasta é de '+dt(novo)+', o publicado é de '+dt(pub)); return; } // o publicado é igual ou mais novo: vale a publicação
+    LOCAL[k]={at:Date.now(),files:fs}; FILES[k]=isMulti(k)?fs.slice():fs[0]; usados.push('<b>'+escapeHtml(slotLabel(k))+'</b> ('+escapeHtml(fs[0].name)+', '+dt(novo)+')');
   });
   PUB.stale=(PUB.stale||[]).filter(k=>!LOCAL[k]);
   await locSave();
-  REL_NOTE=(usados.length?'<span style="color:var(--f-green)">✓ Atualizado pela pasta: <b>'+escapeHtml(usados.join(', '))+'</b>.</span>':'<span style="color:var(--f-amber)">Nenhum arquivo da pasta foi usado.</span>')
-    +(mantidos.length?' <span style="color:var(--muted)">Mantidos da publicação (são iguais ou mais novos): '+escapeHtml(mantidos.join(', '))+'.</span>':'')
-    +(!Object.keys(cands).length?' <span style="color:var(--muted)">Não achei na pasta arquivos dos seus relatórios.</span>':'');
+  // arquivos que os relatórios desta pessoa precisam e que não estão na pasta
+  const precisa=[]; allowedPanels(current).forEach(pk=>{ ((PANELCFG[pk]||{}).required||[]).forEach(k=>{ if(vis.indexOf(k)>=0&&precisa.indexOf(k)<0) precisa.push(k); }); });
+  const faltam=precisa.filter(k=>!cands[k]).map(slotLabel);
+  const maisNovo=Math.max.apply(null,todos.map(f=>f.lastModified||0).concat([0])), velho=maisNovo&&(Date.now()-maisNovo>12*3600e3);
+  let h='<div style="color:var(--muted);font-size:12.5px;margin-bottom:4px">Li '+todos.length+' planilha(s) da pasta'+(pasta?' <b>'+escapeHtml(pasta)+'</b>':'')+(maisNovo?' · a mais nova é de '+dt(maisNovo):'')+'.</div>';
+  if(usados.length) h+='<div style="color:var(--f-green)">✓ Atualizado pela pasta: '+usados.join(', ')+'.</div>';
+  else h+='<div style="color:var(--f-amber);font-weight:600">Nada foi atualizado.</div>';
+  if(mantidos.length) h+='<div style="color:var(--muted)">Ficou valendo a publicação (é igual ou mais nova que o arquivo da pasta): '+mantidos.join('; ')+'.</div>';
+  if(faltam.length) h+='<div style="color:var(--f-amber)">Não achei na pasta: '+escapeHtml(faltam.join(', '))+'.</div>';
+  if(!usados.length&&(velho||!todos.length)) h+='<div style="color:var(--ink);margin-top:4px">'+(todos.length?'Os arquivos desta pasta são antigos. ':'Esta pasta não tem planilhas. ')+'Se você acabou de baixar os relatórios, confira se eles foram salvos <b>nesta pasta</b> — o navegador costuma salvar em <b>Downloads</b>. Mova os arquivos para cá ou use <b>trocar pasta</b>.</div>';
+  if(semNome.length&&!usados.length) h+='<div style="color:var(--muted);font-size:12.5px">Planilhas que não reconheci pelo nome: '+escapeHtml(semNome.slice(0,6).join(', '))+(semNome.length>6?'…':'')+'. Use os mesmos nomes da Base (ex.: “01_Ops com pedidos”).</div>';
+  REL_NOTE=_relMsg(usados.length?'var(--f-green)':'var(--f-amber)',h);
   if(usados.length) applyAll(); else renderBase();
 }
 function slotPubTag(k){ const e=PUB.manifest&&PUB.manifest.slots&&PUB.manifest.slots[k]; if(!e)return '<span class="fx miss" style="margin-left:6px">não publicado</span>'; return '<span class="fx" style="margin-left:6px;color:var(--muted)">publicado '+fmtTs(e.ts)+(e.n>1?' · '+e.n+' arq.':'')+'</span>'; }
