@@ -5466,7 +5466,7 @@ function expAbrir(aba){ EXP_ABA=aba; SIDE.ativo='expedicao';
 /* ===== Kanban da Expedição: prontos para envio → em processo de embalagem → enviados =====
    Prontos: a mesma lista do relatório de Expedição. Embalagem e enviados: abas "PEDIDOS À ENTREGAR" e
    "ENTREGUES- ENVIADOS" do Controle de liberação de pedidos. Cada pedido aparece só na fase mais avançada. */
-var KB={visao:(function(){ try{ return localStorage.getItem('kb_visao')||'semana'; }catch(e){ return 'semana'; } })(),q:'',dias:30,ctrl:null,ctrlDe:null,lendo:false,erro:'',tent:0};
+var KB={visao:(function(){ try{ return localStorage.getItem('kb_visao')||'colunas'; }catch(e){ return 'colunas'; } })(),q:'',dias:30,ctrl:null,ctrlDe:null,lendo:false,erro:'',tent:0};
 function _kbNum(v){ return String(v==null?'':v).replace(/\.0+$/,'').replace(/\D/g,'').replace(/^0+/,''); }
 function _kbData(v){ if(!v) return null; var d=v instanceof Date?v:new Date(v); return isNaN(d)||d.getFullYear()<2000?null:d; }
 function _kbDM(d){ return d?('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2):''; }
@@ -5533,7 +5533,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
     if(F.trat==='sim'&&!I.done) return false; if(F.trat==='nao'&&I.done) return false;
     var d0=x.data?new Date(x.data.getFullYear(),x.data.getMonth(),x.data.getDate()):null;
     if(F.de&&(!d0||d0<new Date(F.de+'T00:00:00'))) return false; if(F.ate&&(!d0||d0>new Date(F.ate+'T00:00:00'))) return false;
-    if(F.sem!=null&&F.sem!==''&&KB.visao!=='semana'){ var m0=new Date(segAtual); m0.setDate(m0.getDate()+7*(+F.sem)); var s0=new Date(m0); s0.setDate(m0.getDate()+6);
+    if(F.sem!=null&&F.sem!==''){ var m0=new Date(segAtual); m0.setDate(m0.getDate()+7*(+F.sem)); var s0=new Date(m0); s0.setDate(m0.getDate()+6);
       var naSemana=d0&&d0>=m0&&d0<=s0, atrasado=d0&&d0<segAtual&&x._o!=='env'&&!(x._mov&&x._mov.para==='env'); if(!naSemana&&!atrasado) return false; }
     if(F.sit){ var col=x._mov?x._mov.para:x._o, ops=x.ops||(x.I&&x.I.ops)||[];
       if(F.sit==='pronto'&&col!=='pronto') return false;
@@ -5595,42 +5595,6 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
   var grupo=function(t,L,cor,ico){ var v=L.reduce(function(a,x){ return a+(x.valor||0); },0);
     return '<div style="display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:'+cor+';padding:4px 2px 2px"><span>'+ico+'</span><span style="flex:1">'+t+'</span><span style="color:var(--muted);font-weight:600;text-transform:none;letter-spacing:0">'+L.length+(v?' · R$ '+Math.round(v).toLocaleString('pt-BR'):'')+'</span></div>'
       +(L.length?cartoes(L,cor):'<div style="color:var(--muted);font-size:12.5px;padding:6px 4px 10px">Nenhum.</div>'); };
-  // visão Semana: dias da semana nas colunas, fases nas linhas (arrastar entre linhas muda a fase)
-  var kbSemanaHTML=function(){ var off=(F.sem!=null&&F.sem!=='')?+F.sem:0, seg=new Date(segAtual); seg.setDate(seg.getDate()+7*off);
-    var dias=[]; for(var i=0;i<5;i++){ var d=new Date(seg); d.setDate(seg.getDate()+i); dias.push({k:'d'+i,t:['Seg','Ter','Qua','Qui','Sex'][i]+' '+_kbDM(d),ini:d,fim:d}); }
-    var sab=new Date(seg); sab.setDate(seg.getDate()+5); var dom=new Date(seg); dom.setDate(seg.getDate()+6); dias.push({k:'fds',t:'Fim de semana',ini:sab,fim:dom});
-    var cols=[{k:'atr',t:'Atrasados',atr:1}].concat(dias), semData=[];
-    var fases=[['producao','Em produção','#a78bfa'],['pronto','Pronto p/ envio','#4ecb8f'],['emb','Em embalagem','#d99a52'],['env','Enviado','#5aa0d0']];
-    var cel={}; cols.forEach(function(c){ cel[c.k]={producao:[],pronto:[],emb:[],env:[]}; });
-    [].concat(A,P,E,V).forEach(function(x){ var f=x._mov?x._mov.para:x._o; if(!x.data){ if(f!=='env') semData.push(x); return; }
-      var d0=new Date(x.data.getFullYear(),x.data.getMonth(),x.data.getDate());
-      if(d0<segAtual){ if(f!=='env') cel.atr[f].push(x); return; }
-      for(var i=0;i<dias.length;i++){ if(d0>=dias[i].ini&&d0<=dias[i].fim){ cel[dias[i].k][f].push(x); return; } } });
-    if(semData.length){ cols.push({k:'sem',t:'Sem data',semd:1}); cel.sem={producao:[],pronto:[],emb:[],env:[]}; semData.forEach(function(x){ cel.sem[x._mov?x._mov.para:x._o].push(x); }); }
-    var mini=function(x,cor){ var I=x.I||{}, f=x._mov?x._mov.para:x._o, info='';
-      if(f==='producao'){ var tot=(x.ops||[]).length, ok=(x.ops||[]).filter(function(o){ return o.ok; }).length; info=x.inv?'<span style="color:#f5a524;font-weight:700">⚠ investigar</span>':(tot?ok+' de '+tot+' OPs':'sem OP'); }
-      else if(f==='emb') info=[x.vol?String(x.vol).trim().slice(0,18):'',x.modo||x.transp||''].filter(Boolean).join(' · ');
-      else if(f==='env') info=[x.modo||x.transp||'',x.d?'saiu '+_kbDM(x.d):''].filter(Boolean).join(' · ');
-      else info=[x.transp||'',x.valor?'R$ '+Math.round(x.valor).toLocaleString('pt-BR'):''].filter(Boolean).join(' · ');
-      var atrD=x.data&&f!=='env'?Math.round((hoje-new Date(x.data.getFullYear(),x.data.getMonth(),x.data.getDate()))/864e5):0;
-      return '<div class="kbCard" data-n="'+uEsc(x.n)+'"'+(pode?' draggable="true"':'')+' style="background:var(--surface2);border:1px solid var(--line);border-left:3px solid '+cor+';border-radius:8px;padding:5px 7px;font-size:12px;line-height:1.3;'+(pode?'cursor:grab':'cursor:pointer')+'">'
-        +'<div style="display:flex;justify-content:space-between;gap:4px"><b style="color:var(--ink)">#'+uEsc(x.n)+'</b>'+(atrD>0?'<span style="color:#e5484d;font-weight:700;font-size:11px">'+atrD+'d</span>':'')+'</div>'
-        +'<div style="color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+uEsc(x.cli||'—')+'</div>'
-        +'<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:2px">'+((x.pe||I.pe)?'<span style="font-size:10px;font-weight:700;color:#5aa0d0">PE</span>':'')+(I.difal?'<span style="font-size:10px;font-weight:700;color:#9b87f5">DIFAL '+(I.difal==='diario'?'D':'M')+'</span>':'')+(I.sac?'<span style="font-size:10px;font-weight:700;color:#e08a6b">SAC</span>':'')+(I.tipo&&!I.sac?'<span style="font-size:10px;font-weight:700;color:#e08a6b">'+uEsc(I.tipo)+'</span>':'')+(I.done?'<span style="font-size:10px;font-weight:700;color:#4ecb8f">✓</span>':'')+'</div>'
-        +(info?'<div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+info+'</div>':'')+(x._mov?'<div style="color:#c9b38a;font-size:10.5px">↔ movido</div>':'')+(KB.exp?expandido(x):'')+'</div>'; };
-    var cab=function(c){ var tot=[].concat(cel[c.k].producao,cel[c.k].pronto,cel[c.k].emb,cel[c.k].env), env=cel[c.k].env.length, v=soma(tot), pct=tot.length?Math.round(env/tot.length*100):0;
-      var alerta=c.atr?'#e5484d':(!c.semd&&cel[c.k].producao.length&&c.ini<=new Date(hoje.getTime()+2*864e5)?'#f5a524':'var(--line)'), hojeCol=!c.atr&&!c.semd&&hoje>=c.ini&&hoje<=c.fim;
-      return '<div style="background:var(--surface2);border:1px solid '+alerta+';border-radius:10px;padding:7px 9px;position:sticky;top:0;z-index:1">'
-        +'<div style="font-size:12.5px;font-weight:700;color:'+(c.atr?'#e5484d':'var(--ink)')+'">'+(c.atr?'⚠ ':'')+uEsc(c.t)+(hojeCol?' <span style="font-size:10.5px;color:#f5a524">· hoje</span>':'')+'</div>'
-        +'<div style="font-size:11.5px;color:var(--muted)">'+tot.length+' pedido'+(tot.length===1?'':'s')+(v?' · '+rs(v):'')+'</div>'
-        +(c.atr||c.semd?'':'<div style="height:4px;border-radius:2px;background:var(--line);margin-top:5px;overflow:hidden" title="'+pct+'% enviado"><div style="height:4px;width:'+pct+'%;background:#4ecb8f"></div></div><div style="font-size:10.5px;color:var(--muted);margin-top:2px">'+env+' de '+tot.length+' enviado'+(env===1?'':'s')+'</div>')+'</div>'; };
-    var nc=cols.length;
-    return '<div style="overflow-x:auto"><div style="display:grid;grid-template-columns:104px repeat('+nc+',minmax(150px,1fr));gap:6px;min-width:'+(104+nc*156)+'px">'
-      +'<div></div>'+cols.map(cab).join('')
-      +fases.map(function(fz){ return '<div style="display:flex;align-items:flex-start;gap:6px;padding:8px 6px;border-radius:8px;background:rgba(255,255,255,.03);font-size:12px;font-weight:700;color:'+fz[2]+'"><span style="width:8px;height:8px;border-radius:50%;background:'+fz[2]+';margin-top:4px;flex:0 0 auto"></span>'+fz[1]+'</div>'
-        +cols.map(function(c){ var L=cel[c.k][fz[0]]; return '<div class="kbCol" data-c="'+fz[0]+'" style="min-height:44px;border:1px dashed var(--line);border-radius:8px;padding:4px;display:flex;flex-direction:column;gap:4px;transition:border-color .15s,background .15s">'+L.slice(0,60).map(function(x){ return mini(x,fz[2]); }).join('')+(L.length>60?'<div style="font-size:11px;color:var(--muted);text-align:center">+ '+(L.length-60)+'</div>':'')+'</div>'; }).join(''); }).join('')
-      +'</div></div>'
-      +'<div style="font-size:12px;color:var(--muted);margin-top:8px">Atrasados = data de entrega antes de '+_kbDM(segAtual)+' (aparecem em todas as semanas). Arraste um cartão para outra linha para mudar a fase; o dia é a data de entrega e não muda. Use "Semana" nos filtros para ver outras semanas.</div>'; };
   var kbLinhasHTML=function(){ var nome={producao:'Em produção',pronto:'Pronto para envio',emb:'Em embalagem',env:'Enviado'}, corC={producao:'#a78bfa',pronto:'#4ecb8f',emb:'#d99a52',env:'#5aa0d0'};
     var L=[].concat(A,P,E,V).sort(function(a,b){ return (a.data||new Date(8.64e15))-(b.data||new Date(8.64e15)); }), th='text-align:left;padding:8px 10px;font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface2)', td='padding:8px 10px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink);vertical-align:top';
     return '<div style="background:var(--surface2);border:1px solid var(--line);border-radius:12px;overflow:auto;max-height:calc(100vh - 250px)"><table style="width:100%;border-collapse:collapse"><thead><tr>'+['Entrega','Pedido','Cliente','Fase','Etiquetas','Valor','Transporte'].map(function(h){ return '<th style="'+th+'">'+h+'</th>'; }).join('')+'</tr></thead><tbody>'
@@ -5652,7 +5616,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
       +'<select id="kbSem" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px"><option value="">Semana: todas</option>'+semOffs.map(function(off){ var m0=new Date(segAtual); m0.setDate(m0.getDate()+7*off); var s0=new Date(m0); s0.setDate(m0.getDate()+6); return '<option value="'+off+'"'+(String(F.sem)===String(off)?' selected':'')+'>'+(off===0?'Essa semana':off===1?'Próxima semana':'Em '+off+' semanas')+' ('+_kbDM(m0)+'–'+_kbDM(s0)+') · '+(semCont[off]||0)+'</option>'; }).join('')+'</select>'
       +[['kbFS','sit',[['','Situação: todas'],['fabrica','Fábrica (ainda em produção)'],['expedicao','Expedição (tem OP na expedição)'],['pronto','Pedido pronto (pronto pra sair)']]]].map(function(z){ return '<select id="'+z[0]+'" data-f="'+z[1]+'" class="kbFiltro" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+z[2].map(function(o){ return '<option value="'+uEsc(o[0])+'"'+((F[z[1]]||'')===o[0]?' selected':'')+'>'+uEsc(o[1])+'</option>'; }).join('')+'</select>'; }).join('')
       +[['kbFT','transp',[['','Todas transportadoras']].concat(TRANSPS.map(function(t){ return [t,t]; }))],['kbFD','difal',[['','DIFAL: todos'],['diario','DIFAL diário'],['mensal','DIFAL mensal']]],['kbFP','tipo',[['','Tipo: todos'],['pe','Só pronta entrega'],['prod','Só produção']]],['kbFR','trat',[['','Tratado: todos'],['nao','Não tratados'],['sim','Tratados']]]].map(function(z){ return '<select id="'+z[0]+'" data-f="'+z[1]+'" class="kbFiltro" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+z[2].map(function(o){ return '<option value="'+uEsc(o[0])+'"'+((F[z[1]]||'')===o[0]?' selected':'')+'>'+uEsc(o[1])+'</option>'; }).join('')+'</select>'; }).join('')
-      +'<select id="kbVisao" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+[['semana','Visão: Semana'],['colunas','Visão: Kanban'],['linhas','Visão: Lista']].map(function(o){ return '<option value="'+o[0]+'"'+(KB.visao===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select>'
+      +'<select id="kbVisao" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px"><option value="colunas"'+(KB.visao!=='linhas'?' selected':'')+'>Visão: Kanban</option><option value="linhas"'+(KB.visao==='linhas'?' selected':'')+'>Visão: Lista</option></select>'
       +'<button class="ubtn" id="kbExp" style="padding:8px 12px;font-size:13px">'+(KB.exp?'Recolher tudo':'Expandir tudo')+'</button>'
       +((F.de||F.ate||(F.sem!=null&&F.sem!=='')||F.sit||F.transp||F.difal||F.tipo||F.trat||KB.q)?'<button class="ubtn" id="kbLimpa" style="padding:8px 12px;font-size:13px">Limpar filtros</button>':'')
       +'<select id="kbDias" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+[[7,'Enviados: 7 dias'],[30,'Enviados: 30 dias'],[90,'Enviados: 90 dias'],[0,'Enviados: todos']].map(function(o){ return '<option value="'+o[0]+'"'+(KB.dias===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select></div></div>'
@@ -5661,7 +5625,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
     +(KB.erro?'<div style="color:var(--danger);font-size:13px;margin-bottom:10px">Não consegui ler o Controle de liberação: '+uEsc(KB.erro)+'</div>':'')
     +(!f&&Object.keys(FILES).length?'<div style="color:var(--f-amber);font-size:13px;margin-bottom:10px">Sem o arquivo "Controle de liberação de pedidos": as colunas de embalagem e enviados ficam vazias.</div>':'')
     +((!ready||!ready.length)&&Object.keys(FILES).length&&KB.tent<40?'<div style="color:var(--muted);font-size:13px;margin-bottom:10px">Calculando os pedidos prontos para envio…</div>':'')
-    +kbResumo()+(KB.visao==='linhas'?kbLinhasHTML():KB.visao==='semana'?kbSemanaHTML():'<div style="display:grid;grid-template-columns:repeat(4,minmax(250px,1fr));gap:12px;align-items:start;overflow-x:auto">'
+    +kbResumo()+(KB.visao==='linhas'?kbLinhasHTML():'<div style="display:grid;grid-template-columns:repeat(4,minmax(250px,1fr));gap:12px;align-items:start;overflow-x:auto">'
     +colunas.map(function(col){ return '<div class="kbCol" data-c="'+col.k+'" style="background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;max-height:calc(100vh - 250px);min-width:250px;transition:border-color .15s,background .15s">'
       +'<div style="padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px"><span style="width:9px;height:9px;border-radius:50%;background:'+col.cor+'"></span><b style="color:var(--ink);font-size:13.5px;flex:1">'+col.t+'</b><span style="background:var(--elev);color:var(--ink);border-radius:999px;padding:1px 9px;font-size:12px;font-weight:700">'+col.L.length+'</span></div>'
       +(col.sub?'<div style="padding:6px 14px 0;font-size:12px;color:var(--muted)">'+col.sub+'</div>':'')
