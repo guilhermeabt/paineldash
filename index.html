@@ -462,7 +462,7 @@ body.hasSide .appInstall{max-width:900px;width:100%;margin:0 auto;text-align:lef
   <main>
     <div id="frames"></div>
     <div id="baseView"></div>
-    <div id="kanView" style="display:none;height:100%;overflow:auto;box-sizing:border-box"></div>
+    <div id="kanView" style="display:none;position:absolute;inset:0;z-index:5;background:var(--bg);overflow:auto;box-sizing:border-box"></div>
     <div id="impView"></div>
   </main>
   <div class="expmodal" id="expModal"><div class="expbox">
@@ -655,6 +655,7 @@ function preMarcador(id,nome,lm){ var f=new File(['DASHPRE:'+id],nome,{lastModif
 
 var PRE_META={}, PRE_MEMO={}, PRE_SENT={}, LAZY={};
 // abre o pacote (baixado e guardado no navegador) só quando um relatório precisa dele
+function preGz(id){ var M=PRE_META[id]; if(!M) return Promise.reject(new Error('pacote desconhecido')); return getEncBlob(id).then(function(ct){ return decBytes(b64d(SESSION.slots[M.k]),M.piv,ct); }); }
 function preLoad(id){ if(PRE_MEMO[id]) return PRE_MEMO[id]; var M=PRE_META[id];
   PRE_MEMO[id]=(async function(){ if(!M) throw new Error('pacote desconhecido'); var ct=await getEncBlob(id); var plain=await decBytes(b64d(SESSION.slots[M.k]),M.piv,ct); return JSON.parse(await _ckGz(plain,false)); })();
   PRE_MEMO[id].then(function(){ setTimeout(function(){ delete PRE_MEMO[id]; },60000); },function(){ delete PRE_MEMO[id]; });
@@ -664,7 +665,14 @@ async function preReal(f){ if(!f||!f.__pre) return f; var M=PRE_META[f.__pre]; v
 function XC_IFRAME(){ var X=window.XLSX; if(!X||X.__xc) return; X.__xc=1;
   var CACHE={}, USED={}, MARK='__xcStub', r0=X.read, s0=X.utils.sheet_to_json, ts=Object.prototype.toString;
   window.addEventListener('message',function(e){ var m=e.data||{}; if(m.__dash==='xcache'&&e.source===window.parent){ CACHE=m.entries||{}; USED={}; }
-    if(m.__dash==='pre'&&e.source===window.parent){ (window.__PRE=window.__PRE||{})[m.id]=m.data; if(m.fp){ m.fp.id=m.id; (window.__PREFP=window.__PREFP||[]).push(m.fp); } } });
+    if(m.__dash==='pre'&&e.source===window.parent){ if(m.fp){ m.fp.id=m.id; (window.__PREFP=window.__PREFP||[]).push(m.fp); }
+      if(m.data) (window.__PRE=window.__PRE||{})[m.id]=m.data;
+      else if(m.gz){ PEND++; new Response(new Blob([m.gz]).stream().pipeThrough(new DecompressionStream('gzip'))).text().then(function(t){ (window.__PRETXT=window.__PRETXT||{})[m.id]=t; },function(){}).then(function(){ PEND--; soltar(); }); } }
+    if(m.__dash==='feed'&&PEND>0&&!LIB.has(m)){ e.stopImmediatePropagation(); FILA.push(m); } });
+  var PEND=0, FILA=[], LIB=new WeakSet();
+  function soltar(){ if(PEND>0) return; var q=FILA; FILA=[]; q.forEach(function(m){ LIB.add(m); window.dispatchEvent(new MessageEvent('message',{data:m,source:window.parent})); }); }
+  function preData(id){ var P=window.__PRE||(window.__PRE={}); if(P[id]) return P[id]; var T=window.__PRETXT; if(T&&T[id]){ P[id]=JSON.parse(T[id]); delete T[id]; return P[id]; } return null; }
+  function preTem(id){ return !!((window.__PRE&&window.__PRE[id])||(window.__PRETXT&&window.__PRETXT[id])); }
   function preFp(u){ var L=window.__PREFP; if(!L||!u) return null; for(var i=0;i<L.length;i++){ var f=L[i]; if(f.len!==u.length) continue; var ok=true;
       for(var j=0;j<f.a.length&&ok;j++) if(u[j]!==f.a.charCodeAt(j)) ok=false; for(var k=0;k<f.b.length&&ok;k++) if(u[u.length-f.b.length+k]!==f.b.charCodeAt(k)) ok=false; if(ok) return f.id; } return null; }
   function preId(d){ var t=ts.call(d), s0=''; if(typeof d==='string') s0=d.slice(0,80); else if(t==='[object ArrayBuffer]'||t==='[object Uint8Array]'){ var u=t==='[object ArrayBuffer]'?new Uint8Array(d):d; if(u.length>200) return null; for(var i=0;i<u.length;i++) s0+=String.fromCharCode(u[i]); } else return null;
@@ -688,9 +696,9 @@ function XC_IFRAME(){ var X=window.XLSX; if(!X||X.__xc) return; X.__xc=1;
     has:function(t,p){ return p===MARK||(p in W()); }, ownKeys:function(){ return Reflect.ownKeys(W()); },
     getOwnPropertyDescriptor:function(t,p){ var d=Object.getOwnPropertyDescriptor(W(),p); if(d) d.configurable=true; return d; } }); }
   X.read=function(data,opts){ var self=this, args=arguments, pid=preId(data), u=null;
-    if(!(pid&&window.__PRE&&window.__PRE[pid])){ pid=null; u=bytes(data); if(!u) return r0.apply(this,arguments); var fp=(opts&&opts.raw)?null:preFp(u); if(fp&&window.__PRE&&window.__PRE[fp]) pid=fp; } // CSV lido com raw: usa o arquivo original
+    if(!(pid&&preTem(pid))){ pid=null; u=bytes(data); if(!u) return r0.apply(this,arguments); var fp=(opts&&opts.raw)?null:preFp(u); if(fp&&preTem(fp)) pid=fp; } // CSV lido com raw: usa o arquivo original
     // dados prontos (pacote) ou Excel: a leitura de cada aba fica guardada até a próxima publicação
-    var ler=pid?function(){ return PRE_WB(window.__PRE[pid],opts,X); }:function(){ return r0.apply(self,args); };
+    var ler=pid?function(){ return PRE_WB(preData(pid),opts,X); }:function(){ return r0.apply(self,args); };
     var rk=(pid?'P'+pid:XC_HASH(u))+'|'+JSON.stringify(opts||{}), meta=CACHE[rk+'|wb'], real=null;
     if(!meta){ real=ler(); meta={SheetNames:real.SheetNames.slice()}; put(rk+'|wb',meta); }
     // já lido antes: devolve um "livro" leve; só monta as abas de verdade se o painel pedir algo que não está guardado
@@ -913,9 +921,9 @@ const feedSeq={};
 async function sendFeed(pk,items){ const n=feedSeq[pk]=(feedSeq[pk]||0)+1; let ent={}; try{ ent=await xcEntries(items); }catch(e){}
   const pre=[]; for(const it of items){ const id=it.file&&(it.file.__pre||it.file.__prefp); if(id&&!(PRE_SENT[pk]&&PRE_SENT[pk][id])){ try{ var fp=null;
         if(it.file.__prefp){ var u8=new Uint8Array(await it.file.arrayBuffer()), sa=function(x){ return Array.prototype.map.call(x,function(c){ return String.fromCharCode(c); }).join(''); }; fp={len:u8.length,a:sa(u8.subarray(0,64)),b:sa(u8.subarray(Math.max(0,u8.length-64)))}; }
-        pre.push({id:id,data:await preLoad(id),fp:fp}); }catch(e){} } }
+        pre.push({id:id,gz:await preGz(id),fp:fp}); }catch(e){} } }
   if(feedSeq[pk]!==n) return; // chegou um envio mais novo enquanto preparava
-  const f=iframes[pk]; if(f&&f.contentWindow){ pre.forEach(function(x){ try{ f.contentWindow.postMessage({__dash:'pre',id:x.id,data:x.data,fp:x.fp},'*'); (PRE_SENT[pk]=PRE_SENT[pk]||{})[x.id]=1; }catch(e){} }); try{ f.contentWindow.postMessage({__dash:'xcache',entries:ent},'*'); }catch(e){} f.contentWindow.postMessage({__dash:'feed',items:items},'*'); } }
+  const f=iframes[pk]; if(f&&f.contentWindow){ pre.forEach(function(x){ try{ var b=x.gz.buffer.slice(x.gz.byteOffset,x.gz.byteOffset+x.gz.byteLength); f.contentWindow.postMessage({__dash:'pre',id:x.id,gz:b,fp:x.fp},'*',[b]); (PRE_SENT[pk]=PRE_SENT[pk]||{})[x.id]=1; }catch(e){} }); try{ f.contentWindow.postMessage({__dash:'xcache',entries:ent},'*'); }catch(e){} f.contentWindow.postMessage({__dash:'feed',items:items},'*'); } }
 let updExpSet=null,updSet=null,updExp=0,updHideT=null,updSafeT=null;
 function startUpdProgress(pks){ updExpSet=new Set(pks); updSet=new Set(); updExp=pks.length; clearTimeout(updHideT); clearTimeout(updSafeT); const el=$('updProg'); if(el)el.classList.add('show'); renderUpdProgress(); updSafeT=setTimeout(function(){ const e2=$('updProg'); if(e2)e2.classList.remove('show'); updSet=null;updExpSet=null; },40000); }
 function renderUpdProgress(){ if(!updSet)return; const pct=updExp?Math.round(updSet.size/updExp*100):100; const f=$('upfill'); if(f)f.style.width=pct+'%'; const tx=$('uptext'); if(tx)tx.textContent='Atualizando painéis\u2026 '+updSet.size+' de '+updExp+' ('+pct+'%)'; }
@@ -5463,7 +5471,7 @@ function _kbNum(v){ return String(v==null?'':v).replace(/\.0+$/,'').replace(/\D/
 function _kbData(v){ if(!v) return null; var d=v instanceof Date?v:new Date(v); return isNaN(d)||d.getFullYear()<2000?null:d; }
 function _kbDM(d){ return d?('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2):''; }
 function kbLerControle(file){ return new Promise(function(ok,ko){
-  var src="var PRE_WB="+PRE_WB.toString()+";self.onmessage=function(e){try{importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');var wb=(e.data&&e.data.pre)?PRE_WB(e.data.pre,{cellDates:true},XLSX):XLSX.read(new Uint8Array(e.data),{type:'array',cellDates:true});var out={};"
+  var src="var PRE_WB="+PRE_WB.toString()+";self.onmessage=function(e){try{importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');}catch(err){postMessage({ok:0,err:String(err)});return;}if(e.data&&e.data.gz){new Response(new Blob([e.data.gz]).stream().pipeThrough(new DecompressionStream('gzip'))).text().then(function(t){go(null,null,JSON.parse(t));}).catch(function(err){postMessage({ok:0,err:String(err&&err.message||err)});});return;}go(null,e.data);};function go(wb0,buf,pk){try{var wb=pk?PRE_WB(pk,{cellDates:true},XLSX):XLSX.read(new Uint8Array(buf),{type:'array',cellDates:true});var out={};"
     +"wb.SheetNames.forEach(function(n){var k=/entregar/i.test(n)?'emb':(/enviad/i.test(n)?'env':null);if(!k)return;var R=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:null});"
     +"var hi=R.findIndex(function(r){return r&&r.some(function(v){return /^pedido$/i.test(String(v==null?'':v).trim());});});if(hi<0)return;var H=R[hi].map(function(v){return String(v==null?'':v).trim().toLowerCase();});"
     +"var c=function(re,d){var i=H.findIndex(function(h){return re.test(h);});return i<0?d:i;};var ip=c(/^pedido$/,2),ic=c(/^cliente$/,4),ie=c(/data entrega/,3),iv=c(/^volumes$/,5),im=c(/modo de envio/,6),inf=c(/nota fiscal/,7),ir=c(/rastreio/,8),is=c(/data de sa|finaliza/,9);"
@@ -5471,7 +5479,7 @@ function kbLerControle(file){ return new Promise(function(ok,ko){
   var w; try{ w=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'}))); }catch(e){ ko(e); return; }
   w.onmessage=function(e){ w.terminate(); if(e.data&&e.data.ok) ok(e.data.out); else ko(new Error((e.data&&e.data.err)||'falhou')); };
   w.onerror=function(e){ w.terminate(); ko(new Error((e&&e.message)||'falhou')); };
-  if(file.__pre) preLoad(file.__pre).then(function(pk){ w.postMessage({pre:pk}); },ko); else file.arrayBuffer().then(function(b){ w.postMessage(b,[b]); },ko); }); }
+  if(file.__pre) preGz(file.__pre).then(function(g){ var b=g.buffer.slice(g.byteOffset,g.byteOffset+g.byteLength); w.postMessage({gz:b},[b]); },ko); else file.arrayBuffer().then(function(b){ w.postMessage(b,[b]); },ko); }); }
 function kbMostrar(){ activeView='kanban'; _feedLazy('expedicao'); Object.keys(iframes).forEach(function(k){ iframes[k].classList.remove('show'); }); $('baseView').style.display='none'; $('impView').style.display='none'; $('kanView').style.display='block'; KB.tent=0; kbRender(); }
 function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none') return;
   var f=FILES.controle; if(f&&KB.ctrlDe!==f&&!KB.lendo){ KB.lendo=true; KB.erro='';
