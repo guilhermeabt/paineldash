@@ -5154,7 +5154,9 @@ function procAbrir(ai,pi,di){ PROC.area=ai; PROC.proc=pi; PROC.doc=di||0; procRe
 function procRender(){ var host=$('procContent'); if(!host) return; procNavRender();
   var card='background:var(--surface2);border:1px solid var(--line);border-radius:12px';
   if(PROC.estado==='lendo'||!PROC.estado){ host.innerHTML='<div style="color:var(--muted);padding:30px">Carregando os processos…</div>'; return; }
-  if(PROC.estado==='erro'){ host.innerHTML='<div style="color:var(--danger);padding:30px">Não consegui abrir os processos: '+uEsc(PROC.erro)+'</div>'; return; }
+  if(PROC.estado==='erro'){ host.innerHTML='<div style="color:var(--danger);padding:30px 0 16px">Não consegui abrir os processos: '+uEsc(PROC.erro)+'</div>'
+      +(isAdmin(current)?'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;color:var(--muted)"><label class="ubtn" style="cursor:pointer;padding:8px 14px;background:var(--f-green);color:#0c241a;border:none;font-weight:600">⬆ Publicar o Book (escolher a pasta)<input type="file" id="procPubInp" webkitdirectory multiple style="display:none"></label><span id="procPubSt">Escolha a pasta <b>Book SGD - para o painel</b>.</span></div>':'');
+    var pe=$('procPubInp'); if(pe) pe.onchange=function(){ var f=this.files; if(f&&f.length) procPublicar(f); this.value=''; }; return; }
   var D=PROC.dados, A=D.areas, h='';
   var busca='<input id="procQ" type="search" autocomplete="off" placeholder="Buscar processo ou palavra (ex.: enfesto, HubSpot, OC)…" value="'+uEsc(PROC.q)+'" style="width:100%;max-width:520px;box-sizing:border-box;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:9px 12px;font-size:14px">';
   var chipDoc=function(d){ var c=PROC_COR[d.tipo]||'#999'; return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+c+';margin-right:6px"></span>'; };
