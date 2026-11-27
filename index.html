@@ -2377,6 +2377,8 @@ function _userSlotList(u){
     l=SLOTS.filter(function(s){return s.panels.some(function(p){return pks.indexOf(p)>=0;});}).map(function(s){return s.key;}); }
   // módulo Gestão: a Conciliação da Gestão lê os arquivos publicados do Matriz (aprovados e não aprovados)
   if(m.indexOf('gestao')>=0) ['aprovados','nao_aprovados'].forEach(function(k){ if(l.indexOf(k)<0) l.push(k); });
+  // Kanban da Expedição: confere as NFs do faturamento com o relatório 09
+  if(m.indexOf('relatorios')>=0&&(u.panels==='*'||(u.panels||[]).indexOf('expedicao')>=0)&&l.indexOf('faturamento_mes')<0) l.push('faturamento_mes');
   return l;
 }
 async function loadPanelToken(){ GH_PANEL_TOKEN=''; GH_PANEL_INFO=null;
@@ -5567,7 +5569,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
     if(F.trat==='sim'&&!I.done) return false; if(F.trat==='nao'&&I.done) return false;
     // faturamento/embalagem: "feito" em qualquer coluna; "pendente" = está em embalagem e ainda não terminou
     if(F.fatst||F.embst){ var fz=x._mov?x._mov.para:x._o, fa=(KB.fat||{})[x.n], faOk=!!fa&&(function(g){ return g.ok===g.tot; })(kbFatProg(fa)), emOk=!!(KB.obs||{})[x.n];
-      if(F.fatst==='feito'&&!faOk) return false; if(F.fatst==='pend'&&(faOk||fz!=='emb')) return false;
+      if(F.fatst==='feito'&&!faOk) return false; if(F.fatst==='pend'&&(faOk||fz!=='emb')) return false; if(F.fatst==='div'&&!kbFatAlertas(x.n).length) return false;
       if(F.embst==='feito'&&!emOk) return false; if(F.embst==='pend'&&(emOk||fz!=='emb')) return false; }
     var d0=x.data?new Date(x.data.getFullYear(),x.data.getMonth(),x.data.getDate()):null;
     if(F.de&&(!d0||d0<new Date(F.de+'T00:00:00'))) return false; if(F.ate&&(!d0||d0>new Date(F.ate+'T00:00:00'))) return false;
@@ -5625,6 +5627,11 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
   var soma=function(L){ return L.reduce(function(a,x){ return a+(x.valor||0); },0); }, rs=function(v){ return 'R$ '+Math.round(v).toLocaleString('pt-BR'); };
   var atrasadosTodos=A.filter(function(x){ return !x.inv&&x.prev&&x.prev<hoje; }).concat(P.filter(function(x){ return x.atr; }), E.filter(function(x){ return x.ent&&x.ent<hoje; }));
   var estaSem=A.filter(function(x){ return !x.inv&&x.prev&&x.prev>=hoje&&x.prev<=fimEsta; }), hojeIso=hoje.getTime(), envHoje=V.filter(function(x){ return x.d&&x.d.getTime()>=hojeIso; });
+  if(Object.keys(KB.fat||{}).some(function(k){ return _kbNfNum(KB.fat[k].nf); })){ kbF09Ler(); if(!KB.itensLido&&!KB._itRq){ KB._itRq=1; kbItensLer().then(function(){ kbRender(); }); } }
+  var kbConfBanner=function(){ var L=Object.keys(KB.fat||{}).filter(function(k){ return kbFatAlertas(k).length; }); if(!L.length||F.fatst==='div') return '';
+    return '<div style="border:1px solid rgba(245,165,36,.55);background:rgba(245,165,36,.10);border-radius:12px;padding:10px 14px;margin-bottom:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span style="font-size:20px;color:#f5a524">⚠</span>'
+      +'<div style="flex:1;min-width:220px;font-size:13.5px;color:var(--ink)"><b style="color:#f5a524">'+L.length+' faturamento'+(L.length===1?'':'s')+' não confere'+(L.length===1?'':'m')+' com o relatório 09</b> — '+L.slice(0,6).map(function(k){ return '#'+uEsc(k); }).join(', ')+(L.length>6?'…':'')+'. Abra o cartão para corrigir ou ignorar.</div>'
+      +'<button class="ubtn" id="kbVerDiv" style="padding:7px 12px;font-size:13px">Ver só esses</button></div>'; };
   var kbResumo=function(){ var box=function(t,v,sub,cor){ return '<div style="background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:10px 14px;min-width:150px;flex:1"><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px">'+t+'</div><div style="font-size:22px;font-weight:700;color:'+(cor||'var(--ink)')+';margin-top:2px">'+v+'</div><div style="font-size:12px;color:var(--muted)">'+sub+'</div></div>'; };
     return '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">'+box('Atrasados',atrasadosTodos.length,rs(soma(atrasadosTodos))+' · em qualquer fase','#e5484d')+box('A sair esta semana',estaSem.length,rs(soma(estaSem))+' · ainda em produção','#a78bfa')
       +(A.some(function(x){ return x.inv; })?box('Para investigar',A.filter(function(x){ return x.inv; }).length,rs(soma(A.filter(function(x){ return x.inv; })))+' · sem OP em nenhum relatório','#f5a524'):'')
@@ -5653,7 +5660,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
       +'<span style="font-size:12.5px;color:var(--muted)">Até</span><input type="date" id="kbAte" value="'+uEsc(F.ate||'')+'" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:7px 9px;font-size:13px">'
       +'<select id="kbSem" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px"><option value="">Semana: todas</option>'+semOffs.map(function(off){ var m0=new Date(segAtual); m0.setDate(m0.getDate()+7*off); var s0=new Date(m0); s0.setDate(m0.getDate()+6); return '<option value="'+off+'"'+(String(F.sem)===String(off)?' selected':'')+'>'+(off===0?'Essa semana':off===1?'Próxima semana':'Em '+off+' semanas')+' ('+_kbDM(m0)+'–'+_kbDM(s0)+') · '+(semCont[off]||0)+'</option>'; }).join('')+'</select>'
       +[['kbFS','sit',[['','Situação: todas'],['fabrica','Fábrica (ainda em produção)'],['expedicao','Expedição (tem OP na expedição)'],['pronto','Pedido pronto (pronto pra sair)']]]].map(function(z){ return '<select id="'+z[0]+'" data-f="'+z[1]+'" class="kbFiltro" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+z[2].map(function(o){ return '<option value="'+uEsc(o[0])+'"'+((F[z[1]]||'')===o[0]?' selected':'')+'>'+uEsc(o[1])+'</option>'; }).join('')+'</select>'; }).join('')
-      +[['kbFT','transp',[['','Todas transportadoras']].concat(TRANSPS.map(function(t){ return [t,t]; }))],['kbFD','difal',[['','DIFAL: todos'],['diario','DIFAL diário'],['mensal','DIFAL mensal']]],['kbFP','tipo',[['','Tipo: todos'],['pe','Só pronta entrega'],['prod','Só produção']]],['kbFR','trat',[['','Tratado: todos'],['nao','Não tratados'],['sim','Tratados']]],['kbFF','fatst',[['','Faturamento: todos'],['pend','Faturamento pendente'],['feito','Faturamento feito']]],['kbFE','embst',[['','Embalagem: todos'],['pend','Embalagem pendente'],['feito','Embalagem feita']]]].map(function(z){ return '<select id="'+z[0]+'" data-f="'+z[1]+'" class="kbFiltro" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+z[2].map(function(o){ return '<option value="'+uEsc(o[0])+'"'+((F[z[1]]||'')===o[0]?' selected':'')+'>'+uEsc(o[1])+'</option>'; }).join('')+'</select>'; }).join('')
+      +[['kbFT','transp',[['','Todas transportadoras']].concat(TRANSPS.map(function(t){ return [t,t]; }))],['kbFD','difal',[['','DIFAL: todos'],['diario','DIFAL diário'],['mensal','DIFAL mensal']]],['kbFP','tipo',[['','Tipo: todos'],['pe','Só pronta entrega'],['prod','Só produção']]],['kbFR','trat',[['','Tratado: todos'],['nao','Não tratados'],['sim','Tratados']]],['kbFF','fatst',[['','Faturamento: todos'],['pend','Faturamento pendente'],['feito','Faturamento feito'],['div','⚠ Não confere com o 09']]],['kbFE','embst',[['','Embalagem: todos'],['pend','Embalagem pendente'],['feito','Embalagem feita']]]].map(function(z){ return '<select id="'+z[0]+'" data-f="'+z[1]+'" class="kbFiltro" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+z[2].map(function(o){ return '<option value="'+uEsc(o[0])+'"'+((F[z[1]]||'')===o[0]?' selected':'')+'>'+uEsc(o[1])+'</option>'; }).join('')+'</select>'; }).join('')
       +'<select id="kbVisao" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px"><option value="colunas"'+(KB.visao!=='linhas'?' selected':'')+'>Visão: Kanban</option><option value="linhas"'+(KB.visao==='linhas'?' selected':'')+'>Visão: Lista</option></select>'
       +'<button class="ubtn" id="kbExp" style="padding:8px 12px;font-size:13px">'+(KB.exp?'Recolher tudo':'Expandir tudo')+'</button>'
       +'<button class="ubtn" id="kbBackup" style="padding:8px 12px;font-size:13px" title="Gera o Excel com todos os pedidos do Kanban, as OPs, os enviados e os movimentos, baixa e abre o e-mail pronto para a expedição">📦 Criar backup agora</button>'
@@ -5664,7 +5671,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
     +(KB.erro?'<div style="color:var(--danger);font-size:13px;margin-bottom:10px">Não consegui ler o Controle de liberação: '+uEsc(KB.erro)+'</div>':'')
     +(!f&&Object.keys(FILES).length?'<div style="color:var(--f-amber);font-size:13px;margin-bottom:10px">Sem o arquivo "Controle de liberação de pedidos": as colunas de embalagem e enviados ficam vazias.</div>':'')
     +((!ready||!ready.length)&&Object.keys(FILES).length&&KB.tent<40?'<div style="color:var(--muted);font-size:13px;margin-bottom:10px">Calculando os pedidos prontos para envio…</div>':'')
-    +kbBkBanner()+kbResumo()+(KB.visao==='linhas'?kbLinhasHTML():'<div style="display:grid;grid-template-columns:repeat(4,minmax(250px,1fr));gap:12px;align-items:start;overflow-x:auto">'
+    +kbBkBanner()+kbConfBanner()+kbResumo()+(KB.visao==='linhas'?kbLinhasHTML():'<div style="display:grid;grid-template-columns:repeat(4,minmax(250px,1fr));gap:12px;align-items:start;overflow-x:auto">'
     +colunas.map(function(col){ return '<div class="kbCol" data-c="'+col.k+'" style="background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;max-height:calc(100vh - 250px);min-width:250px;transition:border-color .15s,background .15s">'
       +'<div style="padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px"><span style="width:9px;height:9px;border-radius:50%;background:'+col.cor+'"></span><b style="color:var(--ink);font-size:13.5px;flex:1">'+col.t+'</b><span style="background:var(--elev);color:var(--ink);border-radius:999px;padding:1px 9px;font-size:12px;font-weight:700">'+col.L.length+'</span></div>'
       +(col.sub?'<div style="padding:6px 14px 0;font-size:12px;color:var(--muted)">'+col.sub+'</div>':'')
@@ -5675,7 +5682,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
   host.querySelectorAll('.kbFiltro').forEach(function(sel){ sel.onchange=function(){ KB.f[sel.getAttribute('data-f')]=sel.value; kbRender(); }; });
   $('kbDe').onchange=function(){ KB.f.de=this.value; kbRender(); }; $('kbAte').onchange=function(){ KB.f.ate=this.value; kbRender(); };
   $('kbSem').onchange=function(){ KB.f.sem=this.value; kbRender(); }; $('kbVisao').onchange=function(){ KB.visao=this.value; try{ localStorage.setItem('kb_visao',this.value); }catch(e){} kbRender(); };
-  $('kbExp').onclick=function(){ KB.exp=!KB.exp; kbRender(); }; if($('kbBackup')) $('kbBackup').onclick=kbBackup; host.querySelectorAll('.kbBkAgora').forEach(function(x){ x.onclick=kbBackup; }); if($('kbLimpa')) $('kbLimpa').onclick=function(){ KB.f={}; KB.q=''; kbRender(); };
+  $('kbExp').onclick=function(){ KB.exp=!KB.exp; kbRender(); }; if($('kbVerDiv')) $('kbVerDiv').onclick=function(){ KB.f.fatst='div'; kbRender(); }; if($('kbBackup')) $('kbBackup').onclick=kbBackup; host.querySelectorAll('.kbBkAgora').forEach(function(x){ x.onclick=kbBackup; }); if($('kbLimpa')) $('kbLimpa').onclick=function(){ KB.f={}; KB.q=''; kbRender(); };
   // arrastar e soltar
   host.querySelectorAll('.kbCard[draggable]').forEach(function(c){
     c.ondragstart=function(e){ KB.arr=c.getAttribute('data-n'); try{ e.dataTransfer.setData('text/plain',KB.arr); e.dataTransfer.effectAllowed='move'; }catch(x){} c.style.opacity='.45'; };
@@ -5715,6 +5722,7 @@ function kbBackupWB(){ var T=KB._todos||{}, NOME={producao:'A sair: em produçã
       'DIFAL':f.difal==='diario'?'Diário':f.difal==='mensal'||f.difal==='sim'?'Mensal':f.difal==='nao'?'Não tem':'','Simples faturamento':({nao:'Não precisa',fazer:'A fazer',feita:'Feita'}[f.simples]||''),'Boleto':({nao:'Não tem',emitir:'A emitir',emitido:'Emitido'}[f.boleto]||''),
       'Faturar':f.fatModo&&f.fatModo!=='tudo'?_kbObsFat({fat:f.fatModo,fatTxt:f.fatTxt}):'Tudo','Nota fiscal':tx(f.nf),'Observações':tx(f.obs),
       'Itens (CPF / transferência)':f.doc==='cpf'?it.map(function(o){ return o.ref+' '+(o.desc||o.cor)+' ['+o.tam.map(function(z){ return z[0]+':'+z[1]; }).join(' ')+'] = '+o.qtd; }).join(' | '):'',
+      'Conferência com o relatório 09':(function(){ var c=kbFatConf(n); if(!c) return ''; if(c.st!=='ok') return 'não conferido'; if(c.pend) return 'NF ainda não está no 09'; return c.al.length?'NÃO CONFERE: '+c.al.map(function(a){ return a.t; }).join(' | '):'Confere'+(c.ign?' ('+c.ign+' alerta(s) ignorado(s))':''); })(),
       'Preenchido por':tx(f.por),'Preenchido em':quando(f.ts)}; });
   var OB=KB.obs||{}, embRows=Object.keys(OB).sort().map(function(n){ var o=OB[n], x=T[n]||{};
     return {'Pedido':n,'Cliente':tx(x.cli||(x.I||{}).cliente),'Coluna no Kanban':x._o?NOMEF[x._mov?x._mov.para:x._o]:'(fora do Kanban agora)','Volumes':_kbObsVol(o),'Quantidade':+o.q||'','Tipo':({CX:'Caixa',PCT:'Pacote',VOL:'Volume'}[o.t]||tx(o.t)),
@@ -5840,15 +5848,16 @@ function kbFatProg(f){ var it=[!!(f.cod||'').trim(),!!(f.envio||'').trim(),!!f.r
 function kbFatPend(f){ var p=[]; if(!(f.cod||'').trim()) p.push('código do cliente'); if(!(f.envio||'').trim()) p.push('forma de envio'); if(!f.ri) p.push('RI'); if(!f.doc) p.push('CNPJ/CPF'); if(!f.ie) p.push('IE'); if(!f.difal) p.push('DIFAL');
   if(!f.simples) p.push('simples faturamento'); else if(f.simples==='fazer') p.push('simples faturamento a fazer'); if(!f.boleto) p.push('boleto'); else if(f.boleto==='emitir') p.push('boleto a emitir'); if(!(f.nf||'').trim()) p.push('nota fiscal'); return p; }
 function kbFatTxt(f){ if(!f) return ''; return [f.cod?'cliente '+f.cod:'',f.envio||'',f.ri==='sim'?'RI':'',f.doc?f.doc.toUpperCase():'',f.ie==='sim'?'IE':'',f.difal==='diario'?'DIFAL diário':f.difal==='mensal'||f.difal==='sim'?'DIFAL mensal':'',f.simples==='fazer'?'simples faturamento a fazer':f.simples==='feita'?'simples faturamento feita':'',f.boleto==='emitir'?'boleto a emitir':f.boleto==='emitido'?'boleto emitido':'',f.fatModo&&f.fatModo!=='tudo'?_kbObsFat({fat:f.fatModo,fatTxt:f.fatTxt}):'',f.nf?'NF '+f.nf:'',f.obs||''].filter(Boolean).join(' · '); }
-function kbFatCard(x){ var f=(KB.fat||{})[x.n], nf=f?String(f.nf||'').trim():''; // o checklist é controle de quem fatura; no cartão vai só a NF emitida
-  return nf?'<div style="display:flex;gap:4px;flex-wrap:wrap"><span title="Nota fiscal emitida" style="font-size:11.5px;font-weight:700;color:#4ecb8f;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:6px;padding:1px 6px">NF '+uEsc(nf)+'</span></div>':''; }
+function kbFatCard(x){ var f=(KB.fat||{})[x.n], nf=f?String(f.nf||'').trim():''; // o checklist é controle de quem fatura; no cartão vai só a NF emitida (e o alerta, se não conferir com o 09)
+  if(!nf) return ''; var al=kbFatAlertas(x.n), cor=al.length?'#f5a524':'#4ecb8f';
+  return '<div style="display:flex;gap:4px;flex-wrap:wrap"><span title="'+uEsc(al.length?'Não confere com o relatório 09: '+al.map(function(a){ return a.t; }).join(' | '):'Nota fiscal emitida')+'" style="font-size:11.5px;font-weight:700;color:'+cor+';background:rgba(255,255,255,.04);border:1px solid '+(al.length?'rgba(245,165,36,.6)':'var(--line)')+';border-radius:6px;padding:1px 6px">'+(al.length?'⚠ ':'')+'NF '+uEsc(nf)+'</span></div>'; }
 function kbFatDetalhe(x){ var f=(KB.fat||{})[x.n], fase=x._mov?x._mov.para:x._o; if(!f&&fase!=='emb'&&fase!=='env') return '';
   var l=function(r,v){ return v?'<div style="display:flex;gap:10px;padding:4px 0;font-size:13px"><span style="color:var(--muted);min-width:130px">'+r+'</span><span style="color:var(--ink)">'+uEsc(v)+'</span></div>':''; }, sn=function(v){ return v==='sim'?'Sim':v==='nao'?'Não':''; };
   var g=f?kbFatProg(f):null;
   return '<div style="margin-top:12px;padding:10px 12px;border:1px solid rgba(90,160,208,.45);background:rgba(90,160,208,.07);border-radius:10px">'
     +'<div style="display:flex;align-items:center;gap:8px"><b style="flex:1;color:#5aa0d0;font-size:13px">🧾 Faturamento</b>'+(kbPodeMover()?'<button class="ubtn" id="kbFatEd" style="padding:5px 10px;font-size:12.5px">'+(f?'Editar':'Preencher')+'</button>':'')+'</div>'
     +(f?l('Código do cliente',f.cod)+l('Forma de envio',f.envio)+l('RI',sn(f.ri))+l('CNPJ/CPF',f.doc?f.doc.toUpperCase():'')+l('IE',sn(f.ie))+l('DIFAL',f.difal==='diario'?'Diário':f.difal==='mensal'||f.difal==='sim'?'Mensal':f.difal==='nao'?'Não tem':'')+l('Simples faturamento',{nao:'Não precisa',fazer:'A fazer',feita:'✓ Feita'}[f.simples]||'')+l('Boleto',{nao:'Não tem',emitir:'A emitir',emitido:'✓ Emitido'}[f.boleto]||'')
-        +l('Faturar',f.fatModo&&f.fatModo!=='tudo'?_kbObsFat({fat:f.fatModo,fatTxt:f.fatTxt}):'')+l('Nota fiscal',f.nf)+l('Observação',f.obs)+(f.doc==='cpf'?'<div style="margin-top:6px">'+kbItensHTML(x.n,x,true)+'</div>':'')+l('Preenchido',(f.por||'')+(f.ts?' em '+_kbQuandoTxt(f.ts):''))
+        +l('Faturar',f.fatModo&&f.fatModo!=='tudo'?_kbObsFat({fat:f.fatModo,fatTxt:f.fatTxt}):'')+l('Nota fiscal',f.nf)+(String(f.nf||'').trim()?kbFatConfHTML(x):'')+l('Observação',f.obs)+(f.doc==='cpf'?'<div style="margin-top:6px">'+kbItensHTML(x.n,x,true)+'</div>':'')+l('Preenchido',(f.por||'')+(f.ts?' em '+_kbQuandoTxt(f.ts):''))
       :'<div style="font-size:12.5px;color:var(--muted);margin-top:4px">Ainda não preenchido.</div>')+'</div>'; }
 /* Itens do pedido (referência, cor, tamanhos e quantidades) vêm do 01 – Ops com pedidos (P1..P10 = quantidades, T1..T10 = tamanhos).
    O código do cliente vem da coluna "Cód" dos pedidos (02 em aberto, 03 pronta entrega e 12 aprovados). Lido uma vez, sob demanda. */
@@ -5857,18 +5866,18 @@ function kbItensLer(){ if(KB_ITENS_P) return KB_ITENS_P;
   var fo=filesArr('ops'), fp=filesArr('sistema').concat(filesArr('pronta'),filesArr('aprovados'));
   KB_ITENS_P=new Promise(function(ok){
     var src="var PRE_WB="+PRE_WB.toString()+";self.onmessage=function(e){try{importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');}catch(err){postMessage({ok:0});return;}"
-      +"var L=e.data,it={},cod={};var cel=function(v){return String(v==null?'':v).trim();};"
+      +"var L=e.data,it={},cod={},qv={};var cel=function(v){return String(v==null?'':v).trim();};"
       +"var um=function(wb,tipo){var ws=wb.Sheets[wb.SheetNames[0]];var R=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});"
       +"var hi=R.findIndex(function(r){return r&&r.some(function(v){return cel(v)==='Pedido';});});if(hi<0)return;var H=R[hi].map(cel),ix=function(n){return H.indexOf(n);};"
       +"if(tipo==='ops'){var iO=ix('OP'),iP=ix('Pedido'),iR=ix('Referencia'),iC=ix('Cor'),iD=ix('Desc Cor'),iF=ix('Descr Fase'),iQ=ix('Qtd Total');var P=[],T=[];for(var k=1;k<=10;k++){P.push(ix('P'+k));T.push(ix('T'+k));}"
       +"R.slice(hi+1).forEach(function(r){if(!r)return;var ped=cel(r[iP]).replace(/\\D/g,'');if(!ped)return;var tam=[];for(var k=0;k<10;k++){var q=+r[P[k]]||0;if(q>0)tam.push([cel(r[T[k]])||('T'+(k+1)),q]);}"
       +"(it[ped]=it[ped]||[]).push({op:cel(r[iO]),ref:cel(r[iR]),cor:cel(r[iC]),desc:cel(r[iD]),fase:cel(r[iF]),qtd:+r[iQ]||tam.reduce(function(a,t){return a+t[1];},0),tam:tam});});}"
-      +"else{var iP2=ix('Pedido'),iK=ix('Cód');if(iK<0)return;R.slice(hi+1).forEach(function(r){if(!r)return;var ped=cel(r[iP2]).replace(/\\D/g,''),c=cel(r[iK]);if(ped&&c&&!cod[ped])cod[ped]=c;});}};"
-      +"var i=0;var prox=function(){if(i>=L.length){postMessage({ok:1,it:it,cod:cod});return;}var x=L[i++];var fim=function(wb){try{um(wb,x.tipo);}catch(e){}prox();};"
+      +"else{var iP2=ix('Pedido'),iK=ix('Cód'),iQo=ix('Qtde Orig. Sem Brindes'),iVo=ix('Vr Orig. sem Brindes'),iVd=ix('Vr Descontos');if(iK<0)return;R.slice(hi+1).forEach(function(r){if(!r)return;var ped=cel(r[iP2]).replace(/\\D/g,''),c=cel(r[iK]);if(ped&&c&&!cod[ped])cod[ped]=c;if(ped&&!qv[ped]&&iQo>=0)qv[ped]={q:+r[iQo]||0,v:Math.round(((+r[iVo]||0)-(+r[iVd]||0))*100)/100};});}};"
+      +"var i=0;var prox=function(){if(i>=L.length){postMessage({ok:1,it:it,cod:cod,qv:qv});return;}var x=L[i++];var fim=function(wb){try{um(wb,x.tipo);}catch(e){}prox();};"
       +"if(x.gz){new Response(new Blob([x.gz]).stream().pipeThrough(new DecompressionStream('gzip'))).text().then(function(t){var wb=null;try{wb=PRE_WB(JSON.parse(t),{cellDates:true},XLSX);}catch(e){}if(wb)fim(wb);else prox();},function(){prox();});}"
       +"else{var wb=null;try{wb=XLSX.read(new Uint8Array(x.buf),{type:'array',cellDates:true});}catch(e){}if(wb)fim(wb);else prox();}};prox();};";
     var w; try{ w=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'}))); }catch(e){ KB.itensLido=true; ok(); return; }
-    var acabou=function(d){ try{ w.terminate(); }catch(e){} if(d&&d.ok){ KB.itens=d.it; KB.codCli=d.cod; } KB.itensLido=true; ok(); };
+    var acabou=function(d){ try{ w.terminate(); }catch(e){} if(d&&d.ok){ KB.itens=d.it; KB.codCli=d.cod; KB.pedQV=d.qv||{}; } KB.itensLido=true; ok(); };
     w.onmessage=function(e){ acabou(e.data); }; w.onerror=function(){ acabou(null); };
     var lista=fo.map(function(f){ return {f:f,tipo:'ops'}; }).concat(fp.map(function(f){ return {f:f,tipo:'ped'}; }));
     Promise.all(lista.map(function(o){ var f=o.f; return (f.__pre?preGz(f.__pre).then(function(g){ return {gz:g.buffer.slice(g.byteOffset,g.byteOffset+g.byteLength),tipo:o.tipo}; }):f.arrayBuffer().then(function(b){ return {buf:b,tipo:o.tipo}; })).catch(function(){ return null; }); }))
@@ -5886,6 +5895,86 @@ function kbItensHTML(n,x,curto){ var nk=String(n).replace(/\D/g,''), L=(KB.itens
 function kbItensCopiar(n,x,btn){ var L=(KB.itens||{})[String(n).replace(/\D/g,'')]||[]; if(!L.length) L=(KB.itensSnap||{})[n]||[]; if(!L.length) return;
   var t='Pedido '+n+(x.cli?' — '+x.cli:'')+'\n'+L.map(function(o){ return o.ref+' · '+(o.desc||o.cor)+' · '+o.tam.map(function(z){ return z[0]+': '+z[1]; }).join(', ')+' · total '+o.qtd; }).join('\n')+'\nTotal: '+L.reduce(function(a,o){ return a+(o.qtd||0); },0)+' peças';
   (navigator.clipboard&&navigator.clipboard.writeText?navigator.clipboard.writeText(t):Promise.reject()).then(function(){ btn.textContent='✓ Copiado'; setTimeout(function(){ btn.textContent='Copiar'; },2000); },function(){ prompt('Copie os itens:',t); }); }
+/* ===== Conferência do faturamento com o relatório 09 (NFs emitidas): cliente, CNPJ/CPF, envio, DIFAL, quantidade, valor, cancelada.
+   Cada alerta pode ser corrigido (Editar) ou ignorado — o "ignorar" vale para todos e volta se os dados mudarem. */
+var KB_F09={st:'',sig:'',map:{},max:0,err:''};
+function _kbNfNum(v){ return String(v==null?'':v).replace(/\D/g,'').replace(/^0+/,''); }
+function kbF09Ler(){ if(KB_F09.st==='lendo') return;
+  var man=PUB.manifest, e=man&&man.slots&&man.slots.faturamento_mes, key=SESSION&&SESSION.slots&&SESSION.slots.faturamento_mes;
+  var nfs=Object.keys(KB.fat||{}).map(function(n){ return _kbNfNum(KB.fat[n].nf); }).filter(Boolean).sort();
+  if(!nfs.length) return; if(!e||!key){ KB_F09.st='sem'; return; }
+  var sig=(man.ts||'')+'|'+nfs.join(','); if(KB_F09.sig===sig&&(KB_F09.st==='ok'||KB_F09.st==='erro')) return;
+  KB_F09.st='lendo'; KB_F09.sig=sig;
+  (async function(){ try{
+    var meta=await decJSON(b64d(key),e.m), L=[];
+    for(var i=0;i<meta.files.length;i++){ var f=meta.files[i];
+      if(f.pp&&f.pv===2&&!/\.csv$/i.test(f.n)){ PRE_META[f.pp]={k:'faturamento_mes',piv:f.piv,p:f.p,iv:f.iv,n:f.n,t:f.t,lm:f.lm}; var g=await preGz(f.pp); L.push({gz:g.buffer.slice(g.byteOffset,g.byteOffset+g.byteLength)}); }
+      else { var ct=await getEncBlob(f.p), pl=await decBytes(b64d(key),f.iv,ct); L.push({buf:pl.buffer.slice(pl.byteOffset,pl.byteOffset+pl.byteLength)}); } }
+    var src="var PRE_WB="+PRE_WB.toString()+";self.onmessage=function(e){try{importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');}catch(err){postMessage({ok:0});return;}"
+      +"var L=e.data.L,W={},map={},max=0;e.data.nfs.forEach(function(n){W[n]=1;});var cel=function(v){return String(v==null?'':v).trim();};var nz=function(s){return cel(s).normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase();};"
+      +"var um=function(wb){var ws=wb.Sheets[wb.SheetNames[0]];var R=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});var hi=R.findIndex(function(r){return r&&r.some(function(v){return nz(v)==='nf_saida';});});if(hi<0)return;"
+      +"var H=R[hi].map(nz),ix=function(n){return H.indexOf(n);};var c={nf:ix('nf_saida'),se:ix('serie'),cod:ix('cod. cliente'),nome:ix('nome cliente'),tipo:ix('tipo nf'),em:ix('emissao'),q:ix('qtde'),vt:ix('valor total'),vl:ix('vr liquido mercadorias'),tr:ix('transportadora'),pe:ix('tipo pessoa'),cnpj:ix('cnpj cliente'),uf:ix('uf'),dif:ix('valor icms uf dest'),ca:ix('cancelada?'),emp:ix('empresa')};"
+      +"R.slice(hi+1).forEach(function(r){if(!r)return;var em=r[c.em];var t=em instanceof Date?em.getTime():(em?Date.parse(em):0);if(t&&t>max)max=t;var nf=cel(r[c.nf]).replace(/\\D/g,'').replace(/^0+/,'');if(!nf||!W[nf])return;"
+      +"(map[nf]=map[nf]||{})[cel(r[c.se])||'-']=({se:cel(r[c.se]),cod:cel(r[c.cod]).replace(/^0+/,''),nome:cel(r[c.nome]),tipo:cel(r[c.tipo]),em:t,q:+r[c.q]||0,vt:+r[c.vt]||0,vl:+r[c.vl]||0,tr:cel(r[c.tr]),pe:cel(r[c.pe]),cnpj:cel(r[c.cnpj]),uf:cel(r[c.uf]),dif:+r[c.dif]||0,ca:cel(r[c.ca]),emp:cel(r[c.emp])});});};"
+      +"var i=0;var prox=function(){if(i>=L.length){var M2={};Object.keys(map).forEach(function(k){M2[k]=Object.keys(map[k]).map(function(z){return map[k][z];});});postMessage({ok:1,map:M2,max:max});return;}var x=L[i++];"
+      +"if(x.gz){new Response(new Blob([x.gz]).stream().pipeThrough(new DecompressionStream('gzip'))).text().then(function(t){try{um(PRE_WB(JSON.parse(t),{cellDates:true},XLSX));}catch(e){}prox();},function(){prox();});}"
+      +"else{try{um(XLSX.read(new Uint8Array(x.buf),{type:'array',cellDates:true}));}catch(e){}prox();}};prox();};";
+    var w=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
+    var d=await new Promise(function(ok){ w.onmessage=function(ev){ ok(ev.data); }; w.onerror=function(){ ok(null); }; w.postMessage({L:L,nfs:nfs},L.map(function(x){ return x.gz||x.buf; })); });
+    try{ w.terminate(); }catch(e){}
+    if(d&&d.ok){ KB_F09.map=d.map||{}; KB_F09.max=d.max||0; KB_F09.st='ok'; } else { KB_F09.st='erro'; KB_F09.err='não consegui ler o 09'; }
+  }catch(err){ KB_F09.st='erro'; KB_F09.err=(err&&err.message)||String(err); }
+  kbRender(); })(); }
+function _kbEnvioCat(s){ s=String(s||'').toUpperCase(); if(!s) return null; if(/RETIRADA|MOTORISTA|MODAMONT|MOD AMONT|DASH/.test(s)) return null; // entrega própria / retirada: não confere
+  if(/LOGGI/.test(s)) return 'LOGGI'; if(/CORREIO|EMPRESA BRASILEIRA|SEDEX|PAC\b|^PAC/.test(s)) return 'CORREIOS'; if(/ESATA/.test(s)) return 'ESATA';
+  if(/JADLOG/.test(s)) return 'JADLOG'; if(/BRASPRESS/.test(s)) return 'BRASPRESS'; if(/DHL/.test(s)) return 'DHL'; return s.split(/[\s-]+/)[0]; }
+function kbFatConf(n){ var f=(KB.fat||{})[n], nf=f?_kbNfNum(f.nf):''; if(!nf) return null;
+  if(KB_F09.st!=='ok') return {st:KB_F09.st||'lendo',al:[]};
+  var R=KB_F09.map[nf]||[], al=[], rs=function(v){ return 'R$ '+(+v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+  Object.keys(KB.fat).forEach(function(m){ if(m!==String(n)&&_kbNfNum(KB.fat[m].nf)===nf) al.push({k:'dup',v:m,t:'A NF '+nf+' também foi lançada no pedido #'+m+'.'}); });
+  if(!R.length){ if(KB_F09.max&&(f.ts||0)>KB_F09.max+864e5) return {st:'ok',pend:true,al:_kbConfFiltra(n,al)}; al.push({k:'nao09',v:'',t:'A NF '+nf+' não aparece no relatório 09.'}); return {st:'ok',al:_kbConfFiltra(n,al)}; }
+  var cod=String(f.cod||'').replace(/^0+/,''), r=R.filter(function(x){ return cod&&x.cod===cod; })[0]||R[0];
+  if(/^s/i.test(r.ca)) al.push({k:'canc',v:'',t:'A NF '+nf+' está CANCELADA no relatório 09.'});
+  if(cod&&r.cod&&r.cod!==cod) al.push({k:'cod',v:r.cod,t:'Código do cliente: no faturamento '+cod+', na NF '+r.cod+(r.nome?' ('+r.nome+')':'')+'.'});
+  var pf=/^f/i.test(r.pe)?'cpf':/^j/i.test(r.pe)?'cnpj':''; if(f.doc&&pf&&f.doc!==pf) al.push({k:'doc',v:pf,t:'CNPJ/CPF: no faturamento '+f.doc.toUpperCase()+', na NF pessoa '+(pf==='cpf'?'Física (CPF)':'Jurídica (CNPJ)')+'.'});
+  var ce=_kbEnvioCat(f.envio), cn=_kbEnvioCat(r.tr); if(ce&&cn&&ce!==cn) al.push({k:'envio',v:cn,t:'Forma de envio: no faturamento '+f.envio+', na NF a transportadora é '+r.tr+'.'});
+  if((f.difal==='diario'||f.difal==='mensal'||f.difal==='sim')&&!(r.dif>0)) al.push({k:'difal',v:'0',t:'DIFAL: no faturamento '+(f.difal==='diario'?'diário':'mensal')+', mas a NF não tem ICMS para a UF de destino'+(r.uf?' ('+r.uf+')':'')+'.'});
+  // "não tem DIFAL" com ICMS de destino na NF é comum (venda a não contribuinte) — não vira alerta
+  var ob=(KB.obs||{})[n], qv=(KB.pedQV||{})[String(n).replace(/\D/g,'')], parc=!!(ob&&ob.parc);
+  if(qv&&!parc){ var qn=R.reduce(function(a,x){ return a+x.q; },0);
+    if(qv.q&&qn&&qn!==qv.q) al.push({k:'qtd',v:String(qn),t:'Quantidade: o pedido tem '+qv.q+' peça'+(qv.q===1?'':'s')+', a NF tem '+qn+'. Se for envio parcial, marque "Parcial" na embalagem.'});
+  } // valor não é conferido: pedido e NF usam bases de preço diferentes (dá diferença em quase toda NF)
+  return {st:'ok',r:r,al:_kbConfFiltra(n,al),ign:al.length-_kbConfFiltra(n,al).length}; }
+function _kbConfFiltra(n,al){ var I=(KB.fatIgn||{})[n]||{}; return al.filter(function(a){ return !I[a.k+'|'+a.v]; }); }
+function kbFatAlertas(n){ var c=kbFatConf(n); return c&&c.al?c.al:[]; }
+function kbFatConfHTML(x){ var c=kbFatConf(x.n); if(!c) return '';
+  if(c.st==='sem') return '<div style="font-size:12px;color:var(--muted);margin-top:6px">Conferência com o relatório 09: este login não tem acesso ao 09 (o administrador precisa publicar os usuários de novo).</div>';
+  if(c.st==='lendo') return '<div style="font-size:12px;color:var(--muted);margin-top:6px">Conferindo a NF com o relatório 09…</div>';
+  if(c.st==='erro') return '<div style="font-size:12px;color:var(--muted);margin-top:6px">Não consegui ler o relatório 09 para conferir a NF.</div>';
+  if(c.pend) return '<div style="font-size:12px;color:var(--muted);margin-top:6px">A NF ainda não está no relatório 09 publicado — a conferência acontece quando o 09 for atualizado na Base.</div>'+(c.al.length?_kbConfLista(x.n,c.al):'');
+  if(!c.al.length) return '<div style="font-size:12px;color:#4ecb8f;margin-top:6px">✓ Confere com o relatório 09'+(c.r?' (NF '+uEsc(_kbNfNum((KB.fat[x.n]||{}).nf))+(c.r.se?' série '+uEsc(c.r.se):'')+', '+uEsc(c.r.nome||'')+')':'')+'.'+(c.ign?' '+c.ign+' alerta'+(c.ign===1?'':'s')+' ignorado'+(c.ign===1?'':'s')+'.':'')+'</div>';
+  return _kbConfLista(x.n,c.al); }
+function _kbConfLista(n,al){ return '<div style="margin-top:8px;border:1px solid rgba(245,165,36,.5);background:rgba(245,165,36,.08);border-radius:9px;padding:8px 10px">'
+  +'<div style="font-size:12.5px;font-weight:700;color:#f5a524;margin-bottom:4px">⚠ Não confere com o relatório 09</div>'
+  +al.map(function(a){ return '<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-top:1px solid rgba(245,165,36,.2);font-size:12.5px;color:var(--ink)"><span style="flex:1">'+uEsc(a.t)+'</span>'+(kbPodeMover()?'<button class="ubtn kbIgn" data-n="'+uEsc(n)+'" data-s="'+uEsc(a.k+'|'+a.v)+'" style="padding:3px 9px;font-size:11.5px">Ignorar</button>':'')+'</div>'; }).join('')
+  +'<div style="font-size:11.5px;color:var(--muted);margin-top:4px">Corrija em <b>Editar</b> ou, se for um caso fora do comum, clique em <b>Ignorar</b> (vale para todos).</div></div>'; }
+async function kbFatIgnorar(n,sg,tent){ var key=_kbKey(); if(!key||!ghToken()) return; tent=tent||0;
+  if(!tent){ KB.fatIgn=KB.fatIgn||{}; (KB.fatIgn[n]=KB.fatIgn[n]||{})[sg]={por:(current&&current.name)||currentUserKey||'',ts:Date.now()}; kbRender(); }
+  while(KB_SYNC) await new Promise(function(r){ setTimeout(r,400); });
+  KB_SYNC=true; var outra=false;
+  try{ var r=await _kbLerRemoto(), g=r.g; g.fatIgn=g.fatIgn||{}; (g.fatIgn[n]=g.fatIgn[n]||{})[sg]=KB.fatIgn[n][sg];
+    Object.keys(g.fatIgn).forEach(function(k){ if(!(g.fat&&g.fat[k])) delete g.fatIgn[k]; });
+    var bl=await gh('/git/blobs',{method:'POST',body:{content:JSON.stringify(await encJSON(key,g)),encoding:'utf-8'}});
+    var body={tree:[{path:KB_PATH,mode:'100644',type:'blob',sha:bl.sha}]}; if(r.sha) body.base_tree=(await gh('/git/commits/'+r.sha)).tree.sha;
+    var tr=await gh('/git/trees',{method:'POST',body:body});
+    var nc=await gh('/git/commits',{method:'POST',body:{message:'Kanban: alerta ignorado no pedido '+n+' ('+((current&&current.name)||'')+')',tree:tr.sha,parents:r.sha?[r.sha]:[]}});
+    try{ if(r.sha) await gh('/git/refs/heads/'+CK_BRANCH,{method:'PATCH',body:{sha:nc.sha,force:false}}); else await gh('/git/refs',{method:'POST',body:{ref:'refs/heads/'+CK_BRANCH,sha:nc.sha}}); }
+    catch(e){ if(e.status===422&&tent<3) outra=true; else throw e; }
+    if(!outra){ KB.fatIgn=g.fatIgn; KB.salvo={ok:true,t:'✓ Alerta ignorado para todos.'}; } }
+  catch(e){ KB.salvo={ok:false,t:'Não consegui salvar ('+((e&&e.message)||e)+'). Tente de novo.'}; }
+  finally{ KB_SYNC=false; }
+  if(outra) return kbFatIgnorar(n,sg,tent+1);
+  kbRender(); setTimeout(function(){ if(KB.salvo&&KB.salvo.ok){ KB.salvo=null; kbRender(); } },4000); }
 function kbFatEditar(n){ var x=KB._todos&&KB._todos[n]; if(!x) return; if(!KB.itensLido){ kbItensLer().then(function(){ if($('kbFatM')&&$('kbFatM').getAttribute('data-n')===String(n)&&!$('kbFatM').getAttribute('data-mexeu')){ $('kbFatM').remove(); kbFatEditar(n); } }); } if(!kbPodeMover()){ alert('Para preencher o faturamento, este computador precisa do token do GitHub. Fale com o administrador.'); return; }
   var I=x.I||{}, f0=(KB.fat||{})[n], ob=(KB.obs||{})[n]||{};
   var envSug=String(x.modo||x.transp||I.transp||'').trim().toUpperCase(); if(envSug==='CORREIOS'&&!x.modo) envSug='';
@@ -5987,6 +6076,7 @@ function kbDetalhe(n){ var x=KB._todos&&KB._todos[n]; if(!x) return; if(!KB.iten
   var fechar=function(){ z.remove(); }; $('kbDetX').onclick=fechar; z.onclick=function(e){ if(e.target===z) fechar(); };
   if($('kbObsEd')) $('kbObsEd').onclick=function(){ fechar(); kbObsEditar(n,false); };
   if($('kbFatEd')) $('kbFatEd').onclick=function(){ fechar(); kbFatEditar(n); };
+  z.querySelectorAll('.kbIgn').forEach(function(b){ b.onclick=function(){ b.disabled=true; b.textContent='Ignorado'; kbFatIgnorar(b.getAttribute('data-n'),b.getAttribute('data-s'),0).then(function(){ if($('kbDet')) kbDetalhe(n); }); }; });
   var cpD=z.querySelector('#fItensCp'); if(cpD) cpD.onclick=function(){ kbItensCopiar(n,x,cpD); }; }
 /* ---- movimentos do Kanban: guardados no ramo "checklists" (exp/kanban.json), cifrados com a chave do Controle de liberação ---- */
 var KB_PATH='exp/kanban.json', KB_SYNC=false;
@@ -5995,7 +6085,7 @@ function kbPodeMover(){ return !!(_kbKey()&&ghToken()); }
 async function _kbLerRemoto(){ var key=_kbKey(); if(!key) return {sha:null,g:{mov:{}}}; var sha=await _ckHead(), g=null;
   if(sha){ var b=await _ckRead(KB_PATH,sha); if(b){ try{ g=await decJSON(key,JSON.parse(new TextDecoder().decode(b))); }catch(e){ g=null; } } }
   g=g||{}; g.mov=g.mov||{}; return {sha:sha,g:g}; }
-async function kbMovCarregar(){ if(KB_SYNC) return; try{ var r=await _kbLerRemoto(), antes=JSON.stringify(KB.mov||{}), bkAntes=JSON.stringify([KB.bk,!!KB.bkLido]); KB.mov=r.g.mov; KB.bk=r.g.bk||null; KB.bkLido=true; var obsAntes=JSON.stringify([KB.obs||{},KB.fat||{}]); KB.obs=r.g.obs||{}; KB.fat=r.g.fat||{}; KB.itensSnap=r.g.itens||{}; if(JSON.stringify([KB.obs,KB.fat])!==obsAntes) kbRender(); if(r.g.bkPara) KB.bkPara=r.g.bkPara;
+async function kbMovCarregar(){ if(KB_SYNC) return; try{ var r=await _kbLerRemoto(), antes=JSON.stringify(KB.mov||{}), bkAntes=JSON.stringify([KB.bk,!!KB.bkLido]); KB.mov=r.g.mov; KB.bk=r.g.bk||null; KB.bkLido=true; var obsAntes=JSON.stringify([KB.obs||{},KB.fat||{}]); KB.obs=r.g.obs||{}; KB.fat=r.g.fat||{}; KB.itensSnap=r.g.itens||{}; KB.fatIgn=r.g.fatIgn||{}; if(JSON.stringify([KB.obs,KB.fat])!==obsAntes) kbRender(); if(r.g.bkPara) KB.bkPara=r.g.bkPara;
   if(JSON.stringify(KB.mov)!==antes) kbRender();
   if(JSON.stringify([KB.bk,true])!==bkAntes){ try{ sideRender(); }catch(e){} try{ expNavRender(); }catch(e){} kbRender(); } }catch(e){} }
 /* ===== Backup do Kanban: deve ser feito toda sexta às 17h (e nunca passar 7 dias sem).
