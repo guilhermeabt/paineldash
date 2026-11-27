@@ -408,6 +408,7 @@ body.hasSide .appInstall{max-width:900px;width:100%;margin:0 auto;text-align:lef
   </div>
 </div>
 
+<aside id="expNav" style="display:none"></aside>
 <div id="modProc" style="display:none;min-height:100vh;box-sizing:border-box">
   <aside id="procNav" style="display:none"></aside>
   <main id="procContent" style="padding:28px 32px;max-width:1240px;margin:0 auto;box-sizing:border-box"></main>
@@ -689,7 +690,7 @@ function panelURL(key){
   const blob=new Blob([bytes],{type:'text/html'});
   const url=URL.createObjectURL(blob);urlCache[key]=url;return url;
 }
-function allowedPanels(u){const p=u.panels;let ks=(p==='*'||(APPMODE==='base'&&u===current))?Object.keys(PANELS):p;ks=ks.filter(k=>PANELS[k]);if(SNAP_PANELS)ks=ks.filter(k=>SNAP_PANELS.indexOf(k)>=0);if(APP_MODE&&APPMODE==='rel')ks=ks.filter(k=>APP_PANELS.indexOf(k)>=0);return ks;}
+function allowedPanels(u){const p=u.panels;let ks=(p==='*'||(APPMODE==='base'&&u===current))?Object.keys(PANELS):p;ks=ks.filter(k=>PANELS[k]);if(SNAP_PANELS)ks=ks.filter(k=>SNAP_PANELS.indexOf(k)>=0);if(APP_MODE&&APPMODE==='rel')ks=ks.filter(k=>APP_PANELS.indexOf(k)>=0);if(APPMODE==='rel'&&!SNAP_MODE)ks=ks.filter(k=>REL_SCOPE==='exp'?k==='expedicao':k!=='expedicao');return ks;}
 function dynAllowed(u){return allowedPanels(u).filter(k=>!(PANELCFG[k]&&PANELCFG[k].static));}
 function visibleSlots(u){const alp=allowedPanels(u);return SLOTS.filter(s=>s.panels.some(p=>alp.indexOf(p)>-1));}
 function relevantSlots(pk){return SLOTS.filter(s=>s.panels.indexOf(pk)>-1);}
@@ -1216,16 +1217,23 @@ var MODMETA={
  estoque:{name:'Localização do Estoque',desc:'Onde está cada referência do pronta entrega: sala grande (filas A a E) e salinha pequena (F a J).',icon:'&#128230;'},
  base:{name:'Base de Dados',desc:'Subir os arquivos e publicar os dados para todos os relatórios.',icon:'&#128451;'},
  orcamento:{name:'Orçamento 2027',desc:'Simulador de lucro: cenário realista, premissas e projetos de redução de custo. Só o administrador vê.',icon:'&#128200;'},
+ expedicao:{name:'Expedição',desc:'Relatório de expedição e localização do estoque (pronta entrega).',icon:'&#128666;'},
  processos:{name:'Processos',desc:'Sistema de Gestão Dash (SGD): fluxogramas, padrões, procedimentos e metas de cada processo — sem baixar nada.',icon:'&#128218;'},
  usuarios:{name:'Controle de Usuários',desc:'Cadastrar usuários, senhas e permissões.',icon:'&#128100;'}
 };
 var APPMODE='', BASE_STASH=null;
+function _temExpRel(u){ return !!u&&userModules(u).indexOf('relatorios')>=0&&(u.panels==='*'||isAdmin(u)||(Array.isArray(u.panels)&&u.panels.indexOf('expedicao')>=0)); }
+function _temOutrosRel(u){ if(!u||userModules(u).indexOf('relatorios')<0) return false; if(u.panels==='*'||isAdmin(u)) return true; return (u.panels||[]).some(function(k){ return k!=='expedicao'&&PANELS[k]; }); }
+function navModules(u){ var m=userModules(u), out=[], exp=_temExpRel(u)||m.indexOf('estoque')>=0;
+  m.forEach(function(k){ if(k==='estoque') return; if(k==='relatorios'){ if(_temOutrosRel(u)) out.push(k); if(exp&&out.indexOf('expedicao')<0) out.push('expedicao'); return; } out.push(k); });
+  if(exp&&out.indexOf('expedicao')<0){ var i=out.indexOf('processos'); if(i<0) out.push('expedicao'); else out.splice(i,0,'expedicao'); }
+  return out; }
 function hideAllScreens(){ ['login','app','modules','modProd','modGest','modOrc','modUsers','modFaccao','modEstoque','modProc'].forEach(function(id){var e=$(id); if(e)e.style.display='none';}); }
 function showModules(){
-  if(APPMODE==='base') BASE_STASH=Object.assign({},FILES); else if(APPMODE==='rel') REL_STASH=Object.assign({},FILES);
+  if(APPMODE==='base') BASE_STASH=Object.assign({},FILES); else if(APPMODE==='rel'){ REL_STASH=Object.assign({},FILES); REL_STASH_SCOPE=REL_SCOPE; }
   APPMODE='';
   hideAllScreens();
-  SIDE.ativo='inicio'; var mods=userModules(current), todos=mods;
+  SIDE.ativo='inicio'; var mods=navModules(current), todos=mods;
   if(APP_MODE){ mods=mods.filter(function(k){ return APP_MODULES.indexOf(k)>=0; });
     if(mods.length===1&&!showModules._ja){ showModules._ja=1; openModule(mods[0]); return; } } // no app, vai direto para o que existe nele
   var w=$('modWho'); if(w)w.textContent=current?current.name:'';
@@ -1243,11 +1251,12 @@ function showModules(){
   $('modules').style.display='flex'; homeRender(); sideRender();
 }
 function openModule(k){
-  if(userModules(current).indexOf(k)<0){ showModules(); return; }
-  if(APPMODE==='base') BASE_STASH=Object.assign({},FILES); else if(APPMODE==='rel') REL_STASH=Object.assign({},FILES); // trocou de módulo direto pela barra
+  if(userModules(current).indexOf(k)<0&&navModules(current).indexOf(k)<0){ showModules(); return; }
+  if(APPMODE==='base') BASE_STASH=Object.assign({},FILES); else if(APPMODE==='rel'){ REL_STASH=Object.assign({},FILES); REL_STASH_SCOPE=REL_SCOPE; } // trocou de módulo direto pela barra
   APPMODE=''; hideAllScreens(); SIDE.ativo=k; sideRender();
   $('modules').style.display='none';
-  if(k==='relatorios'){ enterRelatorios(current); }
+  if(k==='relatorios'){ REL_SCOPE=''; enterRelatorios(current); }
+  else if(k==='expedicao'){ expAbrir(EXP_ABA&&(EXP_ABA!=='estoque'||userModules(current).indexOf('estoque')>=0)&&(EXP_ABA==='estoque'||_temExpRel(current))?EXP_ABA:(_temExpRel(current)?'rel':'estoque')); }
   else if(k==='producao'){ $('modProd').style.display='flex'; enterProd(); }
   else if(k==='gestao'){ $('modGest').style.display='flex'; enterGest(); }
   else if(k==='orcamento'){ if(!isAdmin(current)){ showModules(); return; } $('modOrc').style.display='block'; orcEnter(); }
@@ -2411,7 +2420,7 @@ async function loadPublished(){
       var pe=$('pubProg'); if(pe) pe.textContent=PUB.prog; });
     var built={}; Object.keys(got).forEach(function(k){ var arr=got[k].filter(Boolean); if(arr.length) built[k]=isMulti(k)?arr:arr[0]; });
     PUB.prog=''; pruneBlobCache(man);
-    if(APPMODE!=='rel'){ REL_STASH=built; Object.keys(applied).forEach(function(k){delete applied[k];}); return; } // saiu do módulo durante o download
+    if(APPMODE!=='rel'){ REL_STASH=built; REL_STASH_SCOPE=REL_SCOPE; Object.keys(applied).forEach(function(k){delete applied[k];}); return; } // saiu do módulo durante o download
     Object.keys(FILES).forEach(function(k){delete FILES[k];}); Object.keys(applied).forEach(function(k){delete applied[k];});
     Object.assign(FILES,built); PUB.files=built;
     await locLoad(); applyLocal(man);
@@ -5056,8 +5065,8 @@ window.addEventListener('appinstalled',function(){ APP_PROMPT=null; appInstallUI
 if('serviceWorker' in navigator&&/^https:|^http:\/\/localhost/.test(location.href)&&!SNAP_MODE) window.addEventListener('load',function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); appInstallUI(); });
 
 /* ===== barra lateral ===== */
-var SIDE={ativo:'inicio'}, SIDE_SUB={relatorios:'nav',producao:'prodNav',gestao:'gestNav',processos:'procNav'};
-var SIDE_NOME={processos:'Processos',relatorios:'Relatórios',producao:'Programação',gestao:'Gestão',faccao:'Facção',estoque:'Estoque',base:'Base de Dados',orcamento:'Orçamento 2027',usuarios:'Configurações'};
+var SIDE={ativo:'inicio'}, SIDE_SUB={relatorios:'nav',producao:'prodNav',gestao:'gestNav',processos:'procNav',expedicao:'expNav'};
+var SIDE_NOME={expedicao:'Expedição',processos:'Processos',relatorios:'Relatórios',producao:'Programação',gestao:'Gestão',faccao:'Facção',estoque:'Estoque',base:'Base de Dados',orcamento:'Orçamento 2027',usuarios:'Configurações'};
 var SIDE_ICO=(function(){ var w=function(d){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'+d+'</svg>'; };
   return { inicio:w('<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>'),
     relatorios:w('<path d="M3 3v18h18"/><path d="M8 17v-5M13 17V8M18 17v-9"/>'),
@@ -5067,6 +5076,7 @@ var SIDE_ICO=(function(){ var w=function(d){ return '<svg viewBox="0 0 24 24" fi
     estoque:w('<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>'),
     base:w('<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/>'),
     orcamento:w('<path d="M22 7 13.5 15.5 8.5 10.5 2 17"/><path d="M16 7h6v6"/>'),
+    expedicao:w('<path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>'),
     processos:w('<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/><path d="M9 7h7M9 11h5"/>'),
     usuarios:w('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/>') }; })();
 function sideOn(){ return !!(current&&!SNAP_MODE); }
@@ -5076,7 +5086,7 @@ function sideRender(){
   if(!sideOn()){ document.body.classList.remove('hasSide','sideOpen'); return; }
   document.body.classList.add('hasSide');
   Object.keys(SIDE_SUB).forEach(function(k){ var e=$(SIDE_SUB[k]); if(e&&e.parentNode!==hold) hold.appendChild(e); });
-  var mods=userModules(current); if(APP_MODE) mods=mods.filter(function(k){ return APP_MODULES.indexOf(k)>=0; });
+  var mods=navModules(current); if(APP_MODE) mods=mods.filter(function(k){ return APP_MODULES.indexOf(k)>=0; });
   var temCfg=mods.indexOf('usuarios')>=0, lista=mods.filter(function(k){ return k!=='usuarios'; });
   var alerta=function(k){ try{ if(k==='gestao'&&_concStatus('gest').atraso) return _concIcone(); }catch(e){} return ''; };
   var item=function(k){ return '<button type="button" class="sideItem'+(SIDE.ativo===k?' on':'')+'" data-k="'+k+'">'+(SIDE_ICO[k]||'')+'<span>'+(k==='inicio'?'Início':SIDE_NOME[k]||(MODMETA[k]&&MODMETA[k].name)||k)+'</span><span class="sideAl">'+alerta(k)+'</span></button>'
@@ -5365,6 +5375,21 @@ function procDocHTML(d){ var x=d.x||{}, T=x.tables||[], tipo=d.tipo, h='', sub=[
   if(x.fotos&&x.fotos.length) corpo+='<div style="height:12px"></div><div style="'+_pCard+';padding:14px 16px">'+_pSecTit('Fotos e exemplos','#a8a299')+'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">'
     +x.fotos.map(function(f){ return '<img class="procFoto" data-n="'+_pE(f)+'" alt="" style="width:100%;height:auto;max-height:420px;object-fit:contain;display:block;border-radius:9px;background:var(--bg);border:1px solid var(--line);cursor:zoom-in">'; }).join('')+'</div></div>';
   return h+(corpo||'<div style="color:var(--muted)">Página sem conteúdo.</div>'); }
+/* ===== módulo Expedição: relatório de expedição (vem dos Relatórios) + localização do estoque ===== */
+var EXP_ABA='';
+function expNavRender(){ var nav=$('expNav'); if(!nav) return; var it=[];
+  if(_temExpRel(current)){ it.push(['rel','Relatório de expedição']); if(canLocalUp(current)||isAdmin(current)) it.push(['dados','Dados do relatório']); }
+  if(userModules(current).indexOf('estoque')>=0) it.push(['estoque','Localização do estoque']);
+  nav.innerHTML=it.map(function(x){ return '<button class="'+(EXP_ABA===x[0]?'active':'')+'" data-a="'+x[0]+'">'+x[1]+'</button>'; }).join('');
+  nav.querySelectorAll('button').forEach(function(b){ b.onclick=function(){ expAbrir(b.getAttribute('data-a')); }; }); }
+function expAbrir(aba){ EXP_ABA=aba; SIDE.ativo='expedicao';
+  if(aba==='estoque'){ if(APPMODE==='rel'){ REL_STASH=Object.assign({},FILES); REL_STASH_SCOPE=REL_SCOPE; } else if(APPMODE==='base') BASE_STASH=Object.assign({},FILES);
+    APPMODE=''; hideAllScreens(); sideRender(); estEnter(); }
+  else { var jaNoRel=APPMODE==='rel'&&REL_SCOPE==='exp'&&$('app').style.display!=='none';
+    if(!jaNoRel){ hideAllScreens(); REL_SCOPE='exp'; enterRelatorios(current); }
+    sideRender();
+    if(aba==='dados') showBase(); else if(Object.keys(FILES).length) openPanel('expedicao'); }
+  expNavRender(); }
 function startApp(user){ current=user; if(typeof SNAP_MODE!=='undefined'&&SNAP_MODE){ enterRelatorios(user); return; } showModules(); try{ ckSyncStart(); }catch(e){} }
 (function(){
   var nb=document.getElementById('newUserBtn'); if(nb)nb.onclick=function(){ openUserForm(null); };
@@ -5384,7 +5409,7 @@ function startApp(user){ current=user; if(typeof SNAP_MODE!=='undefined'&&SNAP_M
   document.querySelectorAll('.backMod').forEach(function(b){ b.onclick=function(){ showModules(); }; });
 }());
 
-var REL_STASH=null;
+var REL_STASH=null, REL_STASH_SCOPE='', REL_SCOPE='';
 function resetAppFiles(stash){
   Object.keys(FILES).forEach(k=>delete FILES[k]);
   if(stash) Object.assign(FILES,stash);
@@ -5399,7 +5424,7 @@ function showAppShell(user){
   var _tm=$('toModules'); if(_tm)_tm.style.display=(SNAP_MODE?'none':'');
 }
 function enterRelatorios(user){
-  var resume=(!SNAP_MODE&&REL_STASH!==null);
+  var resume=(!SNAP_MODE&&REL_STASH!==null&&REL_STASH_SCOPE===REL_SCOPE);
   APPMODE='rel'; showAppShell(user);
   if(resume){ resetAppFiles(REL_STASH); }
   else { resetAppFiles(null); Object.keys(applied).forEach(k=>delete applied[k]); }
