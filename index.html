@@ -5725,7 +5725,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
   $('kbSem').onchange=function(){ KB.f.sem=this.value; kbRender(); }; $('kbVisao').onchange=function(){ KB.visao=this.value; try{ localStorage.setItem('kb_visao',this.value); }catch(e){} kbRender(); };
   $('kbExp').onclick=function(){ KB.exp=!KB.exp; kbRender(); }; if($('kbVerDiv')) $('kbVerDiv').onclick=function(){ KB.f.fatst='div'; kbRender(); }; if($('kbBoxAtr')) $('kbBoxAtr').onclick=function(){ KB.f.atr=!KB.f.atr; kbRender(); };
   if($('kbVerBol')) $('kbVerBol').onclick=function(){ KB.f.bol='atraso'; kbRender(); };
-  host.querySelectorAll('.kbBolOk').forEach(function(b){ b.addEventListener('click',function(ev){ ev.stopPropagation(); b.disabled=true; b.textContent='Salvando…'; kbBolEmitido(b.getAttribute('data-n')); }); b.addEventListener('mousedown',function(ev){ ev.stopPropagation(); }); }); if($('kbBackup')) $('kbBackup').onclick=kbBackup; if($('kbDifMail')) $('kbDifMail').onclick=function(){ kbDifalEmail(_calISO(new Date())); }; host.querySelectorAll('.kbBkAgora').forEach(function(x){ x.onclick=kbBackup; }); if($('kbLimpa')) $('kbLimpa').onclick=function(){ KB.f={}; KB.q=''; kbRender(); };
+  host.querySelectorAll('.kbBolOk').forEach(function(b){ b.addEventListener('click',function(ev){ ev.stopPropagation(); var nb=b.getAttribute('data-n'); kbQuem('fat',nb,function(){ b.disabled=true; b.textContent='Salvando…'; kbBolEmitido(nb); }); }); b.addEventListener('mousedown',function(ev){ ev.stopPropagation(); }); }); if($('kbBackup')) $('kbBackup').onclick=kbBackup; if($('kbDifMail')) $('kbDifMail').onclick=function(){ kbDifalEmail(_calISO(new Date())); }; host.querySelectorAll('.kbBkAgora').forEach(function(x){ x.onclick=kbBackup; }); if($('kbLimpa')) $('kbLimpa').onclick=function(){ KB.f={}; KB.q=''; kbRender(); };
   // arrastar e soltar
   host.querySelectorAll('.kbCard[draggable]').forEach(function(c){
     c.ondragstart=function(e){ KB.arr=c.getAttribute('data-n'); try{ e.dataTransfer.setData('text/plain',KB.arr); e.dataTransfer.effectAllowed='move'; }catch(x){} c.style.opacity='.45'; };
@@ -5766,10 +5766,10 @@ function kbBackupWB(){ var T=KB._todos||{}, NOME={producao:'A sair: em produçã
       'Faturar':f.fatModo&&f.fatModo!=='tudo'?_kbObsFat({fat:f.fatModo,fatTxt:f.fatTxt}):'Tudo','Nota fiscal':tx(f.nf),'Observações':tx(f.obs),
       'Itens (CPF / transferência)':f.doc==='cpf'?it.map(function(o){ return o.ref+' '+(o.desc||o.cor)+' ['+o.tam.map(function(z){ return z[0]+':'+z[1]; }).join(' ')+'] = '+o.qtd; }).join(' | '):'',
       'Conferência com o relatório 09':(function(){ var c=kbFatConf(n); if(!c) return ''; if(c.st!=='ok') return 'não conferido'; if(c.pend) return 'NF ainda não está no 09'; return c.al.length?'NÃO CONFERE: '+c.al.map(function(a){ return a.t; }).join(' | '):'Confere'+(c.ign?' ('+c.ign+' alerta(s) ignorado(s))':''); })(),
-      'Preenchido por':tx(f.por),'Preenchido em':quando(f.ts)}; });
+      'Feito por (pessoa)':tx(f.quem),'Preenchido por (login)':tx(f.por),'Preenchido em':quando(f.ts)}; });
   var OB=KB.obs||{}, embRows=Object.keys(OB).sort().map(function(n){ var o=OB[n], x=T[n]||{};
     return {'Pedido':n,'Cliente':tx(x.cli||(x.I||{}).cliente),'Coluna no Kanban':x._o?NOMEF[x._mov?x._mov.para:x._o]:'(fora do Kanban agora)','Volumes':_kbObsVol(o),'Quantidade':+o.q||'','Tipo':({CX:'Caixa',PCT:'Pacote',VOL:'Volume'}[o.t]||tx(o.t)),
-      'Envio':o.parc?'Parcial':'Completo','O que vai / o que falta (parcial)':tx(o.parcTxt),'Observação':tx(o.txt),'Preenchido por':tx(o.por),'Preenchido em':quando(o.ts)}; });
+      'Envio':o.parc?'Parcial':'Completo','O que vai / o que falta (parcial)':tx(o.parcTxt),'Observação':tx(o.txt),'Feito por (pessoa)':tx(o.quem),'Preenchido por (login)':tx(o.por),'Preenchido em':quando(o.ts)}; });
   var wb=XLSX.utils.book_new(), add=function(rows,nome,vazio){ var ws=rows.length?XLSX.utils.json_to_sheet(rows,{cellDates:true,dateNF:'dd/mm/yyyy'}):XLSX.utils.aoa_to_sheet([[vazio]]);
     if(rows.length){ var h=Object.keys(rows[0]); ws['!cols']=h.map(function(k){ var w=k.length; rows.slice(0,300).forEach(function(r){ var v=r[k]; w=Math.max(w,v instanceof Date?10:String(v==null?'':v).length); }); return {wch:Math.min(48,w+2)}; }); ws['!autofilter']={ref:ws['!ref']}; }
     XLSX.utils.book_append_sheet(wb,ws,nome); };
@@ -5778,7 +5778,7 @@ function kbBackupWB(){ var T=KB._todos||{}, NOME={producao:'A sair: em produçã
   resumo.push([],['Faturamentos preenchidos',fatRows.length],['  feitos (completos)',fatRows.filter(function(r){ return r['Situação do faturamento']==='Feito'; }).length],['Embalagens preenchidas',embRows.length],['Enviados no Controle (todos)',envH.length],['Movimentos feitos arrastando (estado atual)',mov.length],['Registros no histórico (aba Movimentação)',kbHistLista().length],[],['Observação','Na aba Pedidos, os enviados seguem o período escolhido no Kanban; a aba Enviados (Controle) tem todos os enviados da planilha.']);
   var wr=XLSX.utils.aoa_to_sheet(resumo,{cellDates:true}); wr['!cols']=[{wch:32},{wch:24}]; XLSX.utils.book_append_sheet(wb,wr,'Resumo');
   add(ped,'Pedidos','Nenhum pedido no Kanban.'); add(fatRows,'Faturamento','Nenhum faturamento preenchido ainda.'); add(embRows,'Embalagem','Nenhuma embalagem preenchida ainda.'); add(ops,'OPs','Nenhuma OP.'); add(envH,'Enviados (Controle)','O Controle de liberação não foi lido.');
-  add(kbHistLista().map(function(e){ var x=T[e.n]||{}; return {'Quando':e.ts?_kbQuandoTxt(e.ts):'','Pedido':e.n,'Cliente':tx(e.cli||x.cli),'O que aconteceu':kbHistAcao(e),'De':e.tipo==='mov'?(NOME[e.de]||tx(e.de)):'','Para':e.tipo==='mov'?(NOME[e.para]||tx(e.para)):'','Detalhe':tx(e.det),'Quem':tx(e.por)}; }),'Movimentação','Nenhuma movimentação registrada ainda.');
+  add(kbHistLista().map(function(e){ var x=T[e.n]||{}; return {'Quando':e.ts?_kbQuandoTxt(e.ts):'','Pedido':e.n,'Cliente':tx(e.cli||x.cli),'O que aconteceu':kbHistAcao(e),'De':e.tipo==='mov'?(NOME[e.de]||tx(e.de)):'','Para':e.tipo==='mov'?(NOME[e.para]||tx(e.para)):'','Detalhe':tx(e.det),'Área':tx(e.area),'Pessoa':tx(e.quem),'Login':tx(e.por)}; }),'Movimentação','Nenhuma movimentação registrada ainda.');
   var cnt={}; ['producao','pronto','emb','env'].forEach(function(c){ cnt[c]=ped.filter(function(r){ return r['Coluna no Kanban']===NOME[c]; }).length; });
   return {wb:wb,n:ped.length,cnt:cnt,ops:ops.length,mov:mov.length}; }
 function kbBackup(){ var bts=[].slice.call(document.querySelectorAll('#kbBackup,.kbBkAgora')), volta=function(){ bts.forEach(function(x){ x.disabled=false; x.textContent='📦 Criar backup agora'; }); };
@@ -5855,7 +5855,7 @@ function kbObsDetalhe(x){ var o=(KB.obs||{})[x.n], f=x._mov?x._mov.para:x._o; if
   var l=function(r,v){ return v?'<div style="display:flex;gap:10px;padding:4px 0;font-size:13px"><span style="color:var(--muted);min-width:100px">'+r+'</span><span style="color:var(--ink)">'+uEsc(v)+'</span></div>':''; };
   return '<div style="margin-top:12px;padding:10px 12px;border:1px solid rgba(217,154,82,.45);background:rgba(217,154,82,.07);border-radius:10px">'
     +'<div style="display:flex;align-items:center;gap:8px"><b style="flex:1;color:#d99a52;font-size:13px">📦 Embalagem</b>'+(kbPodeMover()?'<button class="ubtn" id="kbObsEd" style="padding:5px 10px;font-size:12.5px">'+(o?'Editar':'Preencher')+'</button>':'')+'</div>'
-    +(o?l('Volumes',_kbObsVol(o))+l('Envio',o.parc?'Parcial'+(o.parcTxt?' — '+o.parcTxt:''):'Completo')+l('Faturamento',_kbObsFat(o))+l('Observação',o.txt)+l('Preenchido',(o.por||'')+(o.ts?' em '+_kbQuandoTxt(o.ts):''))
+    +(o?l('Volumes',_kbObsVol(o))+l('Envio',o.parc?'Parcial'+(o.parcTxt?' — '+o.parcTxt:''):'Completo')+l('Faturamento',_kbObsFat(o))+l('Observação',o.txt)+l('Preenchido',(o.quem?o.quem+' (login '+(o.por||'')+')':(o.por||''))+(o.ts?' em '+_kbQuandoTxt(o.ts):''))
       :'<div style="font-size:12.5px;color:var(--muted);margin-top:4px">Ainda não preenchido.'+(x.vol?' Na planilha: '+uEsc(String(x.vol).trim()):'')+'</div>')+'</div>'; }
 function kbObsEditar(n,doArrasto){ var x=KB._todos&&KB._todos[n]; if(!x) return; if(!kbPodeMover()){ alert('Para preencher a embalagem, este computador precisa do token do GitHub. Fale com o administrador.'); return; }
   var o=(KB.obs||{})[n]||{q:1,t:'CX',parc:false,fat:'tudo'}, z=$('kbObsM');
@@ -5865,7 +5865,7 @@ function kbObsEditar(n,doArrasto){ var x=KB._todos&&KB._todos[n]; if(!x) return;
   var tit=function(t){ return '<div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin:14px 0 6px">'+t+'</div>'; };
   var planilha=x.vol?String(x.vol).trim():'';
   z.innerHTML='<div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;max-width:520px;width:100%;padding:18px 20px">'
-    +'<div style="font-size:12px;color:var(--muted)">'+(doArrasto?'Movido para Em embalagem':'Embalagem')+'</div><div style="font-size:19px;font-weight:650;color:var(--ink)">📦 Pedido #'+uEsc(n)+'</div><div style="font-size:13.5px;color:var(--ink)">'+uEsc(x.cli||'')+'</div>'
+    +'<div style="font-size:12px;color:var(--muted)">'+(doArrasto?'Movido para Em embalagem':'Embalagem')+(kbQuemDe('emb',n)?' · fazendo: <b style="color:var(--ink)">'+uEsc(kbQuemDe('emb',n))+'</b>':'')+'</div><div style="font-size:19px;font-weight:650;color:var(--ink)">📦 Pedido #'+uEsc(n)+'</div><div style="font-size:13.5px;color:var(--ink)">'+uEsc(x.cli||'')+'</div>'
     +(planilha?'<div style="font-size:12px;color:var(--muted);margin-top:4px">Na planilha: '+uEsc(planilha)+'</div>':'')
     +tit('Volumes')+'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input id="obQ" type="number" min="1" max="999" value="'+(+o.q||1)+'" style="'+inp+';width:80px;text-align:center;font-weight:700">'+KB_OBS_TIPOS.map(function(t){ return pill('obT',t[0],t[1],o.t===t[0]); }).join('')+'</div>'
     +tit('Envio')+'<div style="display:flex;gap:8px;flex-wrap:wrap">'+pill('obP','0','Completo',!o.parc)+pill('obP','1','⚠ Parcial',!!o.parc)+'</div>'
@@ -5881,7 +5881,7 @@ function kbObsEditar(n,doArrasto){ var x=KB._todos&&KB._todos[n]; if(!x) return;
   if($('obApagar')) $('obApagar').onclick=function(){ if(!confirm('Apagar os dados de embalagem do pedido #'+n+'?')) return; fechar(); kbObsSalvar(n,null,0); };
   $('obSalvar').onclick=function(){ var q=Math.round(+$('obQ').value||0), t=val('obT');
     if(!t){ $('obErr').textContent='Escolha Caixa, Pacote ou Volume.'; return; } if(q<1){ $('obErr').textContent='Informe quantos volumes.'; return; }
-    var v={q:q,t:t,parc:val('obP')==='1',parcTxt:($('obPT').value||'').trim(),fat:o.fat||'tudo',fatTxt:o.fatTxt||'',txt:($('obTx').value||'').trim(),ts:Date.now(),por:(current&&current.name)||currentUserKey||''};
+    var v={q:q,t:t,parc:val('obP')==='1',parcTxt:($('obPT').value||'').trim(),fat:o.fat||'tudo',fatTxt:o.fatTxt||'',txt:($('obTx').value||'').trim(),ts:Date.now(),por:(current&&current.name)||currentUserKey||'',quem:kbQuemDe('emb',n)};
     if(!v.parc) v.parcTxt='';
     fechar(); kbObsSalvar(n,v,0); };
   setTimeout(function(){ try{ $('obQ').select(); }catch(e){} },30); }
@@ -5900,7 +5900,7 @@ function kbBolCard(x){ var f=(KB.fat||{})[x.n]; if(!f||f.boleto!=='emitir') retu
   return '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;border:1px solid '+(atr?'rgba(229,72,77,.6)':'rgba(245,165,36,.5)')+';background:'+(atr?'rgba(229,72,77,.10)':'rgba(245,165,36,.08)')+';border-radius:8px;padding:4px 8px;font-size:12px">'
     +'<span style="color:'+(atr?'#e5484d':'#f5a524')+';font-weight:700">'+(atr?'⚠ Boleto não emitido há '+(h>=48?Math.floor(h/24)+' dias':h+'h'):'🧾 Boleto a emitir')+'</span><span style="color:var(--ink)">— já foi emitido?</span>'
     +(kbPodeMover()?'<button class="ubtn kbBolOk" data-n="'+uEsc(x.n)+'" style="padding:2px 9px;font-size:11.5px">Sim, emitido</button>':'')+'</div>'; }
-function kbBolEmitido(n){ var f=(KB.fat||{})[n]; if(!f) return; kbFatSalvar(n,Object.assign({},f,{boleto:'emitido',bolEm:Date.now(),ts:Date.now(),por:(current&&current.name)||currentUserKey||''}),0); }
+function kbBolEmitido(n){ var f=(KB.fat||{})[n]; if(!f) return; kbFatSalvar(n,Object.assign({},f,{boleto:'emitido',bolEm:Date.now(),ts:Date.now(),por:(current&&current.name)||currentUserKey||'',quem:kbQuemDe('fat',n)||f.quem||''}),0); }
 function kbFatCard(x){ var f=(KB.fat||{})[x.n], nf=f?String(f.nf||'').trim():''; // o checklist é controle de quem fatura; no cartão vai só a NF emitida (o alerta do 09) e a pergunta do boleto
   var bol=kbBolCard(x); if(!nf) return bol; var al=kbFatAlertas(x.n), cor=al.length?'#f5a524':'#4ecb8f';
   return bol+'<div style="display:flex;gap:4px;flex-wrap:wrap"><span title="'+uEsc(al.length?'Não confere com o relatório 09: '+al.map(function(a){ return a.t; }).join(' | '):'Nota fiscal emitida')+'" style="font-size:11.5px;font-weight:700;color:'+cor+';background:rgba(255,255,255,.04);border:1px solid '+(al.length?'rgba(245,165,36,.6)':'var(--line)')+';border-radius:6px;padding:1px 6px">'+(al.length?'⚠ ':'')+'NF '+uEsc(nf)+'</span></div>'; }
@@ -5910,7 +5910,7 @@ function kbFatDetalhe(x){ var f=(KB.fat||{})[x.n], fase=x._mov?x._mov.para:x._o;
   return '<div style="margin-top:12px;padding:10px 12px;border:1px solid rgba(90,160,208,.45);background:rgba(90,160,208,.07);border-radius:10px">'
     +'<div style="display:flex;align-items:center;gap:8px"><b style="flex:1;color:#5aa0d0;font-size:13px">🧾 Faturamento</b>'+(kbPodeMover()?'<button class="ubtn" id="kbFatEd" style="padding:5px 10px;font-size:12.5px">'+(f?'Editar':'Preencher')+'</button>':'')+'</div>'
     +(f?l('Código do cliente',f.cod)+l('Forma de envio',f.envio)+l('RI',sn(f.ri))+l('CNPJ/CPF',f.doc?f.doc.toUpperCase():'')+l('IE',sn(f.ie))+l('DIFAL',f.difal==='diario'?'Diário':f.difal==='mensal'||f.difal==='sim'?'Mensal':f.difal==='nao'?'Não tem':'')+l('Simples faturamento',{nao:'Não precisa',fazer:'A fazer',feita:'✓ Feita'}[f.simples]||'')+l('Boleto',f.boleto==='emitir'?'A emitir (marcado em '+_kbQuandoTxt(f.bolTs||f.ts)+(kbBolAtrasado(f)?' — ⚠ há mais de 24h':'')+')':f.boleto==='emitido'?'✓ Emitido'+(f.bolEm?' em '+_kbQuandoTxt(f.bolEm):''):({nao:'Não tem'}[f.boleto]||''))
-        +l('Faturar',f.fatModo&&f.fatModo!=='tudo'?_kbObsFat({fat:f.fatModo,fatTxt:f.fatTxt}):'')+l('Nota fiscal',f.nf)+(String(f.nf||'').trim()?kbFatConfHTML(x):'')+l('Observação',f.obs)+(f.doc==='cpf'?'<div style="margin-top:6px">'+kbItensHTML(x.n,x,true)+'</div>':'')+l('Preenchido',(f.por||'')+(f.ts?' em '+_kbQuandoTxt(f.ts):''))
+        +l('Faturar',f.fatModo&&f.fatModo!=='tudo'?_kbObsFat({fat:f.fatModo,fatTxt:f.fatTxt}):'')+l('Nota fiscal',f.nf)+(String(f.nf||'').trim()?kbFatConfHTML(x):'')+l('Observação',f.obs)+(f.doc==='cpf'?'<div style="margin-top:6px">'+kbItensHTML(x.n,x,true)+'</div>':'')+l('Preenchido',(f.quem?f.quem+' (login '+(f.por||'')+')':(f.por||''))+(f.ts?' em '+_kbQuandoTxt(f.ts):''))
       :'<div style="font-size:12.5px;color:var(--muted);margin-top:4px">Ainda não preenchido.</div>')+'</div>'; }
 /* Itens do pedido (referência, cor, tamanhos e quantidades) vêm do 01 – Ops com pedidos (P1..P10 = quantidades, T1..T10 = tamanhos).
    O código do cliente vem da coluna "Cód" dos pedidos (02 em aberto, 03 pronta entrega e 12 aprovados). Lido uma vez, sob demanda. */
@@ -6044,7 +6044,7 @@ function kbFatEditar(n){ var x=KB._todos&&KB._todos[n]; if(!x) return;
   var lin=function(t,h,dica){ return '<div style="display:grid;grid-template-columns:150px 1fr;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line)"><div style="font-size:13px;font-weight:600;color:var(--ink)">'+t+(dica?'<div style="font-size:11px;font-weight:400;color:var(--muted)">'+dica+'</div>':'')+'</div><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'+h+'</div></div>'; };
   var outro=f.envio&&KB_ENVIOS.indexOf(f.envio)<0;
   z.innerHTML='<div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;max-width:620px;width:100%;padding:18px 20px">'
-    +'<div style="font-size:12px;color:var(--muted)">Checklist do faturamento</div><div style="font-size:19px;font-weight:650;color:var(--ink)">🧾 Pedido #'+uEsc(n)+'</div><div style="font-size:13.5px;color:var(--ink)">'+uEsc(x.cli||'')+'</div>'
+    +'<div style="font-size:12px;color:var(--muted)">Checklist do faturamento'+(kbQuemDe('fat',n)?' · fazendo: <b style="color:var(--ink)">'+uEsc(kbQuemDe('fat',n))+'</b>':'')+'</div><div style="font-size:19px;font-weight:650;color:var(--ink)">🧾 Pedido #'+uEsc(n)+'</div><div style="font-size:13.5px;color:var(--ink)">'+uEsc(x.cli||'')+'</div>'
     +(ob.t?'<div style="font-size:12px;color:var(--muted);margin-top:4px">Embalagem: '+uEsc(kbObsTxt(ob))+'</div>':'')
     +'<div style="margin-top:10px">'
     +lin('Código do cliente','<input id="fCod" value="'+uEsc(f.cod||'')+'" placeholder="ex.: 5539" style="'+inp+';width:160px">'+((KB.codCli||{})[n]?'<span style="font-size:11.5px;color:var(--muted)">no sistema: '+uEsc(KB.codCli[n])+'</span>':''))
@@ -6074,19 +6074,21 @@ function kbFatEditar(n){ var x=KB._todos&&KB._todos[n]; if(!x) return;
   $('fCanc').onclick=fechar; z.onclick=function(e){ if(e.target===z) fechar(); };
   if($('fApagar')) $('fApagar').onclick=function(){ if(!confirm('Apagar o checklist de faturamento do pedido #'+n+'?')) return; fechar(); kbFatSalvar(n,null,0); };
   $('fSalvar').onclick=function(){ var env=val('fEnv'); if(env==='__outro') env=($('fEnvO').value||'').trim().toUpperCase();
-    var v={cod:($('fCod').value||'').trim(),envio:env,ri:val('fRi'),doc:val('fDoc'),ie:val('fIe'),difal:val('fDif'),simples:val('fSimp'),boleto:val('fBol'),fatModo:val('fFat')||'tudo',fatTxt:($('fFatT').value||'').trim(),nf:($('fNf').value||'').trim(),obs:($('fObs').value||'').trim(),ts:Date.now(),por:(current&&current.name)||currentUserKey||''};
+    var v={cod:($('fCod').value||'').trim(),envio:env,ri:val('fRi'),doc:val('fDoc'),ie:val('fIe'),difal:val('fDif'),simples:val('fSimp'),boleto:val('fBol'),fatModo:val('fFat')||'tudo',fatTxt:($('fFatT').value||'').trim(),nf:($('fNf').value||'').trim(),obs:($('fObs').value||'').trim(),ts:Date.now(),por:(current&&current.name)||currentUserKey||'',quem:kbQuemDe('fat',n)};
     if(v.nf) v.nfTs=(f0&&_kbNfNum(f0.nf)===_kbNfNum(v.nf)&&f0.nfTs)||Date.now();
     if(v.boleto==='emitir') v.bolTs=(f0&&f0.boleto==='emitir'&&f0.bolTs)||Date.now(); if(v.boleto==='emitido') v.bolEm=(f0&&f0.boleto==='emitido'&&f0.bolEm)||Date.now();
     if(v.fatModo==='tudo') v.fatTxt=''; else if(!v.fatTxt){ $('fErr').textContent='Diga quais referências '+(v.fatModo==='nao'?'não faturar':'faturar')+'.'; return; }
     fechar(); kbFatSalvar(n,v,0); };
   setTimeout(function(){ try{ $('fCod').focus(); }catch(e){} },30); }
 async function kbFatSalvar(n,val,tent){ var key=_kbKey(); if(!key||!ghToken()) return;
-  if(!tent){ var _x=(KB._todos||{})[n]||{}, _p=(KB.fat||{})[n], _al=kbFatAlertas(n), _nf0=_p?_kbNfNum(_p.nf):'', _nf1=val?_kbNfNum(val.nf):'';
+  if(!tent){ var _x=(KB._todos||{})[n]||{}, _p=(KB.fat||{})[n], _al=kbFatAlertas(n), _nf0=_p?_kbNfNum(_p.nf):'', _nf1=val?_kbNfNum(val.nf):'', _q=(val&&val.quem)||kbQuemDe('fat',n), _ha=kbHistAdd;
+    kbHistAdd=function(e){ e.area='Faturamento'; if(_q) e.quem=_q; return _ha(e); };
     kbHistAdd({n:n,cli:_x.cli,tipo:'fat',acao:val?(_p?'editado':'preenchido'):'apagado',det:val?kbFatTxt(val):''});
     if(val&&val.boleto==='emitido'&&!(_p&&_p.boleto==='emitido')) kbHistAdd({n:n,cli:_x.cli,tipo:'boleto',acao:'emitido',det:'Boleto emitido'+(val.nf?' · NF '+val.nf:'')});
     if(val&&val.boleto==='emitir'&&!(_p&&_p.boleto==='emitir')) kbHistAdd({n:n,cli:_x.cli,tipo:'boleto',acao:'a emitir',det:'Boleto marcado para emitir'});
     if(_nf1&&_nf1!==_nf0) kbHistAdd({n:n,cli:_x.cli,tipo:'nf',acao:_nf0?'trocada':'lançada',det:'NF '+_nf1+(_nf0?' (antes NF '+_nf0+')':'')});
-    if(_al.length) kbHistAdd({n:n,cli:_x.cli,tipo:'alerta',acao:'corrigido',det:'Faturamento editado com alerta aberto: '+_al.map(function(a){ return a.t; }).join(' | ')}); }
+    if(_al.length) kbHistAdd({n:n,cli:_x.cli,tipo:'alerta',acao:'corrigido',det:'Faturamento editado com alerta aberto: '+_al.map(function(a){ return a.t; }).join(' | ')});
+    kbHistAdd=_ha; }
   if(!tent){ KB.fat=KB.fat||{}; if(val) KB.fat[n]=val; else delete KB.fat[n]; KB.salvo={ok:true,t:'Salvando o faturamento…'}; kbRender(); }
   while(KB_SYNC) await new Promise(function(r){ setTimeout(r,400); });
   KB_SYNC=true; var outra=false;
@@ -6108,7 +6110,7 @@ async function kbFatSalvar(n,val,tent){ var key=_kbKey(); if(!key||!ghToken()) r
   if(outra) return kbFatSalvar(n,val,tent+1);
   kbRender(); setTimeout(function(){ if(KB.salvo&&KB.salvo.ok){ KB.salvo=null; kbRender(); } },4000); }
 async function kbObsSalvar(n,val,tent){ var key=_kbKey(); if(!key||!ghToken()) return;
-  if(!tent){ var _x=(KB._todos||{})[n]||{}; kbHistAdd({n:n,cli:_x.cli,tipo:'emb',acao:val?((KB.obs||{})[n]?'editada':'preenchida'):'apagada',det:val?kbObsTxt(val):''}); }
+  if(!tent){ var _x=(KB._todos||{})[n]||{}; kbHistAdd({n:n,cli:_x.cli,tipo:'emb',area:'Embalagem',quem:(val&&val.quem)||kbQuemDe('emb',n),acao:val?((KB.obs||{})[n]?'editada':'preenchida'):'apagada',det:val?kbObsTxt(val):''}); }
   if(!tent){ KB.obs=KB.obs||{}; if(val) KB.obs[n]=val; else delete KB.obs[n]; KB.salvo={ok:true,t:'Salvando a embalagem…'}; kbRender(); }
   while(KB_SYNC) await new Promise(function(r){ setTimeout(r,400); });
   KB_SYNC=true; var outra=false;
@@ -6132,7 +6134,7 @@ async function kbObsSalvar(n,val,tent){ var key=_kbKey(); if(!key||!ghToken()) r
 /* ===== Histórico de movimentações: tudo o que se faz no Kanban (arrastar, embalagem, faturamento, NF, alertas, backup).
    Guardado em exp/kanban.json (g.hist, cifrado, vale para todos). Vai no backup na aba "Movimentação". */
 var KB_FASE={producao:'A sair: em produção',pronto:'Pronto para envio',emb:'Em embalagem',env:'Enviado'};
-function kbHistAdd(e){ e.id=Date.now().toString(36)+Math.random().toString(36).slice(2,7); e.ts=e.ts||Date.now(); e.por=e.por||(current&&current.name)||currentUserKey||''; e.n=String(e.n==null?'':e.n); if(e.cli==null) delete e.cli;
+function kbHistAdd(e){ if(!e.quem) delete e.quem; if(!e.area) delete e.area; e.id=Date.now().toString(36)+Math.random().toString(36).slice(2,7); e.ts=e.ts||Date.now(); e.por=e.por||(current&&current.name)||currentUserKey||''; e.n=String(e.n==null?'':e.n); if(e.cli==null) delete e.cli;
   KB.histQ=KB.histQ||[]; KB.histQ.push(e); KB.hist=(KB.hist||[]).concat([e]); }
 function _kbHistFlush(g){ var h=g.hist||[];
   if(!g.histIni){ // primeira vez: traz o que já existia (movimentos, embalagens, faturamentos e último backup)
@@ -6158,9 +6160,9 @@ function kbHistLista(){ var h=(KB.hist||[]).slice(); if(!h.length){ var g0={mov:
   return h.sort(function(a,b){ return (b.ts||0)-(a.ts||0); }); }
 function kbHistRender(host){ var H=kbHistLista(), F=KB.hf||(KB.hf={}), T=KB._todos||{};
   var cliDe=function(e){ return e.cli||((T[e.n]||{}).cli)||''; };
-  var quem=[]; H.forEach(function(e){ if(e.por&&quem.indexOf(e.por)<0) quem.push(e.por); }); quem.sort();
+  var quem=[]; H.forEach(function(e){ var w=e.quem||e.por; if(w&&quem.indexOf(w)<0) quem.push(w); }); quem.sort();
   var q=_en(F.q||''), de=F.de?new Date(F.de+'T00:00:00').getTime():0, ate=F.ate?new Date(F.ate+'T23:59:59').getTime():0;
-  var L=H.filter(function(e){ if(q&&_en(e.n+' '+cliDe(e)+' '+(e.det||'')).indexOf(q)<0) return false; if(F.por&&e.por!==F.por) return false;
+  var L=H.filter(function(e){ if(q&&_en(e.n+' '+cliDe(e)+' '+(e.det||'')).indexOf(q)<0) return false; if(F.por&&(e.quem||e.por)!==F.por) return false;
     if(F.et){ if(F.et.indexOf('mov:')===0){ if(e.tipo!=='mov'||e.para!==F.et.slice(4)) return false; } else if(F.et==='mov'){ if(e.tipo!=='mov') return false; } else if(e.tipo!==F.et) return false; }
     if(de&&(e.ts||0)<de) return false; if(ate&&(e.ts||0)>ate) return false; return true; });
   var sel=function(id,val,ops){ return '<select id="'+id+'" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+ops.map(function(o){ return '<option value="'+uEsc(o[0])+'"'+((val||'')===o[0]?' selected':'')+'>'+uEsc(o[1])+'</option>'; }).join('')+'</select>'; };
@@ -6181,7 +6183,7 @@ function kbHistRender(host){ var H=kbHistLista(), F=KB.hf||(KB.hf={}), T=KB._tod
       +'<span style="font-size:12.5px;color:var(--muted);margin-left:auto">'+L.length+' registro'+(L.length===1?'':'s')+'</span></div>'
     +(H.length?'<div style="background:var(--surface2);border:1px solid var(--line);border-radius:12px;overflow:auto;max-height:calc(100vh - 260px)"><table style="width:100%;border-collapse:collapse"><thead><tr>'+['Quando','Pedido','Cliente','O que aconteceu','Detalhe','Quem'].map(function(h){ return '<th style="'+th+'">'+h+'</th>'; }).join('')+'</tr></thead><tbody>'
       +L.slice(0,MAX).map(function(e){ return '<tr><td style="'+td+';white-space:nowrap">'+(e.ts?_kbQuandoTxt(e.ts):'—')+'</td><td style="'+td+';font-weight:700">'+(e.n?'#'+uEsc(e.n):'—')+'</td><td style="'+td+'">'+uEsc(cliDe(e))+'</td>'
-        +'<td style="'+td+'"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+(cor[e.tipo]||'#888')+';margin-right:6px"></span>'+uEsc(kbHistAcao(e))+'</td><td style="'+td+';color:var(--muted);font-size:12.5px;max-width:420px">'+uEsc(e.det||'')+'</td><td style="'+td+'">'+uEsc(e.por||'')+'</td></tr>'; }).join('')
+        +'<td style="'+td+'"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+(cor[e.tipo]||'#888')+';margin-right:6px"></span>'+uEsc(kbHistAcao(e))+'</td><td style="'+td+';color:var(--muted);font-size:12.5px;max-width:420px">'+uEsc(e.det||'')+'</td><td style="'+td+'">'+(e.quem?'<b>'+uEsc(e.quem)+'</b>'+(e.area?' <span style="color:var(--muted);font-size:12px">· '+uEsc(e.area)+'</span>':'')+'<div style="color:var(--muted);font-size:11.5px">login '+uEsc(e.por||'')+'</div>':uEsc(e.por||''))+'</td></tr>'; }).join('')
       +'</tbody></table></div>'+(L.length>MAX?'<div style="font-size:12px;color:var(--muted);margin-top:6px">Mostrando os '+MAX+' mais recentes — use os filtros (o backup traz todos).</div>':'')
       :'<div style="color:var(--muted);font-size:13.5px;padding:20px 0">Ainda não há movimentações registradas.'+(KB.bkLido?'':' Carregando…')+'</div>')
     +'</div>';
@@ -6230,6 +6232,47 @@ function kbDifalEmail(iso){ var old=$('difMailBox'); if(old) old.remove(); if(_c
     try{ await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([txt],{type:'text/plain'})})]); st('✓ E-mail copiado. Agora é só colar no Gmail (Ctrl+V).',1); }
     catch(e){ try{ var r=document.createRange(); r.selectNodeContents(c); var sel=getSelection(); sel.removeAllRanges(); sel.addRange(r); var ok=document.execCommand('copy'); sel.removeAllRanges(); st(ok?'✓ E-mail copiado. Agora é só colar no Gmail (Ctrl+V).':'Não consegui copiar: selecione a mensagem e use Ctrl+C.',ok); }
       catch(x){ st('Não consegui copiar: selecione a mensagem e use Ctrl+C.',0); } } }; }
+/* ===== Quem está fazendo: antes do checklist do Faturamento ou da Embalagem, escolhe a pessoa (o login pode ser compartilhado).
+   A lista de pessoas da expedição fica em exp/kanban.json (g.pessoas) — vale para todos; dá para incluir e tirar nomes aqui mesmo. */
+var KB_PESSOAS_INI=['Valdirene','Alison'];
+KB.quemSel={};
+function kbQuemDe(area,n){ return (KB.quemSel||{})[area+'|'+n]||''; }
+function kbPessoas(){ var L=KB.pessoas&&KB.pessoas.length?KB.pessoas:KB_PESSOAS_INI; return L.slice(); }
+function kbQuem(area,n,cb){ if(!kbPodeMover()){ cb(); return; }
+  var nomeA=area==='fat'?'o faturamento':'a embalagem', ult=''; try{ ult=localStorage.getItem('kb_quem_'+area)||''; }catch(e){}
+  var z=$('kbQuemM'); if(z) z.remove(); z=document.createElement('div'); z.id='kbQuemM'; z.style.cssText='position:fixed;inset:0;z-index:98;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:60px 12px;overflow:auto'; document.body.appendChild(z);
+  var editar=false;
+  var desenha=function(){ var L=kbPessoas();
+    z.innerHTML='<div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;max-width:460px;width:100%;padding:18px 20px">'
+      +'<div style="font-size:12px;color:var(--muted)">Pedido #'+uEsc(n)+'</div><div style="font-size:19px;font-weight:650;color:var(--ink);margin-bottom:12px">Quem está fazendo '+nomeA+'?</div>'
+      +'<div style="display:flex;flex-direction:column;gap:8px">'+L.map(function(p){ return '<div style="display:flex;gap:6px"><button class="ubtn kbQp" data-p="'+uEsc(p)+'" style="flex:1;text-align:left;padding:11px 14px;font-size:15px;'+(p===ult?'border-color:var(--f-green);':'')+'">'+uEsc(p)+(p===ult?' <span style="color:var(--muted);font-size:12px">· última vez</span>':'')+'</button>'+(editar?'<button class="ubtn kbQx" data-p="'+uEsc(p)+'" title="Tirar da lista" style="padding:8px 12px;color:var(--danger)">✕</button>':'')+'</div>'; }).join('')+'</div>'
+      +'<div style="display:flex;gap:8px;margin-top:12px"><input id="kbQnovo" placeholder="Outra pessoa (nome)" style="flex:1;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px"><button class="ubtn" id="kbQadd" style="padding:8px 12px">+ Incluir</button></div>'
+      +'<div style="display:flex;gap:10px;margin-top:12px;align-items:center"><button class="ubtn" id="kbQcanc" style="padding:8px 14px">Cancelar</button><button class="linkbtn" id="kbQed" style="margin-left:auto;font-size:12.5px">'+(editar?'Pronto':'Editar a lista')+'</button></div>'
+      +'<div style="font-size:11.5px;color:var(--muted);margin-top:8px">A pessoa escolhida fica registrada no histórico de movimentações e no backup.</div></div>';
+    var fechar=function(){ z.remove(); };
+    var escolhe=function(p){ KB.quemSel[area+'|'+n]=p; try{ localStorage.setItem('kb_quem_'+area,p); }catch(e){} fechar(); cb(); };
+    z.querySelectorAll('.kbQp').forEach(function(b){ b.onclick=function(){ escolhe(b.getAttribute('data-p')); }; });
+    z.querySelectorAll('.kbQx').forEach(function(b){ b.onclick=function(){ var p=b.getAttribute('data-p'); if(!confirm('Tirar '+p+' da lista da expedição?')) return; kbPessoasSalvar(kbPessoas().filter(function(x){ return x!==p; })); desenha(); }; });
+    $('kbQadd').onclick=function(){ var p=($('kbQnovo').value||'').trim().replace(/\s+/g,' '); if(!p) return; p=p.charAt(0).toUpperCase()+p.slice(1); var L2=kbPessoas(); if(L2.map(function(x){ return x.toLowerCase(); }).indexOf(p.toLowerCase())<0){ L2.push(p); kbPessoasSalvar(L2); } escolhe(p); };
+    $('kbQnovo').onkeydown=function(ev){ if(ev.key==='Enter') $('kbQadd').click(); };
+    $('kbQcanc').onclick=fechar; $('kbQed').onclick=function(){ editar=!editar; desenha(); };
+    z.onclick=function(ev){ if(ev.target===z) fechar(); }; };
+  desenha(); }
+async function kbPessoasSalvar(L,tent){ var key=_kbKey(); KB.pessoas=L.slice(); if(!key||!ghToken()) return; tent=tent||0;
+  while(KB_SYNC) await new Promise(function(r){ setTimeout(r,400); });
+  KB_SYNC=true; var outra=false;
+  try{ var r=await _kbLerRemoto(), g=r.g; g.pessoas=KB.pessoas.slice();
+    var _hf=_kbHistFlush(g);
+    var bl=await gh('/git/blobs',{method:'POST',body:{content:JSON.stringify(await encJSON(key,g)),encoding:'utf-8'}});
+    var body={tree:[{path:KB_PATH,mode:'100644',type:'blob',sha:bl.sha}]}; if(r.sha) body.base_tree=(await gh('/git/commits/'+r.sha)).tree.sha;
+    var tr=await gh('/git/trees',{method:'POST',body:body});
+    var nc=await gh('/git/commits',{method:'POST',body:{message:'Kanban: lista de pessoas da expedição',tree:tr.sha,parents:r.sha?[r.sha]:[]}});
+    try{ if(r.sha) await gh('/git/refs/heads/'+CK_BRANCH,{method:'PATCH',body:{sha:nc.sha,force:false}}); else await gh('/git/refs',{method:'POST',body:{ref:'refs/heads/'+CK_BRANCH,sha:nc.sha}}); }
+    catch(e){ if(e.status===422&&tent<3) outra=true; else throw e; }
+    if(!outra){ KB.hist=g.hist; _kbHistOk(_hf); } }
+  catch(e){}
+  finally{ KB_SYNC=false; }
+  if(outra) return kbPessoasSalvar(L,tent+1); }
 function kbDetalhe(n){ var x=KB._todos&&KB._todos[n]; if(!x) return; if(!KB.itensLido&&(KB.fat||{})[n]&&KB.fat[n].doc==='cpf') kbItensLer().then(function(){ if($('kbDet')) kbDetalhe(n); }); var ops=(KB._ops&&KB._ops[n])||x.ops||[], z=$('kbDet');
   if(!z){ z=document.createElement('div'); z.id='kbDet'; z.style.cssText='position:fixed;inset:0;z-index:96;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:40px 12px;overflow:auto'; document.body.appendChild(z); }
   var fase={producao:'A sair: em produção',pronto:'Pronto para envio',emb:'Em processo de embalagem',env:'Enviado'}[x._mov?x._mov.para:x._o];
@@ -6247,8 +6290,8 @@ function kbDetalhe(n){ var x=KB._todos&&KB._todos[n]; if(!x) return; if(!KB.iten
         +(o.ok?'<span style="color:#4ecb8f;font-weight:600">✓ '+(o.est?'no estoque':'na expedição')+'</span>':'<span style="color:#d99a52;font-weight:600">em produção</span>')+'</div>'; }).join('')
       :'<div style="color:var(--muted);font-size:13px;line-height:1.5">'+(x.pe?'Pronta entrega — sai do estoque, sem OP.':'Nenhuma OP deste pedido aparece no 01 – Ops com pedidos. O relatório de Expedição mostra este caso como <b style="color:var(--ink)">"Na expedição"</b>: confira se ele já está pronto ou se a OP ainda não foi aberta.')+'</div>')+'</div>';
   var fechar=function(){ z.remove(); }; $('kbDetX').onclick=fechar; z.onclick=function(e){ if(e.target===z) fechar(); };
-  if($('kbObsEd')) $('kbObsEd').onclick=function(){ fechar(); kbObsEditar(n,false); };
-  if($('kbFatEd')) $('kbFatEd').onclick=function(){ fechar(); kbFatEditar(n); };
+  if($('kbObsEd')) $('kbObsEd').onclick=function(){ fechar(); kbQuem('emb',n,function(){ kbObsEditar(n,false); }); };
+  if($('kbFatEd')) $('kbFatEd').onclick=function(){ fechar(); kbQuem('fat',n,function(){ kbFatEditar(n); }); };
   z.querySelectorAll('.kbIgn').forEach(function(b){ b.onclick=function(){ b.disabled=true; b.textContent='Ignorado'; kbFatIgnorar(b.getAttribute('data-n'),b.getAttribute('data-s'),0,b.getAttribute('data-t')).then(function(){ if($('kbDet')) kbDetalhe(n); }); }; });
   var cpD=z.querySelector('#fItensCp'); if(cpD) cpD.onclick=function(){ kbItensCopiar(n,x,cpD); }; }
 /* ---- movimentos do Kanban: guardados no ramo "checklists" (exp/kanban.json), cifrados com a chave do Controle de liberação ---- */
@@ -6258,7 +6301,7 @@ function kbPodeMover(){ return !!(_kbKey()&&ghToken()); }
 async function _kbLerRemoto(){ var key=_kbKey(); if(!key) return {sha:null,g:{mov:{}}}; var sha=await _ckHead(), g=null;
   if(sha){ var b=await _ckRead(KB_PATH,sha); if(b){ try{ g=await decJSON(key,JSON.parse(new TextDecoder().decode(b))); }catch(e){ g=null; } } }
   g=g||{}; g.mov=g.mov||{}; return {sha:sha,g:g}; }
-async function kbMovCarregar(){ if(KB_SYNC) return; try{ var r=await _kbLerRemoto(), antes=JSON.stringify(KB.mov||{}), bkAntes=JSON.stringify([KB.bk,!!KB.bkLido]); KB.mov=r.g.mov; KB.bk=r.g.bk||null; KB.bkLido=true; var obsAntes=JSON.stringify([KB.obs||{},KB.fat||{}]); KB.obs=r.g.obs||{}; KB.fat=r.g.fat||{}; KB.itensSnap=r.g.itens||{}; KB.fatIgn=r.g.fatIgn||{}; var hAntes=(KB.hist||[]).length; KB.hist=r.g.hist||[]; if(KB.modo==='hist'&&KB.hist.length!==hAntes) kbRender(); if(JSON.stringify([KB.obs,KB.fat])!==obsAntes) kbRender(); if(r.g.bkPara) KB.bkPara=r.g.bkPara;
+async function kbMovCarregar(){ if(KB_SYNC) return; try{ var r=await _kbLerRemoto(), antes=JSON.stringify(KB.mov||{}), bkAntes=JSON.stringify([KB.bk,!!KB.bkLido]); KB.mov=r.g.mov; KB.bk=r.g.bk||null; KB.bkLido=true; var obsAntes=JSON.stringify([KB.obs||{},KB.fat||{}]); KB.obs=r.g.obs||{}; KB.fat=r.g.fat||{}; KB.itensSnap=r.g.itens||{}; KB.fatIgn=r.g.fatIgn||{}; KB.pessoas=r.g.pessoas||KB.pessoas||null; var hAntes=(KB.hist||[]).length; KB.hist=r.g.hist||[]; if(KB.modo==='hist'&&KB.hist.length!==hAntes) kbRender(); if(JSON.stringify([KB.obs,KB.fat])!==obsAntes) kbRender(); if(r.g.bkPara) KB.bkPara=r.g.bkPara;
   if(JSON.stringify(KB.mov)!==antes) kbRender();
   if(JSON.stringify([KB.bk,true])!==bkAntes){ try{ sideRender(); }catch(e){} try{ expNavRender(); }catch(e){} kbRender(); } }catch(e){} }
 /* ===== Backup do Kanban: deve ser feito toda sexta às 17h (e nunca passar 7 dias sem).
@@ -6306,7 +6349,7 @@ function kbMover(n,para){ var x=KB._todos&&KB._todos[n]; if(!x) return; var atua
   KB.mov=KB.mov||{}; if(val) KB.mov[n]=val; else delete KB.mov[n];
   kbHistAdd({n:n,cli:x.cli,tipo:'mov',de:atual,para:para});
   KB.salvo={ok:true,t:'Salvando…'}; kbRender(); kbMovSalvar(n,val,0);
-  if(para==='emb'&&atual!=='emb') setTimeout(function(){ kbObsEditar(n,true); },60); }
+  if(para==='emb'&&atual!=='emb') setTimeout(function(){ kbQuem('emb',n,function(){ kbObsEditar(n,true); }); },60); }
 async function kbMovSalvar(n,val,tent){ var key=_kbKey(); KB_SYNC=true; var outra=false;
   if(val&&val.para==='emb'&&!tent){ try{ await Promise.race([kbItensLer(),new Promise(function(r){ setTimeout(r,15000); })]); }catch(e){} }
   try{ var r=await _kbLerRemoto(), g=r.g, lim=Date.now()-120*864e5;
