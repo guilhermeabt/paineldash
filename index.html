@@ -408,6 +408,11 @@ body.hasSide .appInstall{max-width:900px;width:100%;margin:0 auto;text-align:lef
   </div>
 </div>
 
+<div id="modProc" style="display:none;min-height:100vh;box-sizing:border-box">
+  <aside id="procNav" style="display:none"></aside>
+  <main id="procContent" style="padding:28px 32px;max-width:1240px;margin:0 auto;box-sizing:border-box"></main>
+</div>
+<div id="procZoom" style="display:none;position:fixed;inset:0;z-index:95;background:rgba(0,0,0,.92);overflow:auto;cursor:zoom-out"></div>
 <div id="modEstoque" style="display:none;min-height:100vh;padding:24px 16px;max-width:780px;margin:0 auto;box-sizing:border-box">
   <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px;flex-wrap:wrap">
     <button class="backMod" style="background:none;border:1px solid var(--line);color:var(--muted);padding:8px 14px;border-radius:8px;cursor:pointer">&larr; Módulos</button>
@@ -1202,7 +1207,7 @@ var editingUser=null, USERS_DIRTY=false;
 function uEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function isAdmin(u){ return !!(u&&u.admin); }
 var USER_MODS=['relatorios','producao','gestao','faccao','estoque','base'];
-function userModules(u){ if(!u)return []; if(isAdmin(u))return ['relatorios','producao','gestao','faccao','estoque','base','orcamento','usuarios']; var m=Array.isArray(u.modules)?u.modules:['relatorios']; return USER_MODS.filter(function(k){return m.indexOf(k)>=0;}); }
+function userModules(u){ if(!u)return []; if(isAdmin(u))return ['relatorios','producao','gestao','faccao','estoque','processos','base','orcamento','usuarios']; var m=Array.isArray(u.modules)?u.modules:['relatorios']; return USER_MODS.filter(function(k){return m.indexOf(k)>=0;}).concat(['processos']); }
 var MODMETA={
  relatorios:{name:'Relatórios',desc:'Vendas, expedição, produção, conciliação, DRE e mais.',icon:'&#128202;'},
  producao:{name:'Programação da Produção',desc:'Planejamento e sequenciamento da produção.',icon:'&#127981;'},
@@ -1211,10 +1216,11 @@ var MODMETA={
  estoque:{name:'Localização do Estoque',desc:'Onde está cada referência do pronta entrega: sala grande (filas A a E) e salinha pequena (F a J).',icon:'&#128230;'},
  base:{name:'Base de Dados',desc:'Subir os arquivos e publicar os dados para todos os relatórios.',icon:'&#128451;'},
  orcamento:{name:'Orçamento 2027',desc:'Simulador de lucro: cenário realista, premissas e projetos de redução de custo. Só o administrador vê.',icon:'&#128200;'},
+ processos:{name:'Processos',desc:'Sistema de Gestão Dash (SGD): fluxogramas, padrões, procedimentos e metas de cada processo — sem baixar nada.',icon:'&#128218;'},
  usuarios:{name:'Controle de Usuários',desc:'Cadastrar usuários, senhas e permissões.',icon:'&#128100;'}
 };
 var APPMODE='', BASE_STASH=null;
-function hideAllScreens(){ ['login','app','modules','modProd','modGest','modOrc','modUsers','modFaccao','modEstoque'].forEach(function(id){var e=$(id); if(e)e.style.display='none';}); }
+function hideAllScreens(){ ['login','app','modules','modProd','modGest','modOrc','modUsers','modFaccao','modEstoque','modProc'].forEach(function(id){var e=$(id); if(e)e.style.display='none';}); }
 function showModules(){
   if(APPMODE==='base') BASE_STASH=Object.assign({},FILES); else if(APPMODE==='rel') REL_STASH=Object.assign({},FILES);
   APPMODE='';
@@ -1248,6 +1254,7 @@ function openModule(k){
   else if(k==='base'){ enterBase(current); }
   else if(k==='estoque'){ estEnter(); }
   else if(k==='faccao'){ fcRender(); $('modFaccao').style.display='block'; }
+  else if(k==='processos'){ $('modProc').style.display='block'; procEnter(); }
   else if(k==='usuarios'){ if(!isAdmin(current)){ showModules(); return; } editingUser=null; $('userForm').innerHTML=''; renderUsers(); $('modUsers').style.display='block'; }
 }
 function panelName(pk){ return (typeof PANELCFG!=='undefined'&&PANELCFG[pk]&&PANELCFG[pk].name)||pk; }
@@ -2268,7 +2275,8 @@ async function saveContacts(){ if(SESSION.m&&SESSION.sk&&!SESSION.sk[CONTACTS_KE
 // administrador/Base, quem movimenta o estoque e quem usa a Produção (checklist compartilhado)
 var GT_KEY='__ghtoken', GH_PANEL_TOKEN='', GH_PANEL_INFO=null;
 function userNeedsGT(u){ var m=Array.isArray(u&&u.modules)?u.modules:[]; return isAdmin(u)||userCanBase(u)||!!(u&&u.estMov)||m.indexOf('producao')>=0||m.indexOf('gestao')>=0||m.indexOf('estoque')>=0; }
-function userSlotList(u){ var l=_userSlotList(u); if(userNeedsGT(u)) l=l.concat([GT_KEY]); return l.sort(); }
+var PROC_KEY='__processos', PROC_BRANCH='processos';
+function userSlotList(u){ var l=_userSlotList(u); if(userNeedsGT(u)) l=l.concat([GT_KEY]); if(userModules(u).indexOf('processos')>=0) l=l.concat([PROC_KEY]); return l.sort(); }
 function _userSlotList(u){
   if(userCanBase(u)) return SLOTS.map(function(s){return s.key;}).concat([CONTACTS_KEY]);
   var m=Array.isArray(u.modules)?u.modules:['relatorios'], l=[];
@@ -2308,7 +2316,7 @@ async function setUserPassword(u,pass){
 // admin: cria chaves de slots novos e refaz pacotes desatualizados
 async function adminMaintain(){
   if(!SESSION.m||!KEYS) return false; var changed=false;
-  SLOTS.map(function(s){return s.key;}).concat([CONTACTS_KEY,GT_KEY]).forEach(function(k){ if(!SESSION.sk[k]){ SESSION.sk[k]=b64e(rnd(32)); changed=true; } });
+  SLOTS.map(function(s){return s.key;}).concat([CONTACTS_KEY,GT_KEY,PROC_KEY]).forEach(function(k){ if(!SESSION.sk[k]){ SESSION.sk[k]=b64e(rnd(32)); changed=true; } });
   if(changed) KEYS.sk=await encJSON(SESSION.m,SESSION.sk);
   var ks=Object.keys(USERS);
   for(var i=0;i<ks.length;i++){ var u=USERS[ks[i]]; if(!u.k||!u.k.ek)continue;
@@ -5048,8 +5056,8 @@ window.addEventListener('appinstalled',function(){ APP_PROMPT=null; appInstallUI
 if('serviceWorker' in navigator&&/^https:|^http:\/\/localhost/.test(location.href)&&!SNAP_MODE) window.addEventListener('load',function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); appInstallUI(); });
 
 /* ===== barra lateral ===== */
-var SIDE={ativo:'inicio'}, SIDE_SUB={relatorios:'nav',producao:'prodNav',gestao:'gestNav'};
-var SIDE_NOME={relatorios:'Relatórios',producao:'Programação',gestao:'Gestão',faccao:'Facção',estoque:'Estoque',base:'Base de Dados',orcamento:'Orçamento 2027',usuarios:'Configurações'};
+var SIDE={ativo:'inicio'}, SIDE_SUB={relatorios:'nav',producao:'prodNav',gestao:'gestNav',processos:'procNav'};
+var SIDE_NOME={processos:'Processos',relatorios:'Relatórios',producao:'Programação',gestao:'Gestão',faccao:'Facção',estoque:'Estoque',base:'Base de Dados',orcamento:'Orçamento 2027',usuarios:'Configurações'};
 var SIDE_ICO=(function(){ var w=function(d){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'+d+'</svg>'; };
   return { inicio:w('<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>'),
     relatorios:w('<path d="M3 3v18h18"/><path d="M8 17v-5M13 17V8M18 17v-9"/>'),
@@ -5059,6 +5067,7 @@ var SIDE_ICO=(function(){ var w=function(d){ return '<svg viewBox="0 0 24 24" fi
     estoque:w('<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>'),
     base:w('<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/>'),
     orcamento:w('<path d="M22 7 13.5 15.5 8.5 10.5 2 17"/><path d="M16 7h6v6"/>'),
+    processos:w('<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/><path d="M9 7h7M9 11h5"/>'),
     usuarios:w('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/>') }; })();
 function sideOn(){ return !!(current&&!SNAP_MODE); }
 function sideClose(){ document.body.classList.remove('sideOpen'); }
@@ -5088,6 +5097,124 @@ function homeRender(){ var el=$('homeHello'); if(!el||!current) return; var h=ne
     +'<div style="color:var(--muted);font-size:14px">Escolha por onde começar — os mesmos módulos estão sempre no menu à esquerda.</div>'; }
 (function(){ var bg=$('sideBurger'); if(bg) bg.onclick=function(){ document.body.classList.toggle('sideOpen'); };
   var bk=$('sideBack'); if(bk) bk.onclick=sideClose; }());
+
+/* ===== PROCESSOS (SGD): o Book de processos visto dentro do painel, sem baixar nada =====
+   Área → processo → documentos (fluxograma, definição de negócio, padrão de qualidade, procedimento...). */
+var PROC={dados:null,estado:'',erro:'',area:null,proc:null,doc:0,q:''};
+var PROC_URLS={}, PROC_IDX=null, PROC_LOCAL=/^http:\/\/localhost/.test(location.href);
+function _procKey(){ return (SESSION&&SESSION.slots&&SESSION.slots[PROC_KEY])?b64d(SESSION.slots[PROC_KEY]):null; }
+var PROC_SRC={
+  tree:async function(){ var key=_procKey();
+    if(!key){ if(PROC_LOCAL){ var r0=await fetch('_sgd_preview/tree.json',{cache:'no-store'}); if(r0.ok){ PROC_IDX={local:1}; return r0.json(); } }
+      throw new Error('seu login ainda não recebeu a chave dos Processos. Peça ao administrador para clicar em "Publicar alterações" no Controle de Usuários.'); }
+    var hd={'Accept':'application/vnd.github.raw+json'}; if(ghToken()) hd['Authorization']='Bearer '+ghToken();
+    var r=await fetch('https://api.github.com/repos/'+GH_REPO.owner+'/'+GH_REPO.repo+'/contents/index.json?ref='+PROC_BRANCH,{headers:hd,cache:'no-store'});
+    if(r.status===404) throw new Error('o Book ainda não foi publicado.');
+    if(!r.ok) r=await fetch('https://raw.githubusercontent.com/'+GH_REPO.owner+'/'+GH_REPO.repo+'/'+PROC_BRANCH+'/index.json?t='+Date.now());
+    if(!r.ok) throw new Error('não consegui baixar o índice dos processos (HTTP '+r.status+').');
+    var o=await decJSON(key,JSON.parse(await r.text()).m); PROC_IDX=o; return Object.assign({},o.tree,{publicado:o.ts,por:o.by}); },
+  img:async function(n){ if(PROC_URLS[n]) return PROC_URLS[n];
+    if(PROC_IDX&&PROC_IDX.local) return (PROC_URLS[n]='_sgd_preview/s'+n+'.webp');
+    var e=PROC_IDX&&PROC_IDX.imgs&&PROC_IDX.imgs[n]; if(!e) throw new Error('página '+n+' não encontrada');
+    var ct=null; try{ var c=await idbGet('proc:'+e.p); if(c&&c.byteLength!==undefined) ct=new Uint8Array(c); }catch(x){}
+    if(!ct){ var r=await fetch('https://raw.githubusercontent.com/'+GH_REPO.owner+'/'+GH_REPO.repo+'/'+PROC_BRANCH+'/'+e.p); if(!r.ok) throw new Error('HTTP '+r.status);
+      var buf=await r.arrayBuffer(); ct=new Uint8Array(buf); try{ await idbSet('proc:'+e.p,buf); }catch(x){} }
+    var plain=await decBytes(_procKey(),e.iv,ct); return (PROC_URLS[n]=URL.createObjectURL(new Blob([plain],{type:'image/webp'}))); } };
+// coloca a imagem decifrada na tela (e já prepara as vizinhas)
+function _procPinta(el,n){ if(!el) return; el.style.opacity='.35'; PROC_SRC.img(n).then(function(u){ if(el.getAttribute('data-n')==String(n)){ el.src=u; el.style.opacity='1'; } }).catch(function(e){ el.alt='Não consegui abrir esta página: '+((e&&e.message)||e); el.style.opacity='1'; }); }
+// administrador: publica o Book (pasta com tree.json + s1.webp, s2.webp…) cifrado no ramo "processos"
+async function procPublicar(files){ var st=$('procPubSt'), msg=function(t,c){ if(st){ st.style.color=c||'var(--muted)'; st.innerHTML=t; } };
+  try{ if(!SESSION.m) throw new Error('só o administrador pode publicar o Book.');
+    if(!SESSION.sk[PROC_KEY]) await adminMaintain(); var key=b64d(SESSION.sk[PROC_KEY]); if(!ghToken()) throw new Error('falta o token do GitHub neste computador.');
+    var fs=[...files], tj=fs.find(function(f){ return f.name==='tree.json'; }); if(!tj) throw new Error('não achei o arquivo tree.json na pasta escolhida.');
+    var tree=JSON.parse(await tj.text()), imgs={}, entries=[], fotos=fs.filter(function(f){ return /^s\d+\.webp$/i.test(f.name); }), feito=0;
+    if(!fotos.length) throw new Error('não achei as páginas (s1.webp, s2.webp…) na pasta.');
+    await pool(fotos,4,async function(f){ var n=+f.name.match(/\d+/)[0], enc=await encBytes(key,new Uint8Array(await f.arrayBuffer())), path='i/'+hexOf(rnd(12))+'.bin';
+      var bl=await gh('/git/blobs',{method:'POST',body:{content:b64e(enc.ct),encoding:'base64'}}); imgs[n]={p:path,iv:enc.iv}; entries.push({path:path,mode:'100644',type:'blob',sha:bl.sha});
+      feito++; msg('Enviando as páginas… '+feito+' de '+fotos.length); });
+    var who=(current&&current.name)||currentUserKey, idx={m:await encJSON(key,{tree:tree,imgs:imgs,ts:Date.now(),by:who})};
+    entries.push({path:'index.json',mode:'100644',type:'blob',content:JSON.stringify(idx)});
+    msg('Gravando a publicação…');
+    var ref=null; try{ ref=await gh('/git/ref/heads/'+PROC_BRANCH); }catch(e){ if(e.status!==404) throw e; }
+    var nt=await gh('/git/trees',{method:'POST',body:{tree:entries}});
+    var nc=await gh('/git/commits',{method:'POST',body:{message:'Processos: Book publicado ('+who+')',tree:nt.sha,parents:ref?[ref.object.sha]:[]}});
+    if(ref) await gh('/git/refs/heads/'+PROC_BRANCH,{method:'PATCH',body:{sha:nc.sha,force:true}}); else await gh('/git/refs',{method:'POST',body:{ref:'refs/heads/'+PROC_BRANCH,sha:nc.sha}});
+    PROC.dados=null; PROC.estado=''; PROC_URLS={}; await procEnter();
+    msg('✓ Book publicado: '+fotos.length+' páginas.'+(USERS_DIRTY?' <b>Agora clique em "Publicar alterações" no Controle de Usuários</b> para entregar a chave dos Processos a todos os logins.':''),'var(--f-green)');
+  }catch(e){ msg('Não consegui publicar: '+uEsc((e&&e.message)||e),'var(--danger)'); } }
+var PROC_COR={'Fluxo macro':'#5aa0d0','Fluxograma':'#5aa0d0','Definição de negócio':'#9b87f5','Padrão de qualidade':'#4ecb8f','Procedimento':'#d99a52','Trilha de capacitação':'#e07fb0','Não conformidades':'#e08a6b','Perfil do cargo':'#c9b38a','Painel de metas':'#4ecbc4','Feedback':'#a3a3a3','Modelo':'#c9b38a'};
+async function procEnter(){ if(!PROC.dados&&PROC.estado!=='lendo'){ PROC.estado='lendo'; procRender();
+    try{ PROC.dados=await PROC_SRC.tree(); PROC.estado='ok'; PROC.erro=''; }catch(e){ PROC.estado='erro'; PROC.erro=(e&&e.message)||String(e); } }
+  procRender(); }
+function _procTodos(){ var L=[]; (PROC.dados&&PROC.dados.areas||[]).forEach(function(a,ai){ a.procs.forEach(function(p,pi){ L.push({ai:ai,pi:pi,a:a,p:p}); }); }); return L; }
+function procNavRender(){ var nav=$('procNav'); if(!nav) return; var A=(PROC.dados&&PROC.dados.areas)||[];
+  nav.innerHTML='<button class="'+(PROC.area==null?'active':'')+'" data-a="-1">Visão geral</button>'+A.map(function(a,i){ return '<button class="'+(PROC.area===i?'active':'')+'" data-a="'+i+'">'+uEsc(a.area)+'</button>'; }).join('');
+  nav.querySelectorAll('button').forEach(function(b){ b.onclick=function(){ var i=+b.getAttribute('data-a'); PROC.area=i<0?null:i; PROC.proc=null; PROC.q=''; procRender(); window.scrollTo(0,0); }; }); }
+function procAbrir(ai,pi,di){ PROC.area=ai; PROC.proc=pi; PROC.doc=di||0; procRender(); window.scrollTo(0,0); }
+function procRender(){ var host=$('procContent'); if(!host) return; procNavRender();
+  var card='background:var(--surface2);border:1px solid var(--line);border-radius:12px';
+  if(PROC.estado==='lendo'||!PROC.estado){ host.innerHTML='<div style="color:var(--muted);padding:30px">Carregando os processos…</div>'; return; }
+  if(PROC.estado==='erro'){ host.innerHTML='<div style="color:var(--danger);padding:30px">Não consegui abrir os processos: '+uEsc(PROC.erro)+'</div>'; return; }
+  var D=PROC.dados, A=D.areas, h='';
+  var busca='<input id="procQ" type="search" autocomplete="off" placeholder="Buscar processo ou palavra (ex.: enfesto, HubSpot, OC)…" value="'+uEsc(PROC.q)+'" style="width:100%;max-width:520px;box-sizing:border-box;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:9px 12px;font-size:14px">';
+  var chipDoc=function(d){ var c=PROC_COR[d.tipo]||'#999'; return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+c+';margin-right:6px"></span>'; };
+  var procCard=function(x){ return '<button class="procCard" data-ai="'+x.ai+'" data-pi="'+x.pi+'" style="'+card+';text-align:left;padding:14px 16px;cursor:pointer;color:var(--ink);font:inherit;display:flex;flex-direction:column;gap:6px">'
+      +'<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px">'+uEsc(x.a.area)+'</div>'
+      +'<div style="font-weight:600;font-size:14.5px;line-height:1.3">'+uEsc(x.p.nome)+'</div>'
+      +'<div style="font-size:12px;color:var(--muted)">'+x.p.docs.length+' documento'+(x.p.docs.length>1?'s':'')+'</div></button>'; };
+  if(PROC.proc!=null&&A[PROC.area]&&A[PROC.area].procs[PROC.proc]){ // ---- processo aberto
+    var a=A[PROC.area], pr=a.procs[PROC.proc], di=Math.min(PROC.doc,pr.docs.length-1), d=pr.docs[di];
+    var todos=_procTodos(), pos=todos.findIndex(function(x){ return x.ai===PROC.area&&x.pi===PROC.proc; });
+    h+='<div style="font-size:13px;color:var(--muted);margin-bottom:6px"><a href="#" class="procCrumb" data-a="'+PROC.area+'" style="color:var(--muted)">'+uEsc(a.area)+'</a> › '+uEsc(pr.nome)+'</div>'
+      +'<h1 style="margin:0 0 14px;font-size:24px;font-weight:650;color:var(--ink)">'+uEsc(pr.nome)+'</h1>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">'+pr.docs.map(function(x,i){ var on=i===di;
+        return '<button class="procDoc" data-i="'+i+'" style="border:1px solid '+(on?'var(--ink)':'var(--line)')+';background:'+(on?'var(--elev)':'transparent')+';color:'+(on?'var(--ink)':'var(--muted)')+';border-radius:999px;padding:6px 12px;font-size:12.5px;cursor:pointer">'+chipDoc(x)+uEsc(x.nome)+'</button>'; }).join('')+'</div>'
+      +'<div style="'+card+';padding:10px;position:relative">'
+        +'<img id="procImg" data-n="'+d.n+'" alt="'+uEsc(pr.nome+' — '+d.nome)+'" style="width:100%;height:auto;display:block;border-radius:8px;cursor:zoom-in;background:#fff">'
+      +'</div>'
+      +'<div style="display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap">'
+        +'<button class="ubtn" id="procPrev" style="padding:8px 14px;font-size:13px">← Anterior</button>'
+        +'<button class="ubtn" id="procNext" style="padding:8px 14px;font-size:13px">Próximo →</button>'
+        +'<span style="color:var(--muted);font-size:12.5px">'+(di+1)+' de '+pr.docs.length+' · clique na imagem para ampliar · setas do teclado navegam</span>'
+        +(d.links&&d.links.length?d.links.map(function(u){ return '<a href="'+uEsc(u)+'" target="_blank" rel="noopener" class="ubtn" style="padding:8px 14px;font-size:13px;text-decoration:none;background:var(--f-amber);color:#1c1408;border:none;font-weight:600">Abrir procedimento ↗</a>'; }).join(''):'')
+      +'</div>';
+    var viz=[todos[pos-1],todos[pos+1]].filter(Boolean);
+    if(viz.length) h+='<div style="display:flex;gap:10px;margin-top:22px;flex-wrap:wrap">'+viz.map(function(x,k){ return '<button class="procCard" data-ai="'+x.ai+'" data-pi="'+x.pi+'" style="'+card+';padding:10px 14px;cursor:pointer;color:var(--muted);font:inherit;font-size:12.5px;text-align:left">'+(x===todos[pos-1]?'← ':'')+'<b style="color:var(--ink)">'+uEsc(x.p.nome)+'</b> · '+uEsc(x.a.area)+(x===todos[pos+1]?' →':'')+'</button>'; }).join('')+'</div>';
+    host.innerHTML=h;
+    host.querySelectorAll('.procDoc').forEach(function(b){ b.onclick=function(){ PROC.doc=+b.getAttribute('data-i'); procRender(); }; });
+    var mover=function(dl){ var nd=di+dl; if(nd>=0&&nd<pr.docs.length){ PROC.doc=nd; procRender(); return; } var nx=todos[pos+(dl>0?1:-1)]; if(nx) procAbrir(nx.ai,nx.pi,dl>0?0:nx.p.docs.length-1); };
+    $('procPrev').onclick=function(){ mover(-1); }; $('procNext').onclick=function(){ mover(1); };
+    PROC._mover=mover; _procPinta($('procImg'),d.n); [pr.docs[di+1],pr.docs[di-1]].forEach(function(x){ if(x) PROC_SRC.img(x.n).catch(function(){}); });
+    $('procImg').onclick=function(){ var z=$('procZoom'); z.innerHTML='<div style="position:sticky;top:0;display:flex;justify-content:flex-end;padding:10px"><button class="ubtn" style="padding:8px 14px">Fechar ✕</button></div><img id="procZoomImg" data-n="'+d.n+'" style="display:block;width:2400px;max-width:none;margin:0 auto 40px;background:#fff">'; z.style.display='block'; _procPinta($('procZoomImg'),d.n); z.onclick=function(){ z.style.display='none'; z.innerHTML=''; }; };
+  } else { // ---- visão geral, área ou busca
+    var q=_en(PROC.q||''), lista=_procTodos();
+    if(q) lista=lista.filter(function(x){ return _en(x.a.area+' '+x.p.nome+' '+(x.p.busca||'')).indexOf(q)>=0; });
+    else if(PROC.area!=null) lista=lista.filter(function(x){ return x.ai===PROC.area; });
+    h+='<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px"><div>'
+      +'<div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Sistema de Gestão Dash</div>'
+      +'<h1 style="margin:4px 0 0;font-size:26px;font-weight:650;color:var(--ink)">'+(q?'Resultado da busca':PROC.area!=null?uEsc(A[PROC.area].area):'Processos')+'</h1></div>'+busca+'</div>';
+    if(!q&&PROC.area==null&&isAdmin(current)) h+='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-6px 0 16px;font-size:12.5px;color:var(--muted)">'+(D.publicado?'Book publicado em '+fmtTs(D.publicado)+(D.por?' por '+uEsc(D.por):'')+'.':(PROC_IDX&&PROC_IDX.local?'Prévia local (ainda não publicado).':''))
+      +'<label class="ubtn" style="cursor:pointer;padding:6px 12px">⬆ Publicar o Book (escolher a pasta)<input type="file" id="procPubInp" webkitdirectory multiple style="display:none"></label><span id="procPubSt"></span></div>';
+    if(!q&&PROC.area==null){
+      h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px">'+A.map(function(a,i){ return '<div style="'+card+';padding:16px 18px">'
+        +'<button class="procArea" data-a="'+i+'" style="background:none;border:none;padding:0;color:var(--ink);font:inherit;font-size:17px;font-weight:650;cursor:pointer;text-align:left">'+uEsc(a.area)+' <span style="color:var(--muted);font-size:12px;font-weight:400">· '+a.procs.length+' processo'+(a.procs.length>1?'s':'')+'</span></button>'
+        +'<div style="display:flex;flex-direction:column;gap:2px;margin-top:8px">'+a.procs.map(function(pp,pi){ return '<a href="#" class="procLink" data-ai="'+i+'" data-pi="'+pi+'" style="color:var(--muted);font-size:13px;text-decoration:none;padding:3px 0">› '+uEsc(pp.nome)+'</a>'; }).join('')+'</div></div>'; }).join('')+'</div>';
+    } else {
+      h+=lista.length?'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px">'+lista.map(procCard).join('')+'</div>'
+        :'<div style="color:var(--muted);padding:20px 0">Nenhum processo encontrado.</div>';
+    }
+    host.innerHTML=h;
+    host.querySelectorAll('.procArea').forEach(function(b){ b.onclick=function(){ PROC.area=+b.getAttribute('data-a'); procRender(); }; });
+    host.querySelectorAll('.procLink').forEach(function(b){ b.onclick=function(e){ e.preventDefault(); procAbrir(+b.getAttribute('data-ai'),+b.getAttribute('data-pi'),0); }; });
+    var pi=$('procPubInp'); if(pi) pi.onchange=function(){ var f=this.files; if(f&&f.length) procPublicar(f); this.value=''; };
+    var tq; $('procQ').oninput=function(){ PROC.q=this.value; clearTimeout(tq); tq=setTimeout(function(){ procRender(); var i=$('procQ'); i.focus(); i.selectionStart=i.selectionEnd=i.value.length; },250); };
+  }
+  host.querySelectorAll('.procCard').forEach(function(b){ b.onclick=function(){ procAbrir(+b.getAttribute('data-ai'),+b.getAttribute('data-pi'),0); }; });
+  host.querySelectorAll('.procCrumb').forEach(function(b){ b.onclick=function(e){ e.preventDefault(); PROC.proc=null; procRender(); }; });
+}
+document.addEventListener('keydown',function(e){ var z=$('procZoom'); if(z&&z.style.display==='block'&&e.key==='Escape'){ z.style.display='none'; z.innerHTML=''; return; }
+  if(!$('modProc')||$('modProc').style.display==='none'||PROC.proc==null||!PROC._mover) return; var ae=document.activeElement; if(ae&&/INPUT|TEXTAREA|SELECT/.test(ae.tagName)) return;
+  if(e.key==='ArrowRight'){ PROC._mover(1); e.preventDefault(); } else if(e.key==='ArrowLeft'){ PROC._mover(-1); e.preventDefault(); } });
 function startApp(user){ current=user; if(typeof SNAP_MODE!=='undefined'&&SNAP_MODE){ enterRelatorios(user); return; } showModules(); try{ ckSyncStart(); }catch(e){} }
 (function(){
   var nb=document.getElementById('newUserBtn'); if(nb)nb.onclick=function(){ openUserForm(null); };
