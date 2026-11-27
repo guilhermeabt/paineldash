@@ -1403,26 +1403,45 @@ function openUserForm(key){
    +'<label style="font-size:12px;color:var(--muted)">'+(hasPw?'Nova senha':'Senha')+pwInputHtml('ufPass',hasPw?'deixe em branco para manter':'mínimo 12 caracteres')+'</label>'
    +(key&&cryptoOn()&&!(u.k&&u.k.wk)?'<div style="font-size:11.5px;color:var(--f-amber)">&#9888; Este usuário ainda usa a senha antiga. Defina uma nova.</div>':'')
    +'<label style="font-size:13px;color:var(--ink)"><input type="checkbox" id="ufAdmin" '+(adm?'checked':'')+'> Administrador (acesso total + gestão)</label>'
-   +'<div style="font-size:12px;color:var(--muted)">Módulos liberados:</div>'
-   +'<div id="ufMods" style="display:flex;flex-direction:column;gap:4px;border:1px solid var(--line);border-radius:8px;padding:8px">'
-     +USER_MODS.map(function(mk){var on=adm||userModules(u).indexOf(mk)>=0; return '<label style="font-size:13px;color:var(--ink)"><input type="checkbox" class="ufm" value="'+mk+'" '+(on?'checked':'')+'> '+MODMETA[mk].name+'</label>';}).join('')
-     +'<div style="font-size:11px;color:var(--muted)">Base de Dados dá acesso a todos os dados. Controle de Usuários: só administradores.</div>'
-   +'</div>'
-   +'<label style="font-size:13px;color:var(--ink)"><input type="checkbox" id="ufEstMov"'+(u.estMov?' checked':'')+'> Pode movimentar o estoque <span style="color:var(--muted);font-size:11.5px">(entradas e saídas nas caixas — precisa do módulo Localização do Estoque)</span></label>'
+   +(function(){ // módulos na mesma ordem e com os mesmos nomes do menu à esquerda
+      var tem=function(k){ return adm||userModules(u).indexOf(k)>=0; };
+      var relO=adm||(tem('relatorios')&&(isAll||(Array.isArray(u.panels)&&u.panels.some(function(pk){ return pk!=='expedicao'; }))));
+      var expK=adm||!!(key&&_temExpRel(u)), est=tem('estoque'), exp=expK||est;
+      var lb=function(inner,sub){ return '<label style="font-size:13px;color:var(--ink);display:flex;gap:7px;align-items:flex-start;'+(sub?'margin-left:24px;font-size:12.5px':'')+'">'+inner+'</label>'; };
+      var cb=function(attrs,on,dis){ return '<input type="checkbox" '+attrs+(on?' checked':'')+(dis?' disabled':'')+' style="margin-top:2px">'; };
+      var nota=function(t){ return ' <span style="color:var(--muted);font-size:11.5px">'+t+'</span>'; };
+      return '<div style="font-size:12px;color:var(--muted)">Módulos liberados (os mesmos do menu à esquerda):</div>'
+      +'<div id="ufMods" style="display:flex;flex-direction:column;gap:5px;border:1px solid var(--line);border-radius:8px;padding:8px 10px">'
+      +lb(cb('class="ufm" value="relatorios"',relO)+'<span>Relatórios'+nota('(escolha quais logo abaixo)')+'</span>')
+      +lb(cb('id="ufExp"',exp)+'<span>Expedição</span>')
+      +'<div id="ufExpSub" style="display:flex;flex-direction:column;gap:4px">'
+        +lb(cb('id="ufExpK"',expK||!key)+'<span>Kanban de pedidos e relatório de expedição'+nota('(embalagem, faturamento, backup)')+'</span>',1)
+        +lb(cb('class="ufm" value="estoque"',est)+'<span>Localização do estoque</span>',1)
+        +lb(cb('id="ufEstMov"',!!u.estMov)+'<span>Pode movimentar o estoque'+nota('(entradas e saídas nas caixas)')+'</span>',1)
+      +'</div>'
+      +lb(cb('class="ufm" value="producao"',tem('producao'))+'<span>Programação</span>')
+      +lb(cb('class="ufm" value="gestao"',tem('gestao'))+'<span>Gestão</span>')
+      +lb(cb('class="ufm" value="faccao"',tem('faccao'))+'<span>Facção</span>')
+      +lb(cb('id="ufProc"',true,true)+'<span>Processos'+nota('(liberado para todos)')+'</span>')
+      +lb(cb('class="ufm" value="base"',tem('base'))+'<span>Base de Dados'+nota('(dá acesso a todos os dados)')+'</span>')
+      +lb(cb('id="ufOrc"',adm,true)+'<span>Orçamento 2027'+nota('(só administradores)')+'</span>')
+      +'</div>'; })()
    +'<label style="font-size:13px;color:var(--ink)"><input type="checkbox" id="ufUp"'+(u.up?' checked':'')+'> Pode subir arquivos nos Relatórios <span style="color:var(--muted);font-size:11.5px">(valem só no painel dela/dele, até a próxima publicação)</span></label>'
    +'<label style="font-size:13px;color:var(--ink)"><input type="checkbox" id="ufAll"'+((isAll&&!adm)?'checked':'')+'> Todos os relatórios</label>'
    +'<div style="font-size:12px;color:var(--muted)">Relatórios liberados:</div>'
    +'<div id="ufPanels" style="display:flex;flex-direction:column;gap:4px;max-height:190px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:8px">'
-     +panels.map(function(pk){var on=Array.isArray(u.panels)&&u.panels.indexOf(pk)>=0; return '<label style="font-size:12px;color:var(--ink)"><input type="checkbox" class="ufp" value="'+pk+'" '+(on?'checked':'')+'> '+uEsc(panelName(pk))+'</label>';}).join('')
+     +panels.filter(function(pk){ return pk!=='expedicao'; }).map(function(pk){var on=Array.isArray(u.panels)&&u.panels.indexOf(pk)>=0; return '<label style="font-size:12px;color:var(--ink)"><input type="checkbox" class="ufp" value="'+pk+'" '+(on?'checked':'')+'> '+uEsc(panelName(pk))+'</label>';}).join('')
    +'</div>'
    +'<div id="ufErr" style="color:var(--danger);font-size:12px;min-height:14px"></div>'
    +'<div style="display:flex;gap:8px"><button class="ubtn" id="ufSave" style="background:var(--f-green);color:#0c241a;border:none;font-weight:600">Salvar</button><button class="ubtn" id="ufCancel">Cancelar</button></div>'
    +'</div>';
   $('userForm').innerHTML=html; wireGen($('userForm'));
-  function sync(){var a=$('ufAdmin').checked; document.querySelectorAll('#ufMods .ufm').forEach(function(c){c.disabled=a; if(a)c.checked=true;}); $('ufMods').style.opacity=a?0.5:1;
-    var rel=document.querySelector('#ufMods .ufm[value="relatorios"]').checked; $('ufAll').disabled=a||!rel;
+  function sync(){var a=$('ufAdmin').checked; document.querySelectorAll('#ufMods .ufm,#ufExp,#ufExpK,#ufEstMov').forEach(function(c){c.disabled=a; if(a&&c.id!=='ufEstMov')c.checked=true;}); $('ufOrc').checked=a; $('ufMods').style.opacity=a?0.5:1;
+    var ex=$('ufExp').checked; $('ufExpSub').style.display=ex?'':'none';
+    var rel=document.querySelector('#ufMods .ufm[value="relatorios"]').checked; $('ufAll').disabled=a||!rel; $('ufUp').disabled=a||!rel;
     var dis=a||$('ufAll').checked||!rel; document.querySelectorAll('#ufPanels .ufp').forEach(function(c){c.disabled=dis;}); $('ufPanels').style.opacity=dis?0.5:1;}
-  document.querySelectorAll('#ufMods .ufm').forEach(function(c){c.onchange=sync;});
+  document.querySelectorAll('#ufMods .ufm,#ufExpK').forEach(function(c){c.onchange=sync;});
+  $('ufExp').onchange=function(){ if(this.checked&&!$('ufExpK').checked&&!document.querySelector('#ufMods .ufm[value="estoque"]').checked) $('ufExpK').checked=true; sync(); };
   $('ufAdmin').onchange=function(){ if(this.checked)$('ufAll').checked=false; sync(); };
   $('ufAll').onchange=function(){ if(this.checked)$('ufAdmin').checked=false; sync(); };
   sync();
@@ -1441,16 +1460,21 @@ async function saveUserForm(){
   if(!pass&&!hasPw) return fail('Informe a senha.');
   if(pass){ var pr=pwProblem(pass); if(pr) return fail(pr); }
   var adm=$('ufAdmin').checked, all=$('ufAll').checked, panels;
-  var mods=adm?USER_MODS.slice():[].slice.call(document.querySelectorAll('#ufMods .ufm:checked')).map(function(c){return c.value;});
+  // Relatórios = os relatórios escolhidos; Expedição (Kanban) = o relatório de expedição — por baixo, os dois usam o módulo "relatorios"
+  var marc=function(v){ var c=document.querySelector('#ufMods .ufm[value="'+v+'"]'); return !!(c&&c.checked); };
+  var relO=marc('relatorios'), exp=$('ufExp').checked, expK=exp&&$('ufExpK').checked, est=exp&&marc('estoque');
+  var mods=adm?USER_MODS.slice():[];
+  if(!adm){ if(relO||expK) mods.push('relatorios'); ['producao','gestao','faccao','base'].forEach(function(k){ if(marc(k)) mods.push(k); }); if(est) mods.push('estoque'); }
   if(!mods.length) return fail('Selecione ao menos um módulo.');
-  if(adm||all){ panels='*'; }
-  else if(mods.indexOf('relatorios')<0){ panels=[]; }
-  else { panels=[].slice.call(document.querySelectorAll('#ufPanels .ufp:checked')).map(function(c){return c.value;}); if(!panels.length) return fail('Selecione ao menos um relatório, ou marque Admin / Todos.'); }
+  if(exp&&!expK&&!est) return fail('Em Expedição, marque o Kanban ou a Localização do estoque.');
+  if(adm){ panels='*'; }
+  else if(relO&&all){ panels=expK?'*':Object.keys(PANELCFG).filter(function(pk){ return pk!=='expedicao'; }); }
+  else { panels=relO?[].slice.call(document.querySelectorAll('#ufPanels .ufp:checked')).map(function(c){return c.value;}):[]; if(relO&&!panels.length) return fail('Selecione ao menos um relatório, marque "Todos os relatórios" ou desmarque Relatórios.'); if(expK) panels.push('expedicao'); }
   if(editingUser===currentUserKey&&!adm&&isAdmin(prev)) return fail('Você não pode tirar o seu próprio acesso de administrador.');
   var email=$('ufEmail')?($('ufEmail').value||'').trim().toLowerCase():null;
   if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail('E-mail inválido.');
   var obj={name:name,panels:panels,modules:mods}; if(adm)obj.admin=true;
-  if($('ufUp')&&$('ufUp').checked&&!adm&&mods.indexOf('relatorios')>=0) obj.up=true;
+  if($('ufUp')&&$('ufUp').checked&&!adm&&relO) obj.up=true;
   if($('ufEstMov')&&$('ufEstMov').checked&&!adm&&mods.indexOf('estoque')>=0) obj.estMov=true;
   $('ufSave').disabled=true; err.style.color='var(--muted)'; err.textContent=cryptoOn()?'Gerando chaves…':'';
   try{
