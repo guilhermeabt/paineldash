@@ -908,9 +908,9 @@ function cliLer(){ var sg=_cliSig(); if(!sg) return Promise.resolve(CLI); if(CLI
     var src="var PRE_WB="+PRE_WB.toString()+";self.onmessage=function(e){try{importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');}catch(err){postMessage({ok:0});return;}"
       +"var L=e.data,map={},max=0;var cel=function(v){return String(v==null?'':v).trim();};var nz=function(s){return cel(s).normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase();};"
       +"var um=function(wb){var R=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:null});var hi=R.findIndex(function(r){return r&&r.some(function(v){return nz(v)==='codigo';})&&r.some(function(v){return nz(v)==='pf/pj';});});if(hi<0)return;"
-      +"var H=R[hi].map(nz),ix=function(n){return H.indexOf(n);};var c={cod:ix('codigo'),nome:ix('nome'),uf:ix('uf'),pf:ix('pf/pj'),cnpj:ix('cnpj'),cpf:ix('cpf'),ina:ix('inativo')};"
+      +"var H=R[hi].map(nz),ix=function(n){return H.indexOf(n);};var c={cod:ix('codigo'),nome:ix('nome'),raz:ix('razao social'),cid:ix('cidade'),uf:ix('uf'),pf:ix('pf/pj'),cnpj:ix('cnpj'),cpf:ix('cpf'),ina:ix('inativo'),end:ix('endereco'),bai:ix('bairro'),num:ix('num.'),cep:ix('cep')};"
       +"R.slice(hi+1).forEach(function(r){if(!r)return;var k=cel(r[c.cod]).replace(/\\D/g,'').replace(/^0+/,'');if(!k)return;var n=+k;if(n>max)max=n;var pf=nz(r[c.pf]);"
-      +"map[k]={t:/fis/.test(pf)?'cpf':/jur/.test(pf)?'cnpj':'',cnpj:cel(r[c.cnpj]).replace(/\\D/g,'').replace(/^0+$/,''),cpf:cel(r[c.cpf]).replace(/\\D/g,'').replace(/^0+$/,''),nome:cel(r[c.nome]),uf:cel(r[c.uf])};});};"
+      +"map[k]={t:/fis/.test(pf)?'cpf':/jur/.test(pf)?'cnpj':'',cnpj:cel(r[c.cnpj]).replace(/\\D/g,'').replace(/^0+$/,''),cpf:cel(r[c.cpf]).replace(/\\D/g,'').replace(/^0+$/,''),nome:cel(r[c.nome]),raz:cel(r[c.raz]),cid:cel(r[c.cid]),uf:cel(r[c.uf]),end:cel(r[c.end]),bai:cel(r[c.bai]),num:cel(r[c.num]),cep:cel(r[c.cep]).replace(/\\D/g,'')};});};"
       +"var i=0;var prox=function(){if(i>=L.length){postMessage({ok:1,map:map,max:max});return;}var x=L[i++];"
       +"if(x.gz){new Response(new Blob([x.gz]).stream().pipeThrough(new DecompressionStream('gzip'))).text().then(function(t){try{um(PRE_WB(JSON.parse(t),{cellDates:true},XLSX));}catch(e){}prox();},function(){prox();});}"
       +"else{try{um(XLSX.read(new Uint8Array(x.buf),{type:'array'}));}catch(e){}prox();}};prox();};";
@@ -2409,6 +2409,7 @@ function _userSlotList(u){
   if(m.indexOf('gestao')>=0) ['aprovados','nao_aprovados'].forEach(function(k){ if(l.indexOf(k)<0) l.push(k); });
   // Kanban da Expedição: confere as NFs do faturamento com o relatório 09
   if(m.indexOf('relatorios')>=0&&(u.panels==='*'||(u.panels||[]).indexOf('expedicao')>=0)&&l.indexOf('faturamento_mes')<0) l.push('faturamento_mes');
+  if(m.indexOf('relatorios')>=0&&(u.panels==='*'||(u.panels||[]).indexOf('expedicao')>=0)&&l.indexOf('vendas')<0) l.push('vendas');
   return l;
 }
 async function loadPanelToken(){ GH_PANEL_TOKEN=''; GH_PANEL_INFO=null;
@@ -5603,6 +5604,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
     if(F.difal&&I.difal!==F.difal) return false;
     if(F.tipo==='pe'&&!(x.pe||I.pe)) return false; if(F.tipo==='prod'&&(x.pe||I.pe)) return false;
     if(F.atr&&!kbAtrX(x)) return false; if(F.inv&&!x.inv) return false;
+    if(F.aud){ var asT=kbAudSit(x.n).st; if(F.aud==='feita'?(asT!=='ok'&&asT!=='div'):F.aud==='alerta'?(asT!=='atraso'&&asT!=='div'):asT!==F.aud) return false; }
     if(F.bol){ var fb=(KB.fat||{})[x.n]; if(F.bol==='emitido'){ if(!fb||fb.boleto!=='emitido') return false; } else if(!fb||fb.boleto!=='emitir'||(F.bol==='atraso'&&!kbBolAtrasado(fb))) return false; }
     if(F.trat==='sim'&&!I.done) return false; if(F.trat==='nao'&&I.done) return false;
     // faturamento/embalagem: "feito" em qualquer coluna; "pendente" = está em embalagem e ainda não terminou
@@ -5667,19 +5669,25 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
   var atrOnde=function(){ var c={producao:0,pronto:0,emb:0}; atrasadosTodos.forEach(function(x){ c[x._mov?x._mov.para:x._o]++; }); return [['producao','em produção'],['pronto','prontos'],['emb','em embalagem']].filter(function(z){ return c[z[0]]; }).map(function(z){ return c[z[0]]+' '+z[1]; }).join(' · ')||'nenhum'; };
   var estaSem=A.filter(function(x){ return !x.inv&&x.prev&&x.prev>=hoje&&x.prev<=fimEsta; }), hojeIso=hoje.getTime(), envHoje=V.filter(function(x){ return x.d&&x.d.getTime()>=hojeIso; });
   if(Object.keys(KB.fat||{}).some(function(k){ return _kbNfNum(KB.fat[k].nf); })){ kbF09Ler(); if(!KB.itensLido&&!KB._itRq){ KB._itRq=1; kbItensLer().then(function(){ kbRender(); }); } }
-  var kbAvisos=function(){ var bk=kbBkStatus(), bolN=Object.keys(KB.fat||{}).filter(function(k){ return kbBolAtrasado(KB.fat[k]); }).length, confN=Object.keys(KB.fat||{}).filter(function(k){ return kbFatAlertas(k).length; }).length, invL=prod.filter(function(x){ return x.inv; });
+  var kbAvisos=function(){ var bk=kbBkStatus(), bolN=Object.keys(KB.fat||{}).filter(function(k){ return kbBolAtrasado(KB.fat[k]); }).length, confN=Object.keys(KB.fat||{}).filter(function(k){ return kbFatAlertas(k).length; }).length, invL=prod.filter(function(x){ return x.inv; }), audA=Object.keys(KB.fat||{}).filter(function(k){ return kbAudSit(k).st==='atraso'; }), audD=Object.keys(KB.fat||{}).filter(function(k){ return kbAudSit(k).st==='div'; });
     var chip=function(t,c){ return '<span style="font-size:12.5px;font-weight:600;color:'+c+';border:1px solid '+c+'55;background:'+c+'14;border-radius:999px;padding:2px 10px;white-space:nowrap">'+t+'</span>'; };
-    var urg=(bk.atraso?1:0)+(bolN?1:0)+(confN?1:0)+(invL.length?1:0);
+    var urg=(bk.atraso?1:0)+(bolN?1:0)+(confN?1:0)+(invL.length?1:0)+(audA.length?1:0)+(audD.length?1:0);
     var chips=(bk.atraso?chip('⚠ Backup em atraso','#e5484d'):chip('✓ Backup em dia · próximo sex '+_kbDM(new Date(bk.prox)),'#4ecb8f'))
       +(bolN?chip('⚠ '+bolN+' boleto'+(bolN===1?'':'s')+' não emitido'+(bolN===1?'':'s'),'#e5484d'):'')
       +(confN?chip('⚠ '+confN+' faturamento'+(confN===1?'':'s')+' não confere'+(confN===1?'':'m')+' com o 09','#f5a524'):'')
-      +(invL.length?chip('⚠ '+invL.length+' pedido'+(invL.length===1?'':'s')+' para investigar (sem OP)','#f5a524'):'');
+      +(invL.length?chip('⚠ '+invL.length+' pedido'+(invL.length===1?'':'s')+' para investigar (sem OP)','#f5a524'):'')
+      +(audA.length?chip('⚠ '+audA.length+' auditoria'+(audA.length===1?'':'s')+' de NF atrasada'+(audA.length===1?'':'s'),'#e5484d'):'')
+      +(audD.length?chip('⚠ '+audD.length+' NF'+(audD.length===1?'':'s')+' com divergência','#e5484d'):'');
     var corpo=KB.avisosAbertos?'<div style="padding:10px 2px 0">'
       +'<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">'+(pode?'Arraste os cartões entre as colunas. O movimento vale para todos até a planilha mudar a fase do pedido. "Em produção" e "Prontos" vêm só dos relatórios. Clique num cartão para ver as OPs, a embalagem e o faturamento.':'Para arrastar os cartões, este computador precisa do token do GitHub (fale com o administrador).')+'</div>'
       +kbBkBanner()+kbBolBanner()+kbConfBanner()
       +(invL.length&&!F.inv?'<div style="border:1px solid rgba(245,165,36,.55);background:rgba(245,165,36,.10);border-radius:12px;padding:10px 14px;margin-bottom:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span style="font-size:20px;color:#f5a524">⚠</span>'
         +'<div style="flex:1;min-width:220px;font-size:13.5px;color:var(--ink)"><b style="color:#f5a524">'+invL.length+' pedido'+(invL.length===1?'':'s')+' para investigar</b> — '+invL.slice(0,8).map(function(x){ return '#'+uEsc(x.n); }).join(', ')+(invL.length>8?'…':'')+'. São pedidos de produção que não aparecem com OP em nenhum relatório (01, 03) nem no Controle de liberação.</div>'
-        +'<button class="ubtn" id="kbVerInv" style="padding:7px 12px;font-size:13px">Ver só esses</button></div>':'')+'</div>':'';
+        +'<button class="ubtn" id="kbVerInv" style="padding:7px 12px;font-size:13px">Ver só esses</button></div>':'')
+      +((audA.length||audD.length)&&!F.aud?'<div style="border:1px solid rgba(229,72,77,.55);background:rgba(229,72,77,.10);border-radius:12px;padding:10px 14px;margin-bottom:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span style="font-size:20px;color:#e5484d">🔎</span>'
+        +'<div style="flex:1;min-width:220px;font-size:13.5px;color:var(--ink)">'+(audA.length?'<b style="color:#e5484d">'+audA.length+' NF'+(audA.length===1?'':'s')+' sem auditoria há mais de '+KB_AUD_H+'h</b> — '+audA.slice(0,8).map(function(k){ return '#'+uEsc(k); }).join(', ')+'. ':'')
+        +(audD.length?'<b style="color:#e5484d">'+audD.length+' NF'+(audD.length===1?'':'s')+' com divergência na auditoria</b> — '+audD.slice(0,8).map(function(k){ return '#'+uEsc(k); }).join(', ')+'. ':'')+'Corrija a NF dentro do prazo ou ignore no cartão.</div>'
+        +'<button class="ubtn" id="kbVerAud" style="padding:7px 12px;font-size:13px">Ver só esses</button></div>':'')+'</div>':'';
     return '<div style="border:1px solid '+(urg?'rgba(229,72,77,.45)':'var(--line)')+';border-radius:12px;padding:8px 12px;margin-bottom:12px;background:var(--surface2)">'
       +'<div id="kbAvTog" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;cursor:pointer"><b style="font-size:13px;color:var(--ink)">🔔 Avisos'+(urg?' <span style="color:#e5484d">('+urg+')</span>':'')+'</b>'+chips+'<span style="margin-left:auto;font-size:12px;color:var(--muted)">'+(KB.avisosAbertos?'fechar ▴':'abrir ▾')+'</span></div>'+corpo+'</div>'; };
   var kbBolBanner=function(){ var L=Object.keys(KB.fat||{}).filter(function(k){ return kbBolAtrasado(KB.fat[k]); }); if(!L.length||F.bol) return '';
@@ -5714,8 +5722,8 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
     +'<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:16px"><div><div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Expedição</div><h1 style="margin:2px 0 0;font-size:24px;font-weight:650;color:var(--ink)">Kanban de pedidos</h1>'
       +'<div style="font-size:12.5px;color:var(--muted);margin-top:4px;min-height:16px">'+(KB.salvo?'<span style="color:'+(KB.salvo.ok?'var(--f-green)':'var(--danger)')+'">'+uEsc(KB.salvo.t)+'</span>':'')+'</div></div>'
       +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input id="kbQ" type="search" autocomplete="off" placeholder="Buscar pedido, cliente, NF, rastreio…" value="'+uEsc(KB.q)+'" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 11px;font-size:13.5px;width:260px">'
-      +'<button class="ubtn" id="kbFilt" style="padding:8px 12px;font-size:13px'+(KB.filtAberto?';border-color:var(--f-green)':'')+'">⚙ Filtros'+((function(){ var n=0; ['de','ate','sit','transp','difal','tipo','trat','fatst','embst','bol','atr','inv'].forEach(function(k){ if(F[k]) n++; }); if(F.sem!=null&&F.sem!=='') n++; return n; })()?' <b style="color:var(--f-green)">('+(function(){ var n=0; ['de','ate','sit','transp','difal','tipo','trat','fatst','embst','bol','atr','inv'].forEach(function(k){ if(F[k]) n++; }); if(F.sem!=null&&F.sem!=='') n++; return n; })()+')</b>':'')+' '+(KB.filtAberto?'▴':'▾')+'</button>'
-      +((F.de||F.ate||(F.sem!=null&&F.sem!=='')||F.sit||F.transp||F.difal||F.tipo||F.trat||F.fatst||F.embst||F.atr||F.bol||F.inv||KB.q)?'<button class="ubtn" id="kbLimpa" style="padding:8px 12px;font-size:13px">Limpar filtros</button>':'')
+      +'<button class="ubtn" id="kbFilt" style="padding:8px 12px;font-size:13px'+(KB.filtAberto?';border-color:var(--f-green)':'')+'">⚙ Filtros'+((function(){ var n=0; ['de','ate','sit','transp','difal','tipo','trat','fatst','embst','bol','atr','inv','aud'].forEach(function(k){ if(F[k]) n++; }); if(F.sem!=null&&F.sem!=='') n++; return n; })()?' <b style="color:var(--f-green)">('+(function(){ var n=0; ['de','ate','sit','transp','difal','tipo','trat','fatst','embst','bol','atr','inv','aud'].forEach(function(k){ if(F[k]) n++; }); if(F.sem!=null&&F.sem!=='') n++; return n; })()+')</b>':'')+' '+(KB.filtAberto?'▴':'▾')+'</button>'
+      +((F.de||F.ate||(F.sem!=null&&F.sem!=='')||F.sit||F.transp||F.difal||F.tipo||F.trat||F.fatst||F.embst||F.atr||F.bol||F.inv||F.aud||KB.q)?'<button class="ubtn" id="kbLimpa" style="padding:8px 12px;font-size:13px">Limpar filtros</button>':'')
       +'<button class="ubtn" id="kbExp" style="padding:8px 12px;font-size:13px">'+(KB.exp?'Recolher tudo':'Expandir tudo')+'</button>'
       +'<button class="ubtn" id="kbLinks" style="padding:8px 12px;font-size:13px" title="Links sem login, só para ver: um para a TV e um para os vendedores">🔗 Links de visualização</button>'
       +'<button class="ubtn" id="kbDifMail" style="padding:8px 12px;font-size:13px" title="Monta o e-mail do DIFAL diário do dia (NFs lançadas no faturamento) para o financeiro">✉ E-mail DIFAL diário</button>'
@@ -5726,7 +5734,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
       +'<span style="font-size:12.5px;color:var(--muted)">Até</span><input type="date" id="kbAte" value="'+uEsc(F.ate||'')+'" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:7px 9px;font-size:13px">'
       +'<select id="kbSem" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px"><option value="">Semana: todas</option>'+semOffs.map(function(off){ var m0=new Date(segAtual); m0.setDate(m0.getDate()+7*off); var s0=new Date(m0); s0.setDate(m0.getDate()+6); return '<option value="'+off+'"'+(String(F.sem)===String(off)?' selected':'')+'>'+(off===0?'Essa semana':off===1?'Próxima semana':'Em '+off+' semanas')+' ('+_kbDM(m0)+'–'+_kbDM(s0)+') · '+(semCont[off]||0)+'</option>'; }).join('')+'</select>'
       +[['kbFS','sit',[['','Situação: todas'],['fabrica','Fábrica (ainda em produção)'],['expedicao','Expedição (tem OP na expedição)'],['pronto','Pedido pronto (pronto pra sair)']]]].map(function(z){ return '<select id="'+z[0]+'" data-f="'+z[1]+'" class="kbFiltro" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+z[2].map(function(o){ return '<option value="'+uEsc(o[0])+'"'+((F[z[1]]||'')===o[0]?' selected':'')+'>'+uEsc(o[1])+'</option>'; }).join('')+'</select>'; }).join('')
-      +[['kbFT','transp',[['','Todas transportadoras']].concat(TRANSPS.map(function(t){ return [t,t]; }))],['kbFD','difal',[['','DIFAL: todos'],['diario','DIFAL diário'],['mensal','DIFAL mensal']]],['kbFP','tipo',[['','Tipo: todos'],['pe','Só pronta entrega'],['prod','Só produção']]],['kbFR','trat',[['','Tratado: todos'],['nao','Não tratados'],['sim','Tratados']]],['kbFF','fatst',[['','Faturamento: todos'],['pend','Faturamento pendente'],['feito','Faturamento feito'],['div','⚠ Não confere com o 09']]],['kbFE','embst',[['','Embalagem: todos'],['pend','Embalagem pendente'],['feito','Embalagem feita']]],['kbFA','atr',[['','Atrasados: todos'],['1','Só atrasados']]],['kbFB','bol',[['','Boletos: todos'],['emitir','Boletos a emitir'],['atraso','Boletos a emitir há +24h'],['emitido','Boletos emitidos']]]].map(function(z){ return '<select id="'+z[0]+'" data-f="'+z[1]+'" class="kbFiltro" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+z[2].map(function(o){ return '<option value="'+uEsc(o[0])+'"'+((F[z[1]]||'')===o[0]?' selected':'')+'>'+uEsc(o[1])+'</option>'; }).join('')+'</select>'; }).join('')
+      +[['kbFT','transp',[['','Todas transportadoras']].concat(TRANSPS.map(function(t){ return [t,t]; }))],['kbFD','difal',[['','DIFAL: todos'],['diario','DIFAL diário'],['mensal','DIFAL mensal']]],['kbFP','tipo',[['','Tipo: todos'],['pe','Só pronta entrega'],['prod','Só produção']]],['kbFR','trat',[['','Tratado: todos'],['nao','Não tratados'],['sim','Tratados']]],['kbFF','fatst',[['','Faturamento: todos'],['pend','Faturamento pendente'],['feito','Faturamento feito'],['div','⚠ Não confere com o 09']]],['kbFE','embst',[['','Embalagem: todos'],['pend','Embalagem pendente'],['feito','Embalagem feita']]],['kbFA','atr',[['','Atrasados: todos'],['1','Só atrasados']]],['kbFU','aud',[['','Auditoria da NF: todas'],['pend','Auditoria pendente'],['atraso','Auditoria atrasada (+24h)'],['div','NF com divergência'],['alerta','Atrasada ou com divergência'],['feita','Auditoria feita'],['ign','Auditoria ignorada']]],['kbFB','bol',[['','Boletos: todos'],['emitir','Boletos a emitir'],['atraso','Boletos a emitir há +24h'],['emitido','Boletos emitidos']]]].map(function(z){ return '<select id="'+z[0]+'" data-f="'+z[1]+'" class="kbFiltro" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+z[2].map(function(o){ return '<option value="'+uEsc(o[0])+'"'+((F[z[1]]||'')===o[0]?' selected':'')+'>'+uEsc(o[1])+'</option>'; }).join('')+'</select>'; }).join('')
       +'<select id="kbVisao" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px"><option value="colunas"'+(KB.visao!=='linhas'?' selected':'')+'>Visão: Kanban</option><option value="linhas"'+(KB.visao==='linhas'?' selected':'')+'>Visão: Lista</option></select>'
       +'<select id="kbDias" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+[[7,'Enviados: 7 dias'],[30,'Enviados: 30 dias'],[90,'Enviados: 90 dias'],[0,'Enviados: todos']].map(function(o){ return '<option value="'+o[0]+'"'+(KB.dias===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select></div></div>'
     +(!Object.keys(FILES).length?'<div style="color:var(--muted);margin-bottom:12px">Carregando os dados da expedição…</div>':'')
@@ -5747,6 +5755,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
   $('kbSem').onchange=function(){ KB.f.sem=this.value; kbRender(); }; $('kbVisao').onchange=function(){ KB.visao=this.value; try{ localStorage.setItem('kb_visao',this.value); }catch(e){} kbRender(); };
   $('kbExp').onclick=function(){ KB.exp=!KB.exp; kbRender(); }; if($('kbVerDiv')) $('kbVerDiv').onclick=function(){ KB.f.fatst='div'; kbRender(); }; if($('kbFilt')) $('kbFilt').onclick=function(){ KB.filtAberto=!KB.filtAberto; try{ localStorage.setItem('kb_filt',KB.filtAberto?'1':''); }catch(e){} kbRender(); };
   if($('kbVerInv')) $('kbVerInv').onclick=function(){ KB.f.inv=1; kbRender(); };
+  if($('kbVerAud')) $('kbVerAud').onclick=function(){ KB.f.aud='alerta'; kbRender(); };
   if($('kbAvTog')) $('kbAvTog').onclick=function(){ KB.avisosAbertos=!KB.avisosAbertos; kbRender(); };
   if($('kbVerBol')) $('kbVerBol').onclick=function(){ KB.f.bol='atraso'; kbRender(); };
   host.querySelectorAll('.kbBolOk').forEach(function(b){ b.addEventListener('click',function(ev){ ev.stopPropagation(); var nb=b.getAttribute('data-n'); kbQuem('fat',nb,function(){ b.disabled=true; b.textContent='Salvando…'; kbBolEmitido(nb); }); }); b.addEventListener('mousedown',function(ev){ ev.stopPropagation(); }); }); if($('kbBackup')) $('kbBackup').onclick=kbBackup; if($('kbLinks')) $('kbLinks').onclick=kbLinksModal; if($('kbDifMail')) $('kbDifMail').onclick=function(){ kbDifalEmail(_calISO(new Date())); }; host.querySelectorAll('.kbBkAgora').forEach(function(x){ x.onclick=kbBackup; }); if($('kbLimpa')) $('kbLimpa').onclick=function(){ KB.f={}; KB.q=''; kbRender(); };
@@ -5790,6 +5799,9 @@ function kbBackupWB(){ var T=KB._todos||{}, NOME={producao:'A sair: em produçã
       'Faturar':f.fatModo&&f.fatModo!=='tudo'?_kbObsFat({fat:f.fatModo,fatTxt:f.fatTxt}):'Tudo','Nota fiscal':tx(f.nf),'Observações':tx(f.obs),
       'Itens (CPF / transferência)':f.doc==='cpf'?it.map(function(o){ return o.ref+' '+(o.desc||o.cor)+' ['+o.tam.map(function(z){ return z[0]+':'+z[1]; }).join(' ')+'] = '+o.qtd; }).join(' | '):'',
       'Conferência com o relatório 09':(function(){ var c=kbFatConf(n); if(!c) return ''; if(c.st!=='ok') return 'não conferido'; if(c.pend) return 'NF ainda não está no 09'; return c.al.length?'NÃO CONFERE: '+c.al.map(function(a){ return a.t; }).join(' | '):'Confere'+(c.ign?' ('+c.ign+' alerta(s) ignorado(s))':''); })(),
+      'Auditoria da NF':(function(){ var as=kbAudSit(n); return {ok:'Feita — tudo confere',div:'Feita — '+((as.div||[]).length)+' divergência(s)',ign:'Ignorada',atraso:'Pendente — atrasada',pend:'Pendente'}[as.st]||''; })(),
+      'Auditoria em':(KB.aud||{})[n]&&KB.aud[n].ts?quando(KB.aud[n].ts):((KB.aud||{})[n]&&KB.aud[n].ign?quando(KB.aud[n].ign.ts):''),'Auditoria por':(function(){ var a=(KB.aud||{})[n]; return a?tx(a.quem||a.por||(a.ign&&(a.ign.quem||a.ign.por))):''; })(),
+      'Divergências da auditoria':(function(){ var a=(KB.aud||{})[n]; return a&&a.res?kbAudDiv(a).map(function(c){ return c.t; }).join(' | '):(a&&a.ign&&a.ign.motivo?'Ignorada: '+a.ign.motivo:''); })(),
       'Feito por (pessoa)':tx(f.quem),'Preenchido por (login)':tx(f.por),'Preenchido em':quando(f.ts)}; });
   var OB=KB.obs||{}, embRows=Object.keys(OB).sort().map(function(n){ var o=OB[n], x=T[n]||{};
     return {'Pedido':n,'Cliente':tx(x.cli||(x.I||{}).cliente),'Coluna no Kanban':x._o?NOMEF[x._mov?x._mov.para:x._o]:'(fora do Kanban agora)','Volumes':_kbObsVol(o),'Quantidade':+o.q||'','Tipo':({CX:'Caixa',PCT:'Pacote',VOL:'Volume'}[o.t]||tx(o.t)),
@@ -5926,7 +5938,10 @@ function kbBolCard(x){ var f=(KB.fat||{})[x.n]; if(!f||f.boleto!=='emitir') retu
     +(kbPodeMover()?'<button class="ubtn kbBolOk" data-n="'+uEsc(x.n)+'" style="padding:2px 9px;font-size:11.5px">Sim, emitido</button>':'')+'</div>'; }
 function kbBolEmitido(n){ var f=(KB.fat||{})[n]; if(!f) return; kbFatSalvar(n,Object.assign({},f,{boleto:'emitido',bolEm:Date.now(),ts:Date.now(),por:(current&&current.name)||currentUserKey||'',quem:kbQuemDe('fat',n)||f.quem||''}),0); }
 function kbFatCard(x){ var f=(KB.fat||{})[x.n], nf=f?String(f.nf||'').trim():''; // o checklist é controle de quem fatura; no cartão vai só a NF emitida (o alerta do 09) e a pergunta do boleto
-  var bol=kbBolCard(x); if(!nf) return bol; var al=kbFatAlertas(x.n), cor=al.length?'#f5a524':'#4ecb8f';
+  var bol=kbBolCard(x); if(!nf) return bol; var al=kbFatAlertas(x.n), cor=al.length?'#f5a524':'#4ecb8f', au=kbAudSit(x.n);
+  bol+=au.st==='pend'?'<div><span style="font-size:11.5px;font-weight:700;color:#f5a524;border:1px solid rgba(245,165,36,.5);border-radius:6px;padding:1px 6px">🔎 Auditar a NF · faltam '+au.resta+'h</span></div>'
+    :au.st==='atraso'?'<div><span style="font-size:11.5px;font-weight:700;color:#e5484d;border:1px solid rgba(229,72,77,.6);border-radius:6px;padding:1px 6px">⚠ Auditoria da NF atrasada ('+au.h+'h)</span></div>'
+    :au.st==='div'?'<div><span style="font-size:11.5px;font-weight:700;color:#e5484d;border:1px solid rgba(229,72,77,.6);border-radius:6px;padding:1px 6px">⚠ NF com '+au.div.length+' divergência'+(au.div.length===1?'':'s')+'</span></div>':'';
   return bol+'<div style="display:flex;gap:4px;flex-wrap:wrap"><span title="'+uEsc(al.length?'Não confere com o relatório 09: '+al.map(function(a){ return a.t; }).join(' | '):'Nota fiscal emitida')+'" style="font-size:11.5px;font-weight:700;color:'+cor+';background:rgba(255,255,255,.04);border:1px solid '+(al.length?'rgba(245,165,36,.6)':'var(--line)')+';border-radius:6px;padding:1px 6px">'+(al.length?'⚠ ':'')+'NF '+uEsc(nf)+'</span></div>'; }
 function kbFatDetalhe(x){ var f=(KB.fat||{})[x.n], fase=x._mov?x._mov.para:x._o; if(!f&&fase!=='emb'&&fase!=='env') return '';
   var l=function(r,v){ return v?'<div style="display:flex;gap:10px;padding:4px 0;font-size:13px"><span style="color:var(--muted);min-width:130px">'+r+'</span><span style="color:var(--ink)">'+uEsc(v)+'</span></div>':''; }, sn=function(v){ return v==='sim'?'Sim':v==='nao'?'Não':''; };
@@ -5934,7 +5949,7 @@ function kbFatDetalhe(x){ var f=(KB.fat||{})[x.n], fase=x._mov?x._mov.para:x._o;
   return '<div style="margin-top:12px;padding:10px 12px;border:1px solid rgba(90,160,208,.45);background:rgba(90,160,208,.07);border-radius:10px">'
     +'<div style="display:flex;align-items:center;gap:8px"><b style="flex:1;color:#5aa0d0;font-size:13px">🧾 Faturamento</b>'+(kbPodeMover()?'<button class="ubtn" id="kbFatEd" style="padding:5px 10px;font-size:12.5px">'+(f?'Editar':'Preencher')+'</button>':'')+'</div>'
     +(f?l('Código do cliente',f.cod)+l('Forma de envio',f.envio)+l('RI',sn(f.ri))+l('CNPJ/CPF',f.doc?f.doc.toUpperCase():'')+l('IE',sn(f.ie))+l('DIFAL',f.difal==='diario'?'Diário':f.difal==='mensal'||f.difal==='sim'?'Mensal':f.difal==='nao'?'Não tem':'')+l('Simples faturamento',{nao:'Não precisa',fazer:'A fazer',feita:'✓ Feita'}[f.simples]||'')+l('Boleto',f.boleto==='emitir'?'A emitir (marcado em '+_kbQuandoTxt(f.bolTs||f.ts)+(kbBolAtrasado(f)?' — ⚠ há mais de 24h':'')+')':f.boleto==='emitido'?'✓ Emitido'+(f.bolEm?' em '+_kbQuandoTxt(f.bolEm):''):({nao:'Não tem'}[f.boleto]||''))
-        +l('Faturar',f.fatModo&&f.fatModo!=='tudo'?_kbObsFat({fat:f.fatModo,fatTxt:f.fatTxt}):'')+l('Nota fiscal',f.nf)+(String(f.nf||'').trim()?kbFatConfHTML(x):'')+l('Observação',f.obs)+(f.doc==='cpf'?'<div style="margin-top:6px">'+kbItensHTML(x.n,x,true)+'</div>':'')+l('Preenchido',(f.quem?f.quem+' (login '+(f.por||'')+')':(f.por||''))+(f.ts?' em '+_kbQuandoTxt(f.ts):''))
+        +l('Faturar',f.fatModo&&f.fatModo!=='tudo'?_kbObsFat({fat:f.fatModo,fatTxt:f.fatTxt}):'')+l('Nota fiscal',f.nf)+(String(f.nf||'').trim()?kbFatConfHTML(x)+kbAudBloco(x):'')+l('Observação',f.obs)+(f.doc==='cpf'?'<div style="margin-top:6px">'+kbItensHTML(x.n,x,true)+'</div>':'')+l('Preenchido',(f.quem?f.quem+' (login '+(f.por||'')+')':(f.por||''))+(f.ts?' em '+_kbQuandoTxt(f.ts):''))
       :'<div style="font-size:12.5px;color:var(--muted);margin-top:4px">Ainda não preenchido.</div>')+'</div>'; }
 /* Itens do pedido (referência, cor, tamanhos e quantidades) vêm do 01 – Ops com pedidos (P1..P10 = quantidades, T1..T10 = tamanhos).
    O código do cliente vem da coluna "Cód" dos pedidos (02 em aberto, 03 pronta entrega e 12 aprovados). Lido uma vez, sob demanda. */
@@ -5943,18 +5958,18 @@ function kbItensLer(){ if(KB_ITENS_P) return KB_ITENS_P;
   var fo=filesArr('ops'), fp=filesArr('sistema').concat(filesArr('pronta'),filesArr('aprovados'));
   KB_ITENS_P=new Promise(function(ok){
     var src="var PRE_WB="+PRE_WB.toString()+";self.onmessage=function(e){try{importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');}catch(err){postMessage({ok:0});return;}"
-      +"var L=e.data,it={},cod={},qv={},rp={};var cel=function(v){return String(v==null?'':v).trim();};"
+      +"var L=e.data,it={},cod={},qv={},rp={},gr={};var cel=function(v){return String(v==null?'':v).trim();};"
       +"var um=function(wb,tipo){var ws=wb.Sheets[wb.SheetNames[0]];var R=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});"
       +"var hi=R.findIndex(function(r){return r&&r.some(function(v){return cel(v)==='Pedido';});});if(hi<0)return;var H=R[hi].map(cel),ix=function(n){return H.indexOf(n);};"
       +"if(tipo==='ops'){var iO=ix('OP'),iP=ix('Pedido'),iR=ix('Referencia'),iC=ix('Cor'),iD=ix('Desc Cor'),iF=ix('Descr Fase'),iQ=ix('Qtd Total');var P=[],T=[];for(var k=1;k<=10;k++){P.push(ix('P'+k));T.push(ix('T'+k));}"
-      +"R.slice(hi+1).forEach(function(r){if(!r)return;var ped=cel(r[iP]).replace(/\\D/g,'');if(!ped)return;var tam=[];for(var k=0;k<10;k++){var q=+r[P[k]]||0;if(q>0)tam.push([cel(r[T[k]])||('T'+(k+1)),q]);}"
+      +"R.slice(hi+1).forEach(function(r){if(!r)return;var rf=cel(r[iR]);if(rf&&!gr[rf]){var gl=[];for(var k=0;k<10;k++)gl.push(cel(r[T[k]]));gr[rf]=gl;}var ped=cel(r[iP]).replace(/\\D/g,'');if(!ped)return;var tam=[];for(var k=0;k<10;k++){var q=+r[P[k]]||0;if(q>0)tam.push([cel(r[T[k]])||('T'+(k+1)),q]);}"
       +"(it[ped]=it[ped]||[]).push({op:cel(r[iO]),ref:cel(r[iR]),cor:cel(r[iC]),desc:cel(r[iD]),fase:cel(r[iF]),qtd:+r[iQ]||tam.reduce(function(a,t){return a+t[1];},0),tam:tam});});}"
-      +"else{var iP2=ix('Pedido'),iK=ix('Cód'),iQo=ix('Qtde Orig. Sem Brindes'),iVo=ix('Vr Orig. sem Brindes'),iVd=ix('Vr Descontos'),iRp=ix('Representante');if(iK<0)return;R.slice(hi+1).forEach(function(r){if(!r)return;var ped=cel(r[iP2]).replace(/\\D/g,''),c=cel(r[iK]);if(ped&&c&&!cod[ped])cod[ped]=c;if(ped&&iRp>=0&&!rp[ped]&&cel(r[iRp]))rp[ped]=cel(r[iRp]);if(ped&&!qv[ped]&&iQo>=0)qv[ped]={q:+r[iQo]||0,v:Math.round(((+r[iVo]||0)-(+r[iVd]||0))*100)/100};});}};"
-      +"var i=0;var prox=function(){if(i>=L.length){postMessage({ok:1,it:it,cod:cod,qv:qv,rp:rp});return;}var x=L[i++];var fim=function(wb){try{um(wb,x.tipo);}catch(e){}prox();};"
+      +"else{var iP2=ix('Pedido'),iK=ix('Cód'),iQo=ix('Qtde Orig. Sem Brindes'),iVo=ix('Vr Orig. sem Brindes'),iVd=ix('Vr Descontos'),iRp=ix('Representante'),iQe=ix('Qtde Entregar'),iVe=ix('Vr Entregar');if(iK<0)return;R.slice(hi+1).forEach(function(r){if(!r)return;var ped=cel(r[iP2]).replace(/\\D/g,''),c=cel(r[iK]);if(ped&&c&&!cod[ped])cod[ped]=c;if(ped&&iRp>=0&&!rp[ped]&&cel(r[iRp]))rp[ped]=cel(r[iRp]);if(ped&&!qv[ped]&&iQo>=0)qv[ped]={q:+r[iQo]||0,v:Math.round((+r[iVo]||0)*100)/100,qe:iQe>=0?+r[iQe]||0:null,ve:iVe>=0?Math.round((+r[iVe]||0)*100)/100:null};});}};"
+      +"var i=0;var prox=function(){if(i>=L.length){postMessage({ok:1,it:it,cod:cod,qv:qv,rp:rp,gr:gr});return;}var x=L[i++];var fim=function(wb){try{um(wb,x.tipo);}catch(e){}prox();};"
       +"if(x.gz){new Response(new Blob([x.gz]).stream().pipeThrough(new DecompressionStream('gzip'))).text().then(function(t){var wb=null;try{wb=PRE_WB(JSON.parse(t),{cellDates:true},XLSX);}catch(e){}if(wb)fim(wb);else prox();},function(){prox();});}"
       +"else{var wb=null;try{wb=XLSX.read(new Uint8Array(x.buf),{type:'array',cellDates:true});}catch(e){}if(wb)fim(wb);else prox();}};prox();};";
     var w; try{ w=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'}))); }catch(e){ KB.itensLido=true; ok(); return; }
-    var acabou=function(d){ try{ w.terminate(); }catch(e){} if(d&&d.ok){ KB.itens=d.it; KB.codCli=d.cod; KB.pedQV=d.qv||{}; KB.pedRep=d.rp||{}; } KB.itensLido=true; ok(); };
+    var acabou=function(d){ try{ w.terminate(); }catch(e){} if(d&&d.ok){ KB.itens=d.it; KB.codCli=d.cod; KB.pedQV=d.qv||{}; KB.pedRep=d.rp||{}; KB.grade=d.gr||{}; } KB.itensLido=true; ok(); };
     w.onmessage=function(e){ acabou(e.data); }; w.onerror=function(){ acabou(null); };
     var lista=fo.map(function(f){ return {f:f,tipo:'ops'}; }).concat(fp.map(function(f){ return {f:f,tipo:'ped'}; }));
     Promise.all(lista.map(function(o){ var f=o.f; return (f.__pre?preGz(f.__pre).then(function(g){ return {gz:g.buffer.slice(g.byteOffset,g.byteOffset+g.byteLength),tipo:o.tipo}; }):f.arrayBuffer().then(function(b){ return {buf:b,tipo:o.tipo}; })).catch(function(){ return null; }); }))
@@ -6020,7 +6035,8 @@ function kbFatConf(n){ var f=(KB.fat||{})[n], nf=f?_kbNfNum(f.nf):''; if(!nf) re
   var ob=(KB.obs||{})[n], qv=(KB.pedQV||{})[String(n).replace(/\D/g,'')], parc=!!(ob&&ob.parc);
   if(qv&&!parc){ var qn=R.reduce(function(a,x){ return a+x.q; },0);
     if(qv.q&&qn&&qn!==qv.q) al.push({k:'qtd',v:String(qn),t:'Quantidade: o pedido tem '+qv.q+' peça'+(qv.q===1?'':'s')+', a NF tem '+qn+'. Se for envio parcial, marque "Parcial" na embalagem.'});
-  } // valor não é conferido: pedido e NF usam bases de preço diferentes (dá diferença em quase toda NF)
+    var vn=R.reduce(function(a,x){ return a+x.vl; },0); if(qv.v&&vn&&Math.abs(vn-qv.v)>Math.max(1,qv.v*0.005)&&!(qv.ve&&Math.abs(vn-qv.ve)<=1)) al.push({k:'valor',v:String(Math.round(vn)),t:'Valor das mercadorias: no pedido '+rs(qv.v)+', na NF '+rs(vn)+'.'});
+  }
   return {st:'ok',r:r,al:_kbConfFiltra(n,al),ign:al.length-_kbConfFiltra(n,al).length}; }
 function _kbConfFiltra(n,al){ var I=(KB.fatIgn||{})[n]||{}; return al.filter(function(a){ return !I[a.k+'|'+a.v]; }); }
 function kbFatAlertas(n){ var c=kbFatConf(n); return c&&c.al?c.al:[]; }
@@ -6100,6 +6116,7 @@ function kbFatEditar(n){ var x=KB._todos&&KB._todos[n]; if(!x) return;
   $('fSalvar').onclick=function(){ var env=val('fEnv'); if(env==='__outro') env=($('fEnvO').value||'').trim().toUpperCase();
     var v={cod:($('fCod').value||'').trim(),envio:env,ri:val('fRi'),doc:val('fDoc'),ie:val('fIe'),difal:val('fDif'),simples:val('fSimp'),boleto:val('fBol'),fatModo:val('fFat')||'tudo',fatTxt:($('fFatT').value||'').trim(),nf:($('fNf').value||'').trim(),obs:($('fObs').value||'').trim(),ts:Date.now(),por:(current&&current.name)||currentUserKey||'',quem:kbQuemDe('fat',n)};
     if(v.nf) v.nfTs=(f0&&_kbNfNum(f0.nf)===_kbNfNum(v.nf)&&f0.nfTs)||Date.now();
+    if((function(g){ return g.ok===g.tot; })(kbFatProg(v))) v.feitoTs=(f0&&f0.feitoTs)||Date.now();
     if(v.boleto==='emitir') v.bolTs=(f0&&f0.boleto==='emitir'&&f0.bolTs)||Date.now(); if(v.boleto==='emitido') v.bolEm=(f0&&f0.boleto==='emitido'&&f0.bolEm)||Date.now();
     if(v.fatModo==='tudo') v.fatTxt=''; else if(!v.fatTxt){ $('fErr').textContent='Diga quais referências '+(v.fatModo==='nao'?'não faturar':'faturar')+'.'; return; }
     fechar(); kbFatSalvar(n,v,0); };
@@ -6179,6 +6196,7 @@ function kbHistAcao(e){ if(e.tipo==='mov') return 'Movimentou: '+(KB_FASE[e.de]|
   if(e.tipo==='alerta') return 'Alerta '+(e.acao||'');
   if(e.tipo==='backup') return 'Backup '+(e.acao||'');
   if(e.tipo==='boleto') return 'Boleto '+(e.acao||'');
+  if(e.tipo==='auditoria') return 'Auditoria da NF '+(e.acao||'');
   return e.tipo||''; }
 function kbHistLista(){ var h=(KB.hist||[]).slice(); if(!h.length){ var g0={mov:KB.mov,obs:KB.obs,fat:KB.fat,bk:KB.bk}; _kbHistFlush(g0); h=g0.hist||[]; } // antes da primeira gravação: mostra o que já existia var vis={}; h.forEach(function(e){ vis[e.id]=1; }); (KB.histQ||[]).forEach(function(e){ if(!vis[e.id]) h.push(e); });
   return h.sort(function(a,b){ return (b.ts||0)-(a.ts||0); }); }
@@ -6191,7 +6209,7 @@ function kbHistRender(host){ var H=kbHistLista(), F=KB.hf||(KB.hf={}), T=KB._tod
     if(de&&(e.ts||0)<de) return false; if(ate&&(e.ts||0)>ate) return false; return true; });
   var sel=function(id,val,ops){ return '<select id="'+id+'" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+ops.map(function(o){ return '<option value="'+uEsc(o[0])+'"'+((val||'')===o[0]?' selected':'')+'>'+uEsc(o[1])+'</option>'; }).join('')+'</select>'; };
   var inp='background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:7px 9px;font-size:13px';
-  var cor={mov:'#5aa0d0',emb:'#d99a52',fat:'#9b87f5',nf:'#4ecb8f',alerta:'#f5a524',backup:'#c9b38a',boleto:'#e08a6b'};
+  var cor={mov:'#5aa0d0',emb:'#d99a52',fat:'#9b87f5',nf:'#4ecb8f',alerta:'#f5a524',backup:'#c9b38a',boleto:'#e08a6b',auditoria:'#e5484d'};
   var th='text-align:left;padding:8px 10px;font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface2)', td='padding:8px 10px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink);vertical-align:top';
   var MAX=1000;
   host.innerHTML='<div style="padding:22px 24px;box-sizing:border-box;min-height:100%">'
@@ -6200,7 +6218,7 @@ function kbHistRender(host){ var H=kbHistLista(), F=KB.hf||(KB.hf={}), T=KB._tod
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">'
       +'<input id="hfQ" type="search" autocomplete="off" placeholder="Pedido ou cliente…" value="'+uEsc(F.q||'')+'" style="'+inp+';width:220px">'
       +sel('hfPor',F.por,[['','Quem: todos']].concat(quem.map(function(x){ return [x,x]; })))
-      +sel('hfEt',F.et,[['','Etapa / ação: todas'],['mov','Todas as movimentações'],['mov:producao','→ A sair: em produção'],['mov:pronto','→ Pronto para envio'],['mov:emb','→ Em embalagem'],['mov:env','→ Enviado'],['emb','Embalagem'],['fat','Faturamento'],['nf','NF lançada'],['alerta','Alertas (ignorados / corrigidos)'],['boleto','Boletos'],['backup','Backup']])
+      +sel('hfEt',F.et,[['','Etapa / ação: todas'],['mov','Todas as movimentações'],['mov:producao','→ A sair: em produção'],['mov:pronto','→ Pronto para envio'],['mov:emb','→ Em embalagem'],['mov:env','→ Enviado'],['emb','Embalagem'],['fat','Faturamento'],['nf','NF lançada'],['alerta','Alertas (ignorados / corrigidos)'],['boleto','Boletos'],['auditoria','Auditoria da NF'],['backup','Backup']])
       +'<span style="font-size:12.5px;color:var(--muted)">De</span><input type="date" id="hfDe" value="'+uEsc(F.de||'')+'" style="'+inp+'">'
       +'<span style="font-size:12.5px;color:var(--muted)">Até</span><input type="date" id="hfAte" value="'+uEsc(F.ate||'')+'" style="'+inp+'">'
       +((F.q||F.por||F.et||F.de||F.ate)?'<button class="ubtn" id="hfLimpa" style="padding:8px 12px;font-size:13px">Limpar filtros</button>':'')
@@ -6429,6 +6447,217 @@ function verWire(){ var F=VER.f;
   if($('verRep')) $('verRep').onchange=function(){ F.rep=this.value; verRender(); };
   if($('verCol')) $('verCol').onchange=function(){ F.col=this.value; verRender(); };
   if($('verAtr')) $('verAtr').onchange=function(){ F.atr=this.checked; verRender(); }; }
+/* ===== Leitura da NF-e: XML (preferido) ou PDF do DANFE (pdf.js) → objeto padronizado ===== */
+var NF_PDFJS='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+function _nfNum(v){ var s=String(v==null?'':v).replace(/\s/g,''); if(!s) return 0; if(/,\d{1,2}$/.test(s)) s=s.replace(/\./g,'').replace(',','.'); return +s||0; }
+function _nfDig(v){ return String(v==null?'':v).replace(/\D/g,''); }
+function _nfCod(c){ c=String(c||'').trim().toUpperCase(); var m=/^([A-Z]{3}\d{4})([A-Z]{2}\d{3})(.+)$/.exec(c); return m?{ref:m[1],cor:m[2],tam:m[3]}:{ref:c.slice(0,7),cor:'',tam:''}; }
+function nfDaChave(ch){ ch=_nfDig(ch); if(ch.length!==44) return {}; return {chave:ch,uf:ch.slice(0,2),emitCnpj:ch.slice(6,20),serie:String(+ch.slice(22,25)),nf:String(+ch.slice(25,34))}; }
+function nfLerXml(txt){ var d=new DOMParser().parseFromString(txt,'text/xml'); var g=function(el,t){ var x=el&&el.getElementsByTagName(t)[0]; return x?x.textContent.trim():''; };
+  var inf=d.getElementsByTagName('infNFe')[0]; if(!inf) throw new Error('não parece um XML de NF-e');
+  var ide=d.getElementsByTagName('ide')[0], em=d.getElementsByTagName('emit')[0], de=d.getElementsByTagName('dest')[0], en=de&&de.getElementsByTagName('enderDest')[0], tot=d.getElementsByTagName('ICMSTot')[0], tr=d.getElementsByTagName('transporta')[0], vol=d.getElementsByTagName('vol')[0];
+  var it=[].slice.call(d.getElementsByTagName('det')).map(function(x){ var p=x.getElementsByTagName('prod')[0], c=_nfCod(g(p,'cProd')); return {cod:g(p,'cProd'),ref:c.ref,cor:c.cor,tam:c.tam,desc:g(p,'xProd'),qtd:+g(p,'qCom')||0,un:+g(p,'vUnCom')||0,tot:+g(p,'vProd')||0}; });
+  it.forEach(function(i){ i.qtd=+(+i.qtd).toFixed(4); });
+  var ch=(inf.getAttribute('Id')||'').replace(/^NFe/,''), dif=0; [].slice.call(d.getElementsByTagName('vICMSUFDest')).forEach(function(x){ dif+=+x.textContent||0; });
+  return Object.assign(nfDaChave(ch),{fonte:'XML',nf:String(+g(ide,'nNF')),serie:g(ide,'serie'),emissao:g(ide,'dhEmi').slice(0,10),natureza:g(ide,'natOp'),
+    emit:{cnpj:g(em,'CNPJ'),nome:g(em,'xNome'),ie:g(em,'IE')},
+    dest:{doc:g(de,'CNPJ')||g(de,'CPF'),tipo:g(de,'CNPJ')?'cnpj':'cpf',nome:g(de,'xNome'),ie:g(de,'IE'),end:g(en,'xLgr'),num:g(en,'nro'),bairro:g(en,'xBairro'),cidade:g(en,'xMun'),uf:g(en,'UF'),cep:g(en,'CEP')},
+    tot:{prod:+g(tot,'vProd')||0,desc:+g(tot,'vDesc')||0,frete:+g(tot,'vFrete')||0,nota:+g(tot,'vNF')||0,difal:dif},
+    transp:{nome:g(tr,'xNome'),doc:g(tr,'CNPJ')||g(tr,'CPF')},vol:{q:+g(vol,'qVol')||0,esp:g(vol,'esp')},
+    inf:g(d,'infCpl'),itens:it,pecas:it.reduce(function(a,i){ return a+i.qtd; },0)}); }
+var _nfPdfP=null;
+function _nfPdfLib(){ if(window.pdfjsLib) return Promise.resolve(window.pdfjsLib); if(_nfPdfP) return _nfPdfP;
+  _nfPdfP=new Promise(function(ok,ko){ var s=document.createElement('script'); s.src=NF_PDFJS+'pdf.min.js'; s.onload=function(){ pdfjsLib.GlobalWorkerOptions.workerSrc=NF_PDFJS+'pdf.worker.min.js'; ok(pdfjsLib); }; s.onerror=function(){ _nfPdfP=null; ko(new Error('não consegui carregar o leitor de PDF (internet?)')); }; document.head.appendChild(s); });
+  return _nfPdfP; }
+async function nfLerPdf(buf){ var lib=await _nfPdfLib(), doc=await lib.getDocument({data:buf}).promise, P=[];
+  for(var p=1;p<=doc.numPages;p++){ var pg=await doc.getPage(p), tc=await pg.getTextContent(); P.push(tc.items.map(function(i){ return {s:i.str.trim(),x:i.transform[4],y:i.transform[5],w:i.width}; }).filter(function(i){ return i.s; })); }
+  var I=P[0], nz=function(s){ return String(s).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase(); };
+  // valor de um campo: o texto logo abaixo do rótulo, até o próximo rótulo da mesma linha
+  var rot=function(re,depoisDe){ return I.filter(function(i){ return re.test(nz(i.s))&&(!depoisDe||i.y<depoisDe); }).sort(function(a,b){ return b.y-a.y; })[0]; };
+  var val=function(l){ if(!l) return ''; var prox=I.filter(function(i){ return Math.abs(i.y-l.y)<4&&i.x>l.x+5&&/[a-z]/i.test(i.s); }).sort(function(a,b){ return a.x-b.x; })[0], xMax=prox?prox.x-6:l.x+260;
+    var cand=I.filter(function(i){ return i.y<l.y-3.5&&i.y>l.y-18&&i.x>=l.x-12&&i.x<xMax; }); if(!cand.length) return '';
+    var yv=Math.max.apply(null,cand.map(function(i){ return i.y; })); return cand.filter(function(i){ return Math.abs(i.y-yv)<2.5; }).sort(function(a,b){ return a.x-b.x; }).map(function(i){ return i.s; }).join(' ').trim(); };
+  var linhas=function(items){ var L=[]; items.slice().sort(function(a,b){ return b.y-a.y||a.x-b.x; }).forEach(function(i){ var l=L.filter(function(z){ return Math.abs(z.y-i.y)<2.5; })[0]; if(!l){ l={y:i.y,it:[]}; L.push(l); } l.it.push(i); });
+    return L.map(function(l){ l.it.sort(function(a,b){ return a.x-b.x; }); return {y:l.y,x:l.it[0].x,t:l.it.map(function(i){ return i.s; }).join(' ')}; }); };
+  var chI=I.filter(function(i){ return /^\d{44}$/.test(i.s.replace(/\s/g,'')); })[0], base=nfDaChave(chI?chI.s:'');
+  var lDest=rot(/^destinatario/), lRaz=lDest&&I.filter(function(i){ return /^razao social$/.test(nz(i.s))&&i.y<lDest.y; }).sort(function(a,b){ return b.y-a.y; })[0];
+  var mesmaLinha=function(re,ref){ return ref&&I.filter(function(i){ return re.test(nz(i.s))&&Math.abs(i.y-ref.y)<3; })[0]; };
+  var lEnd=lRaz&&I.filter(function(i){ return /^endereco$/.test(nz(i.s))&&i.y<lRaz.y; }).sort(function(a,b){ return b.y-a.y; })[0];
+  var lMun=lRaz&&I.filter(function(i){ return /^municipio$/.test(nz(i.s))&&i.y<lRaz.y; }).sort(function(a,b){ return b.y-a.y; })[0];
+  var lTr=rot(/^transportador/), lTrRaz=lTr&&I.filter(function(i){ return /^razao social$/.test(nz(i.s))&&i.y<lTr.y; }).sort(function(a,b){ return b.y-a.y; })[0];
+  var lQtd=lTr&&I.filter(function(i){ return /^quantidade$/.test(nz(i.s))&&i.y<lTr.y; }).sort(function(a,b){ return b.y-a.y; })[0];
+  var endTxt=val(lEnd), mN=/^(.*?)[,\s]+(\d+[A-Z]?|S\/?N)\s*$/i.exec(endTxt);
+  var docD=_nfDig(val(mesmaLinha(/^cnpj|^cpf/,lRaz)));
+  // informações complementares
+  var lInf=rot(/^informacoes complementares/), lRes=rot(/^reservado ao fisco/);
+  var infTxt=lInf?linhas(I.filter(function(i){ return i.y<lInf.y-1&&i.y>lInf.y-150&&i.x<(lRes?lRes.x-2:400); })).map(function(l){ return l.t; }).join(' '):'';
+  // itens (todas as páginas): linha que começa com o código do produto
+  var it=[], tudo=[];
+  P.forEach(function(pi){ linhas(pi).forEach(function(l){ tudo.push(l.t); var m=/^([A-Z]{3}\d{4}[A-Z]{2}\d{3}\S*)\s+(.*?)\s+\d{8}\s+\d{3}\s+(\d\.\d{3})\s+(\S+)\s+([\d.,]+)\s+R\$\s?([\d.,]+)\s+([\d.,]+)/.exec(l.t);
+    if(m){ var c=_nfCod(m[1]); it.push({cod:m[1],ref:c.ref,cor:c.cor,tam:c.tam,desc:m[2],qtd:_nfNum(m[5]),un:_nfNum(m[6]),tot:_nfNum(m[7])}); } }); });
+  var tp=/total de pe[cç]as faturadas:?\s*(\d+)/i.exec(tudo.join(' \n '));
+  var vl=function(re){ return _nfNum(val(rot(re))); };
+  return Object.assign(base,{fonte:'PDF',emissao:(function(v){ var m=/(\d{2})\/(\d{2})\/(\d{4})/.exec(v); return m?m[3]+'-'+m[2]+'-'+m[1]:''; })(val(mesmaLinha(/^data de emissao/,lRaz))),natureza:val(rot(/^natureza da opera/)),
+    emit:{cnpj:base.emitCnpj||'',nome:(function(){ var m=/recebemos de\s+(.+?)\s+os produtos/i.exec(linhas(I).map(function(l){ return l.t; }).join(' | ')); return m?m[1]:''; })(),ie:_nfDig(val(rot(/^inscricao estadual$/)))},
+    dest:{doc:docD,tipo:docD.length===11?'cpf':'cnpj',nome:val(lRaz),ie:_nfDig(val(mesmaLinha(/^inscricao estadual$/,lMun)))||val(mesmaLinha(/^inscricao estadual$/,lMun)),end:mN?mN[1]:endTxt,num:mN?mN[2]:'',bairro:val(mesmaLinha(/^bairro/,lEnd)),cidade:val(lMun),uf:val(mesmaLinha(/^uf$/,lMun)),cep:_nfDig(val(mesmaLinha(/^cep$/,lEnd)))},
+    tot:{prod:vl(/^valor total dos produtos/),desc:vl(/^desconto$/),frete:vl(/^valor frete/),nota:vl(/^valor total da nota/),difal:0},
+    transp:{nome:val(lTrRaz),doc:''},vol:{q:_nfNum(val(lQtd)),esp:val(mesmaLinha(/^especie$/,lQtd))},
+    inf:infTxt,itens:it,pecas:tp?+tp[1]:it.reduce(function(a,i){ return a+i.qtd; },0),pecasItens:it.reduce(function(a,i){ return a+i.qtd; },0)}); }
+async function nfLerArquivo(f){ var nome=f.name||''; if(/\.xml$/i.test(nome)||/^</.test((await f.slice(0,200).text()).trim())) return nfLerXml(await f.text()); return nfLerPdf(await f.arrayBuffer()); }
+
+/* ===== Auditoria da NF: depois do faturamento feito (até 24h), sobe o PDF ou o XML da nota e o painel confere
+   contra o pedido (02/12: peças e valor; 16: itens por referência/cor/tamanho), o cadastro de clientes (21), o checklist do
+   faturamento, a embalagem e o relatório 09. Resultado guardado em exp/kanban.json (g.aud) — vale para todos. */
+var KB_AUD_H=24, KB_EMIT_OK=/MOD AMONT|DASH/i;
+function kbAudBase(f){ if(!f) return 0; var g=kbFatProg(f); if(g.ok<g.tot) return 0; return f.feitoTs||f.nfTs||f.ts||0; }
+function kbAudSit(n){ var f=(KB.fat||{})[n], a=(KB.aud||{})[n], b=kbAudBase(f); if(!b) return {st:''}; if(a&&a.ign) return {st:'ign',a:a};
+  if(a&&a.ts&&_kbNfNum(a.nf)===_kbNfNum(f.nf)){ var d=kbAudDiv(a); return {st:d.length?'div':'ok',a:a,div:d}; }
+  var h=Math.floor((Date.now()-b)/36e5); return {st:h>=KB_AUD_H?'atraso':'pend',h:h,resta:Math.max(0,KB_AUD_H-h),base:b}; }
+function kbAudDiv(a){ var I=(a&&a.dign)||{}; return ((a&&a.res)||[]).filter(function(c){ return c.ok===false&&!I[c.k]; }); }
+// relatório 16 (itens do pedido): lido uma vez por publicação, só os arquivos do ano atual e do anterior
+var KB_V16={st:'',sig:'',map:{},p:null};
+function kbV16Ler(){ var man=PUB.manifest, e=man&&man.slots&&man.slots.vendas, key=SESSION&&SESSION.slots&&SESSION.slots.vendas;
+  if(!e||!key){ KB_V16.st='sem'; return Promise.resolve(KB_V16); } var sig=String(man.ts||''); if(KB_V16.sig===sig&&KB_V16.p) return KB_V16.p;
+  KB_V16.sig=sig; KB_V16.st='lendo';
+  KB_V16.p=(async function(){ try{ var meta=await decJSON(b64d(key),e.m), ano=new Date().getFullYear(), L=[];
+      var fs=meta.files.filter(function(f){ return f.n.indexOf(String(ano))>=0||f.n.indexOf(String(ano-1))>=0; }); if(!fs.length) fs=meta.files;
+      for(var i=0;i<fs.length;i++){ var f=fs[i];
+        if(f.pp&&f.pv===2&&!/\.csv$/i.test(f.n)){ PRE_META[f.pp]={k:'vendas',piv:f.piv,p:f.p,iv:f.iv,n:f.n,t:f.t,lm:f.lm}; var g=await preGz(f.pp); L.push({gz:g.buffer.slice(g.byteOffset,g.byteOffset+g.byteLength)}); }
+        else { var ct=await getEncBlob(f.p), pl=await decBytes(b64d(key),f.iv,ct); L.push({buf:pl.buffer.slice(pl.byteOffset,pl.byteOffset+pl.byteLength)}); } }
+      var src="var PRE_WB="+PRE_WB.toString()+";self.onmessage=function(e){try{importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');}catch(err){postMessage({ok:0});return;}"
+        +"var L=e.data,M={};var cel=function(v){return String(v==null?'':v).trim();};"
+        +"var um=function(wb){var R=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:null});var hi=R.findIndex(function(r){return r&&r.some(function(v){return cel(v)==='Nº Pedido';});});if(hi<0)return;"
+        +"var H=R[hi].map(cel),ip=H.indexOf('Nº Pedido'),ir=H.indexOf('Referência'),ic=H.indexOf('Cor'),icd=H.lastIndexOf('Cor'),it=H.indexOf('Total'),ie=H.indexOf('Qtde Entregar'),ipr=H.indexOf('Preço 1'),ids=H.indexOf('Descrição');"
+        +"R.slice(hi+1).forEach(function(r){if(!r)return;var p=cel(r[ip]).replace(/\\D/g,'');if(!p)return;var q=[],qe=[];for(var k=1;k<=30;k++){q.push(+r[it+k]||0);qe.push(ie>=0?+r[ie+k]||0:0);}"
+        +"(M[p]=M[p]||[]).push({ref:cel(r[ir]),cor:cel(r[ic]),corD:icd!==ic?cel(r[icd]):'',desc:cel(r[ids]),tot:+r[it]||0,q:q,qe:qe,preco:+r[ipr]||0});});};"
+        +"var i=0;var prox=function(){if(i>=L.length){postMessage({ok:1,M:M});return;}var x=L[i++];"
+        +"if(x.gz){new Response(new Blob([x.gz]).stream().pipeThrough(new DecompressionStream('gzip'))).text().then(function(t){try{um(PRE_WB(JSON.parse(t),{},XLSX));}catch(e){}prox();},function(){prox();});}"
+        +"else{try{um(XLSX.read(new Uint8Array(x.buf),{type:'array'}));}catch(e){}prox();}};prox();};";
+      var w=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
+      var d=await new Promise(function(ok){ w.onmessage=function(ev){ ok(ev.data); }; w.onerror=function(){ ok(null); }; w.postMessage(L,L.map(function(x){ return x.gz||x.buf; })); });
+      try{ w.terminate(); }catch(e){}
+      if(d&&d.ok){ KB_V16.map=d.M||{}; KB_V16.st='ok'; } else KB_V16.st='erro'; }
+    catch(err){ KB_V16.st='erro'; KB_V16.err=(err&&err.message)||String(err); }
+    return KB_V16; })();
+  return KB_V16.p; }
+function _nzT(s){ return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[^A-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim(); }
+function _kbParecido(a,b){ a=_nzT(a); b=_nzT(b); if(!a||!b) return null; if(a===b||a.indexOf(b)>=0||b.indexOf(a)>=0) return true;
+  var A=a.split(' ').filter(function(w){ return w.length>2; }), B=b.split(' '); if(!A.length) return null; var c=A.filter(function(w){ return B.indexOf(w)>=0; }).length; return c/A.length>=0.6; }
+async function kbAudCalc(n,nf){ var f=(KB.fat||{})[n]||{}, x=(KB._todos||{})[n]||{}, ob=(KB.obs||{})[n]||{}, R=[], rs=function(v){ return 'R$ '+(+v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+  var add=function(k,ok,t){ R.push({k:k,ok:ok,t:t}); };
+  if(!KB.itensLido) await kbItensLer(); if(_cliSig()&&CLI.st!=='ok') await cliLer(); await kbV16Ler();
+  var nfN=_kbNfNum(nf.nf), fN=_kbNfNum(f.nf);
+  add('nf',fN?nfN===fN:null,'Número da NF: '+(nfN||'?')+(fN?(nfN===fN?' (igual ao lançado no faturamento)':' — no faturamento está '+fN):' — ainda não lançado no faturamento'));
+  var mp=/pedido\s*:?\s*(\d{4,})/i.exec(nf.inf||''), pNF=mp?mp[1]:'';
+  add('pedido',pNF?pNF===String(n).replace(/\D/g,''):null,pNF?'Pedido na NF: '+pNF+(pNF===String(n).replace(/\D/g,'')?'':' — este cartão é o #'+n):'A NF não informa o número do pedido nas informações complementares');
+  add('emit',KB_EMIT_OK.test(nf.emit.nome||'')?true:(nf.emit.nome?false:null),'Emitente: '+(nf.emit.nome||'?')+' · CNPJ '+(nf.emit.cnpj||'?'));
+  var cod=String(f.cod||(KB.codCli||{})[n]||'').replace(/\D/g,'').replace(/^0+/,''), cad=CLI.st==='ok'?CLI.map[cod]:null, D=nf.dest||{};
+  if(!cad&&CLI.st==='ok'&&_nfDig(D.doc)){ var dd=_nfDig(D.doc), kc=Object.keys(CLI.map).filter(function(k){ var c=CLI.map[k]; return (c.cnpj&&c.cnpj===dd)||(c.cpf&&c.cpf===dd); })[0];
+    if(kc){ cad=CLI.map[kc]; add('cod',cod?cod===kc:null,'Cliente achado no cadastro pelo '+(D.tipo==='cpf'?'CPF':'CNPJ')+' da NF: código '+kc+(cod&&cod!==kc?' — no faturamento está '+cod:(cod?'':' (o código do cliente não estava no faturamento)'))); } }
+  if(!cad) add('cad',null,'Cliente '+(cod||'sem código')+' não encontrado no cadastro de clientes (21) — cliente, documento e endereço não conferidos');
+  else { var docC=cad.t==='cpf'?cad.cpf:cad.cnpj;
+    add('doc',docC?_nfDig(D.doc)===_nfDig(docC):null,(D.tipo==='cpf'?'CPF':'CNPJ')+' do cliente: '+(D.doc||'?')+(docC&&_nfDig(D.doc)!==_nfDig(docC)?' — no cadastro: '+docC:''));
+    var pn=_kbParecido(cad.raz||cad.nome,D.nome)||_kbParecido(cad.nome,D.nome); add('nome',pn,'Cliente: '+(D.nome||'?')+(pn===false?' — no cadastro: '+(cad.raz||cad.nome):''));
+    add('cep',cad.cep?_nfDig(D.cep)===_nfDig(cad.cep):null,'CEP: '+(D.cep||'?')+(cad.cep&&_nfDig(D.cep)!==_nfDig(cad.cep)?' — no cadastro: '+cad.cep:''));
+    var cOk=cad.cid?_nzT(D.cidade)===_nzT(cad.cid):null; add('cidade',cOk===null?null:cOk&&(!cad.uf||_nzT(D.uf)===_nzT(cad.uf)),'Cidade/UF: '+(D.cidade||'?')+'/'+(D.uf||'?')+((cOk===false||(cad.uf&&_nzT(D.uf)!==_nzT(cad.uf)))?' — no cadastro: '+cad.cid+'/'+cad.uf:''));
+    var eOk=cad.end?_kbParecido(cad.end,D.end):null; add('end',eOk,'Endereço: '+(D.end||'?')+(D.num?', '+D.num:'')+(eOk===false?' — no cadastro: '+cad.end+(cad.num?', '+cad.num:''):''));
+    if(cad.num&&D.num) add('num',_nzT(cad.num)===_nzT(D.num),'Número: '+D.num+(_nzT(cad.num)!==_nzT(D.num)?' — no cadastro: '+cad.num:''));
+    var bOk=cad.bai?_kbParecido(cad.bai,D.bairro):null; add('bairro',bOk,'Bairro: '+(D.bairro||'?')+(bOk===false?' — no cadastro: '+cad.bai:'')); }
+  if(f.doc) add('tipo',D.tipo?f.doc===D.tipo:null,'Checklist diz '+f.doc.toUpperCase()+', a NF é para '+(D.tipo||'?').toUpperCase());
+  var temIE=!!(D.ie&&!/isento/i.test(D.ie)); if(f.ie) add('ie',f.ie==='sim'?temIE:!temIE,'IE do cliente na NF: '+(D.ie||'não tem')+' — checklist diz '+(f.ie==='sim'?'tem IE':'não tem IE'));
+  if(f.difal==='diario'||f.difal==='mensal'||f.difal==='sim') add('difal',D.uf?_nzT(D.uf)!=='MG':null,'DIFAL '+(f.difal==='diario'?'diário':'mensal')+' no checklist · NF para '+(D.uf||'?')+(nf.natureza?' ('+nf.natureza+')':'')+(nf.tot&&nf.tot.difal?' · ICMS UF destino '+rs(nf.tot.difal):''));
+  var ce=_kbEnvioCat(f.envio), cn=_kbEnvioCat(nf.transp&&nf.transp.nome); add('transp',ce&&cn?ce===cn:null,'Transportadora na NF: '+((nf.transp&&nf.transp.nome)||'—')+(f.envio?' · checklist: '+f.envio:''));
+  if(ob.t){ var espN=_nzT(nf.vol&&nf.vol.esp), tOk=ob.t==='CX'?/CAIXA|CX/.test(espN):ob.t==='PCT'?/PACOTE|PCT/.test(espN):/VOL/.test(espN)||!!espN; add('vol',nf.vol&&nf.vol.q?(+nf.vol.q===+ob.q&&tOk):null,'Volumes na NF: '+((nf.vol&&nf.vol.q)||'?')+' '+((nf.vol&&nf.vol.esp)||'')+' · embalagem: '+_kbObsVol(ob)); }
+  var bolNF=/boleto/i.test(nf.inf||''); if(f.boleto) add('boleto',(f.boleto==='nao')!==bolNF,(bolNF?'A NF fala em pagamento por boleto':'A NF não fala em boleto')+' · checklist: '+({nao:'não tem boleto',emitir:'boleto a emitir',emitido:'boleto emitido'}[f.boleto]||''));
+  if(/simples remessa/i.test(nf.inf||'')) add('simples',null,'A NF diz: "'+(/(n[aã]o emitir a nota de simples remessa|emitir a nota de simples remessa)/i.exec(nf.inf)||['simples remessa'])[0]+'" · checklist: simples faturamento '+({nao:'não precisa',fazer:'a fazer',feita:'feita'}[f.simples]||'?'));
+  // totais do pedido (02/12)
+  var qv=(KB.pedQV||{})[String(n).replace(/\D/g,'')], parc=!!ob.parc, liq=Math.round(((nf.tot.prod||0)-(nf.tot.desc||0))*100)/100;
+  if(qv){ var qOk=nf.pecas===qv.q||(qv.qe!=null&&nf.pecas===qv.qe);
+    add('pecas',qOk?true:(parc?null:false),'Peças na NF: '+nf.pecas+' · pedido: '+qv.q+(qv.qe!=null&&qv.qe!==qv.q?' (a entregar: '+qv.qe+')':'')+(!qOk&&parc?' — envio parcial marcado na embalagem':''));
+    var vOk=Math.abs(liq-qv.v)<=1||(qv.ve!=null&&Math.abs(liq-qv.ve)<=1);
+    add('valor',vOk?true:(parc?null:false),'Valor das mercadorias na NF: '+rs(liq)+' · pedido: '+rs(qv.v)+(qv.ve!=null&&Math.abs(qv.ve-qv.v)>1?' (a entregar: '+rs(qv.ve)+')':'')+(!vOk&&parc?' — envio parcial':'')); }
+  else add('pecas',null,'Pedido não encontrado nos relatórios 02/12 — peças e valor do pedido não conferidos (NF: '+nf.pecas+' peças, '+rs(liq)+')');
+  if(nf.pecasItens&&nf.pecas&&nf.pecasItens!==nf.pecas) add('soma',false,'Soma dos itens da NF ('+nf.pecasItens+') diferente do "total de peças faturadas" ('+nf.pecas+')');
+  // faturar somente / não faturar
+  if(f.fatModo&&f.fatModo!=='tudo'&&f.fatTxt){ var refs=(f.fatTxt.toUpperCase().match(/[A-Z]{3,5}\d{3,4}/g)||[]), nfRefs={}; nf.itens.forEach(function(i){ nfRefs[i.ref]=1; });
+    if(refs.length){ var errFat=f.fatModo==='nao'?refs.filter(function(r){ return Object.keys(nfRefs).some(function(k){ return k.indexOf(r)>=0; }); }):Object.keys(nfRefs).filter(function(k){ return !refs.some(function(r){ return k.indexOf(r)>=0; }); });
+      add('fatref',!errFat.length,(f.fatModo==='nao'?'Não faturar '+refs.join(', ')+(errFat.length?' — mas a NF tem: '+errFat.join(', '):' — ok, não estão na NF'):'Faturar somente '+refs.join(', ')+(errFat.length?' — mas a NF tem também: '+errFat.join(', '):' — ok'))); } }
+  // relatório 09
+  var r09=(KB_F09.map&&KB_F09.map[nfN]||[]); if(r09.length){ var v09=r09.reduce(function(a,z){ return a+z.vl; },0); add('r09',Math.abs(v09-liq)<=1,'Relatório 09: NF com '+rs(v09)+' em mercadorias'+(Math.abs(v09-liq)>1?' — no PDF/XML: '+rs(liq):'')); }
+  // itens (16): referência + cor + tamanho (sem a grade da referência no 01, confere referência + cor no total)
+  var V=KB_V16.map[String(n).replace(/\D/g,'')]||[], linhas=[], itOk=null;
+  if(V.length){ itOk=true; var E={}, ED={}, N={}, ND={}, gradeDe=function(ref){ var g=(KB.grade||{})[ref]; return g&&g.some(Boolean)?g:null; };
+    V.forEach(function(v){ var g=gradeDe(v.ref); v.q.forEach(function(q,i){ if(!q) return; var k=v.ref+'|'+v.cor+'|'+(g?(g[i]||'#'+(i+1)):'(todos)'); E[k]=(E[k]||0)+q; if(!ED[k]) ED[k]={preco:v.preco,corD:v.corD}; }); });
+    nf.itens.forEach(function(i){ var g=gradeDe(i.ref), k=i.ref+'|'+i.cor+'|'+(g?i.tam:'(todos)'); N[k]=(N[k]||0)+i.qtd; if(!ND[k]) ND[k]={un:i.un}; });
+    var K={}; Object.keys(E).forEach(function(k){ K[k]=1; }); Object.keys(N).forEach(function(k){ K[k]=1; }); var nPreco=0;
+    Object.keys(K).forEach(function(k){ var p=k.split('|'), qe=E[k]||0, qn=N[k]||0, st='ok', obs='';
+      if(qn&&!qe){ st='sobra'; obs='na NF, mas não no pedido'; } else if(qe&&!qn){ st=parc?'parcial':'falta'; obs=parc?'não foi nesta NF (parcial)':'no pedido, mas não na NF'; } else if(qn!==qe){ st=(parc&&qn<qe)?'parcial':'qtd'; obs=(parc&&qn<qe)?'parcial':'quantidade diferente'; }
+      if(st==='ok'&&ED[k]&&ND[k]&&ED[k].preco&&ND[k].un&&Math.abs(ED[k].preco-ND[k].un)>0.01){ st='preco'; obs='preço: pedido R$ '+ED[k].preco+' · NF R$ '+ND[k].un; nPreco++; }
+      if(st==='sobra'||st==='falta'||st==='qtd') itOk=false; linhas.push({ref:p[0],cor:p[1],tam:p[2],ped:qe,nf:qn,st:st,obs:obs,corD:(ED[k]||{}).corD||''}); });
+    linhas.sort(function(a,b){ return (a.st==='ok')-(b.st==='ok')||a.ref.localeCompare(b.ref)||a.cor.localeCompare(b.cor)||String(a.tam).localeCompare(String(b.tam),'pt',{numeric:true}); });
+    var nDiv=linhas.filter(function(l){ return l.st==='sobra'||l.st==='falta'||l.st==='qtd'; }).length;
+    add('itens',itOk,'Itens (referência, cor, tamanho e quantidade): '+(nDiv?nDiv+' diferença'+(nDiv===1?'':'s')+' entre a NF e o pedido':'conferem com o pedido')+' — '+linhas.length+' linha'+(linhas.length===1?'':'s'));
+    if(nPreco) add('preco',null,nPreco+' item'+(nPreco===1?'':'s')+' com preço unitário diferente do "Preço 1" do pedido (pode ser tabela/desconto — confira)'); }
+  else add('itens',null,KB_V16.st==='sem'?'Itens não conferidos: este login não tem acesso ao relatório 16 (o administrador precisa publicar os usuários de novo).':'Itens não conferidos: o pedido não está no relatório 16 (Vendas por ref). Suba o 16 do mês na Base.');
+  return {checks:R,linhas:linhas}; }
+async function _kbGravar(mut,msg,tent){ var key=_kbKey(); if(!key||!ghToken()) throw new Error('este computador não tem o token do GitHub'); tent=tent||0;
+  while(KB_SYNC) await new Promise(function(r){ setTimeout(r,400); });
+  KB_SYNC=true; var outra=false;
+  try{ var r=await _kbLerRemoto(), g=r.g; mut(g); var _hf=_kbHistFlush(g);
+    var bl=await gh('/git/blobs',{method:'POST',body:{content:JSON.stringify(await encJSON(key,g)),encoding:'utf-8'}});
+    var body={tree:[{path:KB_PATH,mode:'100644',type:'blob',sha:bl.sha}]}; if(r.sha) body.base_tree=(await gh('/git/commits/'+r.sha)).tree.sha;
+    var tr=await gh('/git/trees',{method:'POST',body:body});
+    var nc=await gh('/git/commits',{method:'POST',body:{message:msg,tree:tr.sha,parents:r.sha?[r.sha]:[]}});
+    try{ if(r.sha) await gh('/git/refs/heads/'+CK_BRANCH,{method:'PATCH',body:{sha:nc.sha,force:false}}); else await gh('/git/refs',{method:'POST',body:{ref:'refs/heads/'+CK_BRANCH,sha:nc.sha}}); }
+    catch(e){ if(e.status===422&&tent<3) outra=true; else throw e; }
+    if(!outra){ KB.aud=g.aud||{}; KB.hist=g.hist; _kbHistOk(_hf); } }
+  finally{ KB_SYNC=false; }
+  if(outra) return _kbGravar(mut,msg,tent+1); }
+function kbAudSalvar(n,reg,ev){ KB.aud=KB.aud||{}; if(reg) KB.aud[n]=reg; else delete KB.aud[n]; if(ev) kbHistAdd(ev); KB.salvo={ok:true,t:'Salvando a auditoria…'}; kbRender();
+  return _kbGravar(function(g){ g.aud=g.aud||{}; if(reg) g.aud[n]=reg; else delete g.aud[n]; },'Kanban: auditoria da NF do pedido '+n+' ('+((current&&current.name)||'')+')')
+    .then(function(){ KB.salvo={ok:true,t:'✓ Auditoria do pedido #'+n+' salva para todos.'}; },function(e){ KB.salvo={ok:false,t:'Não consegui salvar a auditoria ('+((e&&e.message)||e)+'). Tente de novo.'}; })
+    .then(function(){ kbRender(); setTimeout(function(){ if(KB.salvo&&KB.salvo.ok){ KB.salvo=null; kbRender(); } },4000); }); }
+function kbAudBloco(x){ var f=(KB.fat||{})[x.n]; if(!f||!String(f.nf||'').trim()) return ''; var s=kbAudSit(x.n), a=s.a;
+  var cor={ok:'#4ecb8f',div:'#e5484d',atraso:'#e5484d',pend:'#f5a524',ign:'var(--muted)'}[s.st]||'var(--muted)';
+  var txt=s.st==='ok'?'✓ Auditada em '+_kbQuandoTxt(a.ts)+' por '+uEsc(a.quem||a.por||'')+' — tudo confere'+(a.dign&&Object.keys(a.dign).length?' ('+Object.keys(a.dign).length+' ignorada'+(Object.keys(a.dign).length===1?'':'s')+')':'')
+    :s.st==='div'?'⚠ Auditada em '+_kbQuandoTxt(a.ts)+' por '+uEsc(a.quem||a.por||'')+' — '+s.div.length+' divergência'+(s.div.length===1?'':'s')
+    :s.st==='ign'?'Auditoria ignorada por '+uEsc(a.ign.quem||a.ign.por||'')+' em '+_kbQuandoTxt(a.ign.ts)+(a.ign.motivo?' — '+uEsc(a.ign.motivo):'')
+    :s.st==='atraso'?'⚠ Auditoria atrasada — faturamento feito há '+s.h+'h (prazo de '+KB_AUD_H+'h para corrigir a NF)'
+    :s.st==='pend'?'Auditoria pendente — faltam '+s.resta+'h do prazo de '+KB_AUD_H+'h':'A auditoria abre quando o checklist do faturamento estiver completo.';
+  return '<div style="margin-top:10px;padding:9px 11px;border:1px solid '+(s.st==='div'||s.st==='atraso'?'rgba(229,72,77,.5)':'var(--line)')+';border-radius:9px">'
+    +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-size:13px;color:var(--ink)">🔎 Auditoria da NF</b><span style="font-size:12.5px;color:'+cor+';flex:1">'+txt+'</span></div>'
+    +(kbPodeMover()&&s.st?'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px"><label class="ubtn" style="cursor:pointer;padding:5px 10px;font-size:12.5px'+(s.st==='pend'||s.st==='atraso'?';background:var(--f-green);color:#0c241a;border:none;font-weight:700':'')+'">'+(a&&a.ts?'Auditar de novo':'Auditar NF (PDF ou XML)')+'<input type="file" class="kbAudFile" data-n="'+uEsc(x.n)+'" accept=".pdf,.xml,application/pdf,text/xml" style="display:none"></label>'
+      +(a&&a.res?'<button class="ubtn kbAudVer" data-n="'+uEsc(x.n)+'" style="padding:5px 10px;font-size:12.5px">Ver resultado</button>':'')
+      +(s.st!=='ign'&&s.st!=='ok'?'<button class="ubtn kbAudIgn" data-n="'+uEsc(x.n)+'" style="padding:5px 10px;font-size:12.5px">Ignorar auditoria</button>':'')+'</div>':'')+'</div>'; }
+function kbAudWire(z,n,fechar){
+  z.querySelectorAll('.kbAudFile').forEach(function(inp){ inp.onchange=function(){ var fl=inp.files&&inp.files[0]; if(!fl) return; fechar(); kbQuem('fat',n,function(){ kbAudRodar(n,fl); }); }; });
+  z.querySelectorAll('.kbAudVer').forEach(function(b){ b.onclick=function(){ fechar(); kbAudModal(n); }; });
+  z.querySelectorAll('.kbAudIgn').forEach(function(b){ b.onclick=function(){ fechar(); kbQuem('fat',n,function(){ var mot=prompt('Ignorar a auditoria da NF do pedido #'+n+'?\nMotivo (opcional):',''); if(mot===null){ kbAgoraFim(); return; } var q=kbQuemDe('fat',n), f=(KB.fat||{})[n]||{};
+    kbAudSalvar(n,{nf:_kbNfNum(f.nf),ign:{ts:Date.now(),por:(current&&current.name)||currentUserKey||'',quem:q,motivo:(mot||'').trim()}},{n:n,cli:((KB._todos||{})[n]||{}).cli,tipo:'auditoria',area:'Faturamento',quem:q,acao:'ignorada',det:'Auditoria da NF '+_kbNfNum(f.nf)+' ignorada'+(mot?' — '+mot:'')}); kbAgoraFim(); }); }; }); }
+async function kbAudRodar(n,fl){ var z=document.createElement('div'); z.id='kbAudM'; z.style.cssText='position:fixed;inset:0;z-index:97;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:30px 12px;overflow:auto'; document.body.appendChild(z);
+  z.innerHTML='<div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;max-width:820px;width:100%;padding:18px 20px;color:var(--ink)">🔎 Lendo a NF e conferindo com o pedido… <span style="color:var(--muted);font-size:12.5px">(na primeira vez lê o relatório 16, pode levar alguns segundos)</span></div>';
+  try{ var nf=await nfLerArquivo(fl); var r=await kbAudCalc(n,nf); var q=kbQuemDe('fat',n);
+    var reg={ts:Date.now(),por:(current&&current.name)||currentUserKey||'',quem:q,nf:nf.nf,serie:nf.serie,arq:fl.name,fonte:nf.fonte,chave:nf.chave||'',emissao:nf.emissao||'',res:r.checks,lin:r.linhas.filter(function(l){ return l.st!=='ok'; }).slice(0,200),nLin:r.linhas.length,dign:{}};
+    var nDiv=kbAudDiv(reg).length; z.remove();
+    await kbAudSalvar(n,reg,{n:n,cli:((KB._todos||{})[n]||{}).cli,tipo:'auditoria',area:'Faturamento',quem:q,acao:nDiv?'feita com '+nDiv+' divergência'+(nDiv===1?'':'s'):'feita — tudo confere',det:'NF '+nf.nf+' ('+nf.fonte+', '+fl.name+')'+(nDiv?': '+kbAudDiv(reg).map(function(c){ return c.t; }).join(' | '):'')});
+    kbAgoraFim(); kbAudModal(n,r.linhas); }
+  catch(e){ z.querySelector('div').innerHTML='<div style="color:var(--danger);font-weight:700;margin-bottom:6px">Não consegui ler a NF</div><div style="font-size:13px">'+uEsc((e&&e.message)||String(e))+'</div><div style="font-size:12.5px;color:var(--muted);margin-top:6px">Use o PDF do DANFE ou o XML da NF-e.</div><button class="ubtn" id="kbAudX" style="margin-top:10px">Fechar</button>'; $('kbAudX').onclick=function(){ z.remove(); kbAgoraFim(); }; } }
+function kbAudModal(n,linhasTodas){ var a=(KB.aud||{})[n]; if(!a||!a.res) return; var z=$('kbAudM'); if(z) z.remove(); z=document.createElement('div'); z.id='kbAudM'; z.style.cssText='position:fixed;inset:0;z-index:97;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:30px 12px;overflow:auto'; document.body.appendChild(z);
+  var I=a.dign||{}, div=kbAudDiv(a), ic=function(c){ return I[c.k]?'<span style="color:var(--muted)">⊘</span>':c.ok===true?'<span style="color:#4ecb8f">✓</span>':c.ok===false?'<span style="color:#e5484d">⚠</span>':'<span style="color:var(--muted)">ℹ</span>'; };
+  var L=linhasTodas||a.lin||[], stC={sobra:'#e5484d',falta:'#e5484d',qtd:'#e5484d',preco:'#f5a524',parcial:'var(--muted)',ok:'#4ecb8f'};
+  z.innerHTML='<div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;max-width:860px;width:100%;padding:18px 20px">'
+    +'<div style="display:flex;gap:10px;align-items:center"><div style="flex:1"><div style="font-size:12px;color:var(--muted)">Auditoria da NF · pedido #'+uEsc(n)+'</div><div style="font-size:19px;font-weight:650;color:var(--ink)">NF '+uEsc(a.nf)+(a.serie?' · série '+uEsc(a.serie):'')+'</div>'
+      +'<div style="font-size:12.5px;color:var(--muted)">'+uEsc(a.fonte||'')+' · '+uEsc(a.arq||'')+' · '+_kbQuandoTxt(a.ts)+' · '+uEsc(a.quem||a.por||'')+'</div></div><button class="ubtn" id="kbAudX">Fechar</button></div>'
+    +'<div style="margin:12px 0;padding:9px 12px;border-radius:9px;font-weight:700;font-size:14px;'+(div.length?'background:rgba(229,72,77,.12);color:#e5484d':'background:rgba(78,203,143,.12);color:#4ecb8f')+'">'+(div.length?'⚠ '+div.length+' divergência'+(div.length===1?'':'s')+' — corrija a NF (prazo de '+KB_AUD_H+'h) ou ignore se for um caso fora do comum':'✓ Tudo o que foi possível conferir está certo')+'</div>'
+    +a.res.map(function(c){ return '<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px;color:'+(c.ok===false&&!I[c.k]?'var(--ink)':'var(--muted)')+'"><span style="width:18px;text-align:center">'+ic(c)+'</span><span style="flex:1">'+uEsc(c.t)+(I[c.k]?' <i>(ignorado por '+uEsc(I[c.k].quem||I[c.k].por||'')+')</i>':'')+'</span>'+(c.ok===false&&!I[c.k]&&kbPodeMover()?'<button class="ubtn kbAudDI" data-k="'+uEsc(c.k)+'" style="padding:3px 9px;font-size:11.5px">Ignorar</button>':'')+'</div>'; }).join('')
+    +(L.length?'<div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin:14px 0 6px">Itens '+(linhasTodas?'(todos)':'(só os que não conferem)')+'</div><div style="overflow:auto;max-height:46vh"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>'+['Ref.','Cor','Tam.','Pedido','NF','Situação'].map(function(h){ return '<th style="text-align:left;padding:5px 6px;color:var(--muted);border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface)">'+h+'</th>'; }).join('')+'</tr></thead><tbody>'
+      +L.map(function(l){ return '<tr><td style="padding:4px 6px;border-bottom:1px solid var(--line);font-weight:700">'+uEsc(l.ref)+'</td><td style="padding:4px 6px;border-bottom:1px solid var(--line)">'+uEsc(l.cor)+(l.corD?' <span style="color:var(--muted)">'+uEsc(l.corD)+'</span>':'')+'</td><td style="padding:4px 6px;border-bottom:1px solid var(--line)">'+uEsc(l.tam)+'</td><td style="padding:4px 6px;border-bottom:1px solid var(--line);text-align:right">'+(l.ped||'—')+'</td><td style="padding:4px 6px;border-bottom:1px solid var(--line);text-align:right">'+(l.nf||'—')+'</td><td style="padding:4px 6px;border-bottom:1px solid var(--line);color:'+(stC[l.st]||'var(--ink)')+'">'+(l.st==='ok'?'✓':uEsc(l.obs||l.st))+'</td></tr>'; }).join('')+'</tbody></table></div>':'')
+    +'<div style="font-size:11.5px;color:var(--muted);margin-top:10px">Quando a grade de tamanhos da referência não está no 01 – Ops, a conferência daquela referência é feita por referência + cor no total ("(todos)"). O arquivo da NF não é guardado: só o resultado da conferência.</div></div>';
+  $('kbAudX').onclick=function(){ z.remove(); }; z.onclick=function(ev){ if(ev.target===z) z.remove(); };
+  z.querySelectorAll('.kbAudDI').forEach(function(b){ b.onclick=function(){ var k=b.getAttribute('data-k'), c=a.res.filter(function(r){ return r.k===k; })[0]; kbQuem('fat',n,function(){ var q=kbQuemDe('fat',n);
+    var reg=Object.assign({},a,{dign:Object.assign({},a.dign||{})}); reg.dign[k]={ts:Date.now(),por:(current&&current.name)||currentUserKey||'',quem:q};
+    kbAudSalvar(n,reg,{n:n,cli:((KB._todos||{})[n]||{}).cli,tipo:'auditoria',area:'Faturamento',quem:q,acao:'divergência ignorada',det:c?c.t:k}).then(function(){ kbAgoraFim(); kbAudModal(n,linhasTodas); }); }); }; }); }
+
 function kbDetalhe(n){ var x=KB._todos&&KB._todos[n]; if(!x) return; if(!KB.itensLido&&(KB.fat||{})[n]&&KB.fat[n].doc==='cpf') kbItensLer().then(function(){ if($('kbDet')) kbDetalhe(n); }); var ops=(KB._ops&&KB._ops[n])||x.ops||[], z=$('kbDet');
   if(!z){ z=document.createElement('div'); z.id='kbDet'; z.style.cssText='position:fixed;inset:0;z-index:96;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:40px 12px;overflow:auto'; document.body.appendChild(z); }
   var fase={producao:'A sair: em produção',pronto:'Pronto para envio',emb:'Em processo de embalagem',env:'Enviado'}[x._mov?x._mov.para:x._o];
@@ -6448,6 +6677,7 @@ function kbDetalhe(n){ var x=KB._todos&&KB._todos[n]; if(!x) return; if(!KB.iten
   var fechar=function(){ z.remove(); }; $('kbDetX').onclick=fechar; z.onclick=function(e){ if(e.target===z) fechar(); };
   if($('kbObsEd')) $('kbObsEd').onclick=function(){ fechar(); kbQuem('emb',n,function(){ kbObsEditar(n,false); }); };
   if($('kbFatEd')) $('kbFatEd').onclick=function(){ fechar(); kbQuem('fat',n,function(){ kbFatEditar(n); }); };
+  kbAudWire(z,n,fechar);
   z.querySelectorAll('.kbIgn').forEach(function(b){ b.onclick=function(){ b.disabled=true; b.textContent='Ignorado'; kbFatIgnorar(b.getAttribute('data-n'),b.getAttribute('data-s'),0,b.getAttribute('data-t')).then(function(){ if($('kbDet')) kbDetalhe(n); }); }; });
   var cpD=z.querySelector('#fItensCp'); if(cpD) cpD.onclick=function(){ kbItensCopiar(n,x,cpD); }; }
 /* ---- movimentos do Kanban: guardados no ramo "checklists" (exp/kanban.json), cifrados com a chave do Controle de liberação ---- */
@@ -6457,7 +6687,7 @@ function kbPodeMover(){ return !!(_kbKey()&&ghToken()); }
 async function _kbLerRemoto(){ var key=_kbKey(); if(!key) return {sha:null,g:{mov:{}}}; var sha=await _ckHead(), g=null;
   if(sha){ var b=await _ckRead(KB_PATH,sha); if(b){ try{ g=await decJSON(key,JSON.parse(new TextDecoder().decode(b))); }catch(e){ g=null; } } }
   g=g||{}; g.mov=g.mov||{}; return {sha:sha,g:g}; }
-async function kbMovCarregar(){ if(KB_SYNC) return; try{ var r=await _kbLerRemoto(), antes=JSON.stringify(KB.mov||{}), bkAntes=JSON.stringify([KB.bk,!!KB.bkLido]); KB.mov=r.g.mov; KB.bk=r.g.bk||null; KB.bkLido=true; var obsAntes=JSON.stringify([KB.obs||{},KB.fat||{}]); KB.obs=r.g.obs||{}; KB.fat=r.g.fat||{}; KB.itensSnap=r.g.itens||{}; KB.fatIgn=r.g.fatIgn||{}; KB.pessoas=r.g.pessoas||KB.pessoas||null; if(r.g.viewKey) KB.viewKey=r.g.viewKey; var hAntes=(KB.hist||[]).length; KB.hist=r.g.hist||[]; if(KB.modo==='hist'&&KB.hist.length!==hAntes) kbRender(); if(JSON.stringify([KB.obs,KB.fat])!==obsAntes) kbRender(); if(r.g.bkPara) KB.bkPara=r.g.bkPara;
+async function kbMovCarregar(){ if(KB_SYNC) return; try{ var r=await _kbLerRemoto(), antes=JSON.stringify(KB.mov||{}), bkAntes=JSON.stringify([KB.bk,!!KB.bkLido]); KB.mov=r.g.mov; KB.bk=r.g.bk||null; KB.bkLido=true; var obsAntes=JSON.stringify([KB.obs||{},KB.fat||{}]); KB.obs=r.g.obs||{}; KB.fat=r.g.fat||{}; KB.itensSnap=r.g.itens||{}; KB.fatIgn=r.g.fatIgn||{}; KB.aud=r.g.aud||{}; KB.pessoas=r.g.pessoas||KB.pessoas||null; if(r.g.viewKey) KB.viewKey=r.g.viewKey; var hAntes=(KB.hist||[]).length; KB.hist=r.g.hist||[]; if(KB.modo==='hist'&&KB.hist.length!==hAntes) kbRender(); if(JSON.stringify([KB.obs,KB.fat])!==obsAntes) kbRender(); if(r.g.bkPara) KB.bkPara=r.g.bkPara;
   if(JSON.stringify(KB.mov)!==antes) kbRender();
   if(JSON.stringify([KB.bk,true])!==bkAntes){ try{ sideRender(); }catch(e){} try{ expNavRender(); }catch(e){} kbRender(); } }catch(e){} }
 /* ===== Backup do Kanban: deve ser feito toda sexta às 17h (e nunca passar 7 dias sem).
