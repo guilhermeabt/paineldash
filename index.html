@@ -251,7 +251,7 @@ body.hasSide #modules .modLogo{display:none}
 body.hasSide #modules .modOla{display:none}
 #homeHello{display:none}
 body.hasSide #homeHello{display:block;max-width:900px;width:100%;margin:0 auto}
-body.hasSide #modGrid{justify-content:flex-start!important;max-width:900px!important;width:100%;margin:0 auto}
+body.hasSide #modGrid{display:none!important} /* no Início só a mensagem: os módulos já estão no menu à esquerda */
 body.hasSide .appInstall{max-width:900px;width:100%;margin:0 auto;text-align:left!important}
 @media(max-width:820px){
   body.hasSide{padding-left:0;padding-top:52px}
@@ -5209,8 +5209,7 @@ function homeRender(){ var el=$('homeHello'); if(!el||!current) return; var h=ne
     +'<h1 style="margin:4px 0 10px;font-size:30px;font-weight:700;color:var(--ink);letter-spacing:.3px">BOAS-VINDAS, '+uEsc(nome.toUpperCase())+'!</h1>'
     +'<div id="homeMsg" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:12px;max-width:760px">'
       +'<span style="font-size:22px">✨</span><div style="flex:1;min-width:220px;font-size:15px;line-height:1.45;color:var(--ink)">'+uEsc(HOME_MSGS[HOME_MSG_I])+'</div>'
-      +'<button type="button" class="ubtn" id="homeMsgBtn" style="padding:7px 12px;font-size:13px;white-space:nowrap">🎲 Quero uma mensagem nova</button></div>'
-    +'<div style="color:var(--muted);font-size:14px">Escolha por onde começar — os mesmos módulos estão sempre no menu à esquerda.</div>';
+      +'<button type="button" class="ubtn" id="homeMsgBtn" style="padding:7px 12px;font-size:13px;white-space:nowrap">🎲 Quero uma mensagem nova</button></div>';
   var b=$('homeMsgBtn'); if(b) b.onclick=function(){ homeMsgNova(); homeRender(); }; }
 (function(){ var bg=$('sideBurger'); if(bg) bg.onclick=function(){ document.body.classList.toggle('sideOpen'); };
   var bk=$('sideBack'); if(bk) bk.onclick=sideClose; }());
