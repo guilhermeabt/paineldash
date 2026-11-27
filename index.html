@@ -5589,7 +5589,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
   pront.forEach(function(x){ x._o='pronto'; todos[x.n]=x; }); emb.forEach(function(x){ x._o='emb'; todos[x.n]=x; }); env.forEach(function(x){ x._o='env'; todos[x.n]=x; });
   [prod,pront,emb,env].forEach(function(L){ L.forEach(function(x){ var m=M[x.n], c=x._o; x._mov=null; if(m&&m.base===x._o&&m.para!==x._o&&dest[m.para]){ c=m.para; x._mov=m; } dest[c].push(x); }); });
   Object.keys(dest).forEach(function(c){ var mv=dest[c].filter(function(x){ return x._mov; }).sort(function(a,b){ return b._mov.ts-a._mov.ts; }); dest[c]=mv.concat(dest[c].filter(function(x){ return !x._mov; })); });
-  KB._todos=todos;
+  KB._todos=todos; setTimeout(function(){ kbVisaoAgendar(false); },3000);
   // data de entrega e informações do relatório em todos os cartões
   [prod,pront,emb,env].forEach(function(L){ L.forEach(function(x){ var I=INFO[x.n]||{}; x.I=I; var faN=(KB.fat||{})[x.n]; if(faN&&String(faN.nf||'').trim()){ x.nfFat=String(faN.nf).trim(); x.nf='NF '+x.nfFat; } x.data=_kbData(I.prev)||x.prev||x.ent||x.dm||DM[x.n]||PV[x.n]||null; if(x.valor==null&&I.valor!=null) x.valor=+I.valor||0; if(!x.transp&&I.transp) x.transp=I.transp; if(!x.cli&&I.cliente) x.cli=I.cliente; }); });
   var kbAtrX=function(x){ var f=x._mov?x._mov.para:x._o, d=x.data; if(f==='env'||x.inv||!d) return false; return new Date(d.getFullYear(),d.getMonth(),d.getDate())<hoje; };
@@ -5703,6 +5703,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
       +[['kbFT','transp',[['','Todas transportadoras']].concat(TRANSPS.map(function(t){ return [t,t]; }))],['kbFD','difal',[['','DIFAL: todos'],['diario','DIFAL diário'],['mensal','DIFAL mensal']]],['kbFP','tipo',[['','Tipo: todos'],['pe','Só pronta entrega'],['prod','Só produção']]],['kbFR','trat',[['','Tratado: todos'],['nao','Não tratados'],['sim','Tratados']]],['kbFF','fatst',[['','Faturamento: todos'],['pend','Faturamento pendente'],['feito','Faturamento feito'],['div','⚠ Não confere com o 09']]],['kbFE','embst',[['','Embalagem: todos'],['pend','Embalagem pendente'],['feito','Embalagem feita']]],['kbFB','bol',[['','Boletos: todos'],['emitir','Boletos a emitir'],['atraso','Boletos a emitir há +24h'],['emitido','Boletos emitidos']]]].map(function(z){ return '<select id="'+z[0]+'" data-f="'+z[1]+'" class="kbFiltro" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+z[2].map(function(o){ return '<option value="'+uEsc(o[0])+'"'+((F[z[1]]||'')===o[0]?' selected':'')+'>'+uEsc(o[1])+'</option>'; }).join('')+'</select>'; }).join('')
       +'<select id="kbVisao" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px"><option value="colunas"'+(KB.visao!=='linhas'?' selected':'')+'>Visão: Kanban</option><option value="linhas"'+(KB.visao==='linhas'?' selected':'')+'>Visão: Lista</option></select>'
       +'<button class="ubtn" id="kbExp" style="padding:8px 12px;font-size:13px">'+(KB.exp?'Recolher tudo':'Expandir tudo')+'</button>'
+      +'<button class="ubtn" id="kbLinks" style="padding:8px 12px;font-size:13px" title="Links sem login, só para ver: um para a TV e um para os vendedores">🔗 Links de visualização</button>'
       +'<button class="ubtn" id="kbDifMail" style="padding:8px 12px;font-size:13px" title="Monta o e-mail do DIFAL diário do dia (NFs lançadas no faturamento) para o financeiro">✉ E-mail DIFAL diário</button>'
       +'<button class="ubtn" id="kbBackup" style="padding:8px 12px;font-size:13px" title="Gera o Excel com todos os pedidos do Kanban, as OPs, os enviados e os movimentos, baixa e abre o e-mail pronto para a expedição">📦 Criar backup agora</button>'
       +((F.de||F.ate||(F.sem!=null&&F.sem!=='')||F.sit||F.transp||F.difal||F.tipo||F.trat||F.fatst||F.embst||F.atr||F.bol||KB.q)?'<button class="ubtn" id="kbLimpa" style="padding:8px 12px;font-size:13px">Limpar filtros</button>':'')
@@ -5725,7 +5726,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
   $('kbSem').onchange=function(){ KB.f.sem=this.value; kbRender(); }; $('kbVisao').onchange=function(){ KB.visao=this.value; try{ localStorage.setItem('kb_visao',this.value); }catch(e){} kbRender(); };
   $('kbExp').onclick=function(){ KB.exp=!KB.exp; kbRender(); }; if($('kbVerDiv')) $('kbVerDiv').onclick=function(){ KB.f.fatst='div'; kbRender(); }; if($('kbBoxAtr')) $('kbBoxAtr').onclick=function(){ KB.f.atr=!KB.f.atr; kbRender(); };
   if($('kbVerBol')) $('kbVerBol').onclick=function(){ KB.f.bol='atraso'; kbRender(); };
-  host.querySelectorAll('.kbBolOk').forEach(function(b){ b.addEventListener('click',function(ev){ ev.stopPropagation(); var nb=b.getAttribute('data-n'); kbQuem('fat',nb,function(){ b.disabled=true; b.textContent='Salvando…'; kbBolEmitido(nb); }); }); b.addEventListener('mousedown',function(ev){ ev.stopPropagation(); }); }); if($('kbBackup')) $('kbBackup').onclick=kbBackup; if($('kbDifMail')) $('kbDifMail').onclick=function(){ kbDifalEmail(_calISO(new Date())); }; host.querySelectorAll('.kbBkAgora').forEach(function(x){ x.onclick=kbBackup; }); if($('kbLimpa')) $('kbLimpa').onclick=function(){ KB.f={}; KB.q=''; kbRender(); };
+  host.querySelectorAll('.kbBolOk').forEach(function(b){ b.addEventListener('click',function(ev){ ev.stopPropagation(); var nb=b.getAttribute('data-n'); kbQuem('fat',nb,function(){ b.disabled=true; b.textContent='Salvando…'; kbBolEmitido(nb); }); }); b.addEventListener('mousedown',function(ev){ ev.stopPropagation(); }); }); if($('kbBackup')) $('kbBackup').onclick=kbBackup; if($('kbLinks')) $('kbLinks').onclick=kbLinksModal; if($('kbDifMail')) $('kbDifMail').onclick=function(){ kbDifalEmail(_calISO(new Date())); }; host.querySelectorAll('.kbBkAgora').forEach(function(x){ x.onclick=kbBackup; }); if($('kbLimpa')) $('kbLimpa').onclick=function(){ KB.f={}; KB.q=''; kbRender(); };
   // arrastar e soltar
   host.querySelectorAll('.kbCard[draggable]').forEach(function(c){
     c.ondragstart=function(e){ KB.arr=c.getAttribute('data-n'); try{ e.dataTransfer.setData('text/plain',KB.arr); e.dataTransfer.effectAllowed='move'; }catch(x){} c.style.opacity='.45'; };
@@ -5875,7 +5876,7 @@ function kbObsEditar(n,doArrasto){ var x=KB._todos&&KB._todos[n]; if(!x) return;
     +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px"><button class="ubtn" id="obSalvar" style="background:var(--f-green);color:#0c241a;border:none;font-weight:700;padding:9px 18px">Salvar</button>'
     +'<button class="ubtn" id="obPular" style="padding:9px 16px">'+(doArrasto?'Preencher depois':'Cancelar')+'</button>'
     +((KB.obs||{})[n]?'<button class="ubtn" id="obApagar" style="padding:9px 16px;margin-left:auto;color:var(--danger)">Apagar</button>':'')+'</div></div>';
-  var fechar=function(){ z.remove(); }, val=function(nm){ var r=z.querySelector('input[name="'+nm+'"]:checked'); return r?r.value:''; };
+  var fechar=function(){ z.remove(); kbAgoraFim(); }, val=function(nm){ var r=z.querySelector('input[name="'+nm+'"]:checked'); return r?r.value:''; };
   z.querySelectorAll('input[name="obP"]').forEach(function(r){ r.onchange=function(){ $('obPW').style.display=val('obP')==='1'?'':'none'; if(val('obP')==='1') $('obPT').focus(); }; });
   $('obPular').onclick=fechar; z.onclick=function(e){ if(e.target===z) fechar(); };
   if($('obApagar')) $('obApagar').onclick=function(){ if(!confirm('Apagar os dados de embalagem do pedido #'+n+'?')) return; fechar(); kbObsSalvar(n,null,0); };
@@ -5919,18 +5920,18 @@ function kbItensLer(){ if(KB_ITENS_P) return KB_ITENS_P;
   var fo=filesArr('ops'), fp=filesArr('sistema').concat(filesArr('pronta'),filesArr('aprovados'));
   KB_ITENS_P=new Promise(function(ok){
     var src="var PRE_WB="+PRE_WB.toString()+";self.onmessage=function(e){try{importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');}catch(err){postMessage({ok:0});return;}"
-      +"var L=e.data,it={},cod={},qv={};var cel=function(v){return String(v==null?'':v).trim();};"
+      +"var L=e.data,it={},cod={},qv={},rp={};var cel=function(v){return String(v==null?'':v).trim();};"
       +"var um=function(wb,tipo){var ws=wb.Sheets[wb.SheetNames[0]];var R=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});"
       +"var hi=R.findIndex(function(r){return r&&r.some(function(v){return cel(v)==='Pedido';});});if(hi<0)return;var H=R[hi].map(cel),ix=function(n){return H.indexOf(n);};"
       +"if(tipo==='ops'){var iO=ix('OP'),iP=ix('Pedido'),iR=ix('Referencia'),iC=ix('Cor'),iD=ix('Desc Cor'),iF=ix('Descr Fase'),iQ=ix('Qtd Total');var P=[],T=[];for(var k=1;k<=10;k++){P.push(ix('P'+k));T.push(ix('T'+k));}"
       +"R.slice(hi+1).forEach(function(r){if(!r)return;var ped=cel(r[iP]).replace(/\\D/g,'');if(!ped)return;var tam=[];for(var k=0;k<10;k++){var q=+r[P[k]]||0;if(q>0)tam.push([cel(r[T[k]])||('T'+(k+1)),q]);}"
       +"(it[ped]=it[ped]||[]).push({op:cel(r[iO]),ref:cel(r[iR]),cor:cel(r[iC]),desc:cel(r[iD]),fase:cel(r[iF]),qtd:+r[iQ]||tam.reduce(function(a,t){return a+t[1];},0),tam:tam});});}"
-      +"else{var iP2=ix('Pedido'),iK=ix('Cód'),iQo=ix('Qtde Orig. Sem Brindes'),iVo=ix('Vr Orig. sem Brindes'),iVd=ix('Vr Descontos');if(iK<0)return;R.slice(hi+1).forEach(function(r){if(!r)return;var ped=cel(r[iP2]).replace(/\\D/g,''),c=cel(r[iK]);if(ped&&c&&!cod[ped])cod[ped]=c;if(ped&&!qv[ped]&&iQo>=0)qv[ped]={q:+r[iQo]||0,v:Math.round(((+r[iVo]||0)-(+r[iVd]||0))*100)/100};});}};"
-      +"var i=0;var prox=function(){if(i>=L.length){postMessage({ok:1,it:it,cod:cod,qv:qv});return;}var x=L[i++];var fim=function(wb){try{um(wb,x.tipo);}catch(e){}prox();};"
+      +"else{var iP2=ix('Pedido'),iK=ix('Cód'),iQo=ix('Qtde Orig. Sem Brindes'),iVo=ix('Vr Orig. sem Brindes'),iVd=ix('Vr Descontos'),iRp=ix('Representante');if(iK<0)return;R.slice(hi+1).forEach(function(r){if(!r)return;var ped=cel(r[iP2]).replace(/\\D/g,''),c=cel(r[iK]);if(ped&&c&&!cod[ped])cod[ped]=c;if(ped&&iRp>=0&&!rp[ped]&&cel(r[iRp]))rp[ped]=cel(r[iRp]);if(ped&&!qv[ped]&&iQo>=0)qv[ped]={q:+r[iQo]||0,v:Math.round(((+r[iVo]||0)-(+r[iVd]||0))*100)/100};});}};"
+      +"var i=0;var prox=function(){if(i>=L.length){postMessage({ok:1,it:it,cod:cod,qv:qv,rp:rp});return;}var x=L[i++];var fim=function(wb){try{um(wb,x.tipo);}catch(e){}prox();};"
       +"if(x.gz){new Response(new Blob([x.gz]).stream().pipeThrough(new DecompressionStream('gzip'))).text().then(function(t){var wb=null;try{wb=PRE_WB(JSON.parse(t),{cellDates:true},XLSX);}catch(e){}if(wb)fim(wb);else prox();},function(){prox();});}"
       +"else{var wb=null;try{wb=XLSX.read(new Uint8Array(x.buf),{type:'array',cellDates:true});}catch(e){}if(wb)fim(wb);else prox();}};prox();};";
     var w; try{ w=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'}))); }catch(e){ KB.itensLido=true; ok(); return; }
-    var acabou=function(d){ try{ w.terminate(); }catch(e){} if(d&&d.ok){ KB.itens=d.it; KB.codCli=d.cod; KB.pedQV=d.qv||{}; } KB.itensLido=true; ok(); };
+    var acabou=function(d){ try{ w.terminate(); }catch(e){} if(d&&d.ok){ KB.itens=d.it; KB.codCli=d.cod; KB.pedQV=d.qv||{}; KB.pedRep=d.rp||{}; } KB.itensLido=true; ok(); };
     w.onmessage=function(e){ acabou(e.data); }; w.onerror=function(){ acabou(null); };
     var lista=fo.map(function(f){ return {f:f,tipo:'ops'}; }).concat(fp.map(function(f){ return {f:f,tipo:'ped'}; }));
     Promise.all(lista.map(function(o){ var f=o.f; return (f.__pre?preGz(f.__pre).then(function(g){ return {gz:g.buffer.slice(g.byteOffset,g.byteOffset+g.byteLength),tipo:o.tipo}; }):f.arrayBuffer().then(function(b){ return {buf:b,tipo:o.tipo}; })).catch(function(){ return null; }); }))
@@ -6066,7 +6067,7 @@ function kbFatEditar(n){ var x=KB._todos&&KB._todos[n]; if(!x) return;
     +(f0?'<button class="ubtn" id="fApagar" style="padding:9px 16px;margin-left:auto;color:var(--danger)">Apagar</button>':'')+'</div>'
     +'</div>';
   z.setAttribute('data-n',String(n)); z.addEventListener('input',function(){ z.setAttribute('data-mexeu','1'); }); z.addEventListener('change',function(){ z.setAttribute('data-mexeu','1'); });
-  var fechar=function(){ z.remove(); }, val=function(nm){ var r=z.querySelector('input[name="'+nm+'"]:checked'); return r?r.value:''; };
+  var fechar=function(){ z.remove(); kbAgoraFim(); }, val=function(nm){ var r=z.querySelector('input[name="'+nm+'"]:checked'); return r?r.value:''; };
   z.querySelectorAll('input[name="fEnv"]').forEach(function(r){ r.onchange=function(){ var o=val('fEnv')==='__outro'; $('fEnvO').style.display=o?'':'none'; if(o) $('fEnvO').focus(); }; });
   z.querySelectorAll('input[name="fDoc"]').forEach(function(r){ r.onchange=function(){ $('fItens').style.display=val('fDoc')==='cpf'?'':'none'; }; });
   var cpI=$('fItensCp'); if(cpI) cpI.onclick=function(){ kbItensCopiar(n,x,cpI); };
@@ -6250,7 +6251,7 @@ function kbQuem(area,n,cb){ if(!kbPodeMover()){ cb(); return; }
       +'<div style="display:flex;gap:10px;margin-top:12px;align-items:center"><button class="ubtn" id="kbQcanc" style="padding:8px 14px">Cancelar</button><button class="linkbtn" id="kbQed" style="margin-left:auto;font-size:12.5px">'+(editar?'Pronto':'Editar a lista')+'</button></div>'
       +'<div style="font-size:11.5px;color:var(--muted);margin-top:8px">A pessoa escolhida fica registrada no histórico de movimentações e no backup.</div></div>';
     var fechar=function(){ z.remove(); };
-    var escolhe=function(p){ KB.quemSel[area+'|'+n]=p; try{ localStorage.setItem('kb_quem_'+area,p); }catch(e){} fechar(); cb(); };
+    var escolhe=function(p){ KB.quemSel[area+'|'+n]=p; try{ localStorage.setItem('kb_quem_'+area,p); }catch(e){} fechar(); kbAgoraSet(area,n,p); cb(); };
     z.querySelectorAll('.kbQp').forEach(function(b){ b.onclick=function(){ escolhe(b.getAttribute('data-p')); }; });
     z.querySelectorAll('.kbQx').forEach(function(b){ b.onclick=function(){ var p=b.getAttribute('data-p'); if(!confirm('Tirar '+p+' da lista da expedição?')) return; kbPessoasSalvar(kbPessoas().filter(function(x){ return x!==p; })); desenha(); }; });
     $('kbQadd').onclick=function(){ var p=($('kbQnovo').value||'').trim().replace(/\s+/g,' '); if(!p) return; p=p.charAt(0).toUpperCase()+p.slice(1); var L2=kbPessoas(); if(L2.map(function(x){ return x.toLowerCase(); }).indexOf(p.toLowerCase())<0){ L2.push(p); kbPessoasSalvar(L2); } escolhe(p); };
@@ -6273,6 +6274,125 @@ async function kbPessoasSalvar(L,tent){ var key=_kbKey(); KB.pessoas=L.slice(); 
   catch(e){}
   finally{ KB_SYNC=false; }
   if(outra) return kbPessoasSalvar(L,tent+1); }
+/* ===== Links de visualização (sem login, só leitura): TV e vendedores.
+   Quem usa o Kanban publica um retrato (exp/visao.json, cifrado com a chave do link) — sem valores em R$, sem faturamento interno.
+   A chave fica dentro do exp/kanban.json (g.viewKey); o link leva a chave depois do # (não vai para o servidor). */
+var KB_VIS={ult:0,hash:'',busy:false,t:null,agora:null,online:0};
+function kbAgoraSet(area,n,p){ KB_VIS.agora={area:area,n:String(n),pessoa:p,ts:Date.now()}; kbVisaoAgendar(true); }
+function kbAgoraFim(){ if(!KB_VIS.agora) return; KB_VIS.agora=null; kbVisaoAgendar(true); }
+function kbVisaoAgendar(forca){ if(!kbPodeMover()) return; clearTimeout(KB_VIS.t); KB_VIS.t=setTimeout(function(){ kbVisaoPublicar(forca); },forca?400:2500); }
+function kbVisaoMontar(){ var T=KB._todos||{}, R=KB.pedRep||{}, out=[], lim=Date.now()-30*864e5;
+  Object.keys(T).forEach(function(k){ var x=T[k], f=x._mov?x._mov.para:x._o; if(f==='env'&&x.d&&x.d.getTime()<lim) return;
+    var nfF=(KB.fat||{})[k], nf=nfF&&_kbNfNum(nfF.nf)?_kbNfNum(nfF.nf):String(x.nf||'').replace(/[^0-9]/g,'');
+    out.push({n:String(x.n),cli:x.cli||'',f:f,ent:x.data?_calISO(x.data):'',pe:(x.pe||(x.I||{}).pe)?1:0,tr:String(x.modo||x.transp||(x.I||{}).transp||'').trim(),nf:nf,ra:String(x.rastr||'').trim(),sa:f==='env'&&x.d?_calISO(x.d):'',rep:R[String(x.n).replace(/\D/g,'')]||''}); });
+  return out; }
+async function kbVisaoPublicar(forca){ var key=_kbKey(); if(!key||!ghToken()||KB_VIS.busy) return;
+  var vk=KB.viewKey; if(!vk) return; // sem link criado ainda: nada a publicar
+  var ped=kbVisaoMontar(); if(!ped.length) return; var hash=JSON.stringify(ped).length+':'+ped.map(function(p){ return p.n+p.f+p.nf+p.ra; }).join('').length+':'+JSON.stringify(KB_VIS.agora);
+  var ag=Date.now(); if(!forca&&hash===KB_VIS.hash&&ag-KB_VIS.ult<10*60000) return;
+  if(!forca&&ag-KB_VIS.ult<4*60000) return;
+  KB_VIS.busy=true;
+  try{ var vkb=b64d(vk), sha=await _ckHead(), ant=null;
+    if(sha){ var b=await _ckRead('exp/visao.json',sha); if(b){ try{ ant=await decJSON(vkb,JSON.parse(new TextDecoder().decode(b))); }catch(e){ ant=null; } } }
+    var me=(current&&current.name)||currentUserKey||'', lim=ag-20*60000;
+    var agora=((ant&&ant.agora)||[]).filter(function(a){ return a.login!==me&&a.ts>lim; }); if(KB_VIS.agora) agora.push(Object.assign({login:me},KB_VIS.agora));
+    var online=(ant&&ant.online)||{}; Object.keys(online).forEach(function(k){ if(online[k]<ag-15*60000) delete online[k]; }); online[me]=ag;
+    var doc={v:1,ts:ag,por:me,ped:ped,agora:agora,online:online};
+    var bl=await gh('/git/blobs',{method:'POST',body:{content:JSON.stringify(await encJSON(vkb,doc)),encoding:'utf-8'}});
+    var body={tree:[{path:'exp/visao.json',mode:'100644',type:'blob',sha:bl.sha}]}; if(sha) body.base_tree=(await gh('/git/commits/'+sha)).tree.sha;
+    var tr=await gh('/git/trees',{method:'POST',body:body});
+    var nc=await gh('/git/commits',{method:'POST',body:{message:'Visualização: retrato do Kanban',tree:tr.sha,parents:sha?[sha]:[]}});
+    if(sha) await gh('/git/refs/heads/'+CK_BRANCH,{method:'PATCH',body:{sha:nc.sha,force:false}}); else await gh('/git/refs',{method:'POST',body:{ref:'refs/heads/'+CK_BRANCH,sha:nc.sha}});
+    KB_VIS.ult=ag; KB_VIS.hash=hash; }
+  catch(e){}
+  finally{ KB_VIS.busy=false; } }
+// mantém "on-line" e o retrato em dia enquanto o Kanban está aberto
+setInterval(function(){ var kv=$('kanView'); if(kv&&kv.style.display!=='none'&&KB._todos) kbVisaoPublicar(false); },5*60000);
+async function kbViewKeySalvar(novo,tent){ var key=_kbKey(); if(!key||!ghToken()) throw new Error('sem token'); tent=tent||0;
+  while(KB_SYNC) await new Promise(function(r){ setTimeout(r,400); });
+  KB_SYNC=true; var outra=false;
+  try{ var r=await _kbLerRemoto(), g=r.g; if(g.viewKey&&!novo){ KB.viewKey=g.viewKey; return g.viewKey; } g.viewKey=b64e(rnd(32));
+    var _hf=_kbHistFlush(g);
+    var bl=await gh('/git/blobs',{method:'POST',body:{content:JSON.stringify(await encJSON(key,g)),encoding:'utf-8'}});
+    var body={tree:[{path:KB_PATH,mode:'100644',type:'blob',sha:bl.sha}]}; if(r.sha) body.base_tree=(await gh('/git/commits/'+r.sha)).tree.sha;
+    var tr=await gh('/git/trees',{method:'POST',body:body});
+    var nc=await gh('/git/commits',{method:'POST',body:{message:'Kanban: links de visualização',tree:tr.sha,parents:r.sha?[r.sha]:[]}});
+    try{ if(r.sha) await gh('/git/refs/heads/'+CK_BRANCH,{method:'PATCH',body:{sha:nc.sha,force:false}}); else await gh('/git/refs',{method:'POST',body:{ref:'refs/heads/'+CK_BRANCH,sha:nc.sha}}); }
+    catch(e){ if(e.status===422&&tent<3) outra=true; else throw e; }
+    if(!outra){ KB.viewKey=g.viewKey; KB.hist=g.hist; _kbHistOk(_hf); } }
+  finally{ KB_SYNC=false; }
+  if(outra) return kbViewKeySalvar(novo,tent+1);
+  return KB.viewKey; }
+function kbLinksModal(){ var base=location.origin+location.pathname;
+  var desenha=function(msg){ var vk=KB.viewKey, tv=vk?base+'?ver=tv#k='+encodeURIComponent(vk):'', vd=vk?base+'?ver=vend#k='+encodeURIComponent(vk):'';
+    var inp='flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:12.5px';
+    var linha=function(t,sub,u,id){ return '<div style="margin-top:14px"><div style="font-weight:700;color:var(--ink);font-size:14px">'+t+'</div><div style="font-size:12.5px;color:var(--muted);margin:2px 0 6px">'+sub+'</div><div style="display:flex;gap:8px"><input readonly id="'+id+'" value="'+uEsc(u)+'" style="'+inp+'"><button class="ubtn kbLcp" data-i="'+id+'">Copiar</button><a class="ubtn" href="'+uEsc(u)+'" target="_blank" rel="noopener" style="text-decoration:none">Abrir</a></div></div>'; };
+    openProgModal('<div><h2 style="margin:0 0 4px;color:var(--ink)">🔗 Links de visualização</h2><div style="color:var(--muted);font-size:13px">Sem login e só para ver: ninguém consegue mexer em nada. Mostram onde está cada pedido (sem valores em R$). Atualizam sozinhos enquanto alguém está com o Kanban aberto.</div>'
+      +(vk?linha('📺 TV','Tela cheia para a televisão: todos os pedidos, quem está on-line e em qual pedido o faturamento e a embalagem estão trabalhando agora.',tv,'kbLtv')
+          +linha('🧑‍💼 Vendedores','Link único para todos os vendedores: todos os pedidos, com filtro por vendedor, busca, coluna, NF e código de rastreio.',vd,'kbLvd')
+          +'<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)">Se um link vazar, gere novos: os antigos param de funcionar na hora (inclusive o da TV, que precisa ser trocado). <button class="ubtn" id="kbLnovo" style="margin-left:6px;padding:5px 10px;font-size:12.5px;color:var(--danger)">Gerar novos links</button></div>'
+        :'<div style="margin-top:14px"><button class="ubtn" id="kbLcriar" style="background:var(--f-green);color:#0c241a;border:none;font-weight:700;padding:9px 16px">Criar os links</button></div>')
+      +'<div id="kbLmsg" style="font-size:12.5px;margin-top:10px;color:var(--f-green)">'+(msg||'')+'</div></div>',null);
+    document.querySelectorAll('.kbLcp').forEach(function(b){ b.onclick=function(){ var i=$(b.getAttribute('data-i')); (navigator.clipboard&&navigator.clipboard.writeText?navigator.clipboard.writeText(i.value):Promise.reject()).then(function(){ b.textContent='✓ Copiado'; },function(){ i.select(); document.execCommand('copy'); b.textContent='✓ Copiado'; }); }; });
+    var gera=function(novo){ $('kbLmsg').style.color='var(--muted)'; $('kbLmsg').textContent='Gerando…'; kbViewKeySalvar(novo).then(function(){ KB_VIS.hash=''; KB_VIS.ult=0; return kbVisaoPublicar(true); }).then(function(){ desenha(novo?'✓ Links novos gerados — os antigos não funcionam mais.':'✓ Links criados.'); },function(e){ $('kbLmsg').style.color='var(--danger)'; $('kbLmsg').textContent='Não consegui: '+((e&&e.message)||e); }); };
+    if($('kbLcriar')) $('kbLcriar').onclick=function(){ gera(false); };
+    if($('kbLnovo')) $('kbLnovo').onclick=function(){ if(confirm('Gerar novos links? Os links atuais (TV e vendedores) param de funcionar.')) gera(true); }; };
+  if(!KB.viewKey&&kbPodeMover()){ _kbLerRemoto().then(function(r){ if(r.g.viewKey) KB.viewKey=r.g.viewKey; desenha(); },function(){ desenha(); }); } else desenha(); }
+
+/* ----- a página do link (sem login) ----- */
+var VER_MODO=(function(){ try{ var m=/[?&]ver=(tv|vend)/.exec(location.search), k=/[#&]k=([^&]+)/.exec(location.hash); return m&&k?{modo:m[1],k:decodeURIComponent(k[1])}:null; }catch(e){ return null; } })();
+var VER={d:null,erro:'',f:{q:'',rep:'',col:'',atr:false},t:null};
+async function verBuscar(){ var u='https://api.github.com/repos/'+GH_REPO.owner+'/'+GH_REPO.repo+'/contents/exp/visao.json?ref='+CK_BRANCH, txt=null;
+  try{ var r=await fetch(u,{headers:{'Accept':'application/vnd.github.raw+json'},cache:'no-store'}); if(r.ok) txt=await r.text(); }catch(e){}
+  if(txt==null){ var r2=await fetch('https://raw.githubusercontent.com/'+GH_REPO.owner+'/'+GH_REPO.repo+'/'+CK_BRANCH+'/exp/visao.json?t='+Date.now(),{cache:'no-store'}); if(!r2.ok) throw new Error('ainda não há dados publicados'); txt=await r2.text(); }
+  return decJSON(b64d(VER_MODO.k),JSON.parse(txt)); }
+function verIniciar(){ document.title=VER_MODO.modo==='tv'?'Dash · Expedição ao vivo':'Dash · Onde está meu pedido';
+  var o=document.createElement('div'); o.id='verApp'; o.style.cssText='position:fixed;inset:0;z-index:100000;background:var(--bg);overflow:auto;color:var(--ink)'; document.body.appendChild(o);
+  var ciclo=function(){ verBuscar().then(function(d){ VER.d=d; VER.erro=''; },function(e){ VER.erro=(e&&e.name==='OperationError')?'Este link não vale mais (foi gerado um novo). Peça o link atualizado.':((e&&e.message)||String(e)); }).then(verRender); };
+  ciclo(); VER.t=setInterval(ciclo,VER_MODO.modo==='tv'?60000:120000); setInterval(verRender,30000); }
+function verRender(){ var o=$('verApp'); if(!o) return; var tv=VER_MODO.modo==='tv', d=VER.d, F=VER.f;
+  var hoje=new Date(); hoje.setHours(0,0,0,0); var dt=function(iso){ if(!iso) return null; var p=iso.split('-'); return new Date(+p[0],+p[1]-1,+p[2]); };
+  var dm=function(iso){ var x=dt(iso); return x?('0'+x.getDate()).slice(-2)+'/'+('0'+(x.getMonth()+1)).slice(-2):''; };
+  var hm=function(ts){ var x=new Date(ts); return ('0'+x.getHours()).slice(-2)+':'+('0'+x.getMinutes()).slice(-2); };
+  var cab='<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:'+(tv?'18px 26px':'16px 18px')+';border-bottom:1px solid var(--line)"><span class="logo-dash" style="font-size:'+(tv?'30px':'24px')+'">Dash<sup>&reg;</sup></span><div style="flex:1"><div style="font-size:'+(tv?'22px':'18px')+';font-weight:700">'+(tv?'Expedição ao vivo':'Onde está o pedido')+'</div><div style="font-size:12.5px;color:var(--muted)">'+(d?'Atualizado às '+hm(d.ts)+' · só para visualização':'')+'</div></div>'
+    +(tv?'<div style="font-size:34px;font-weight:700;font-variant-numeric:tabular-nums">'+hm(Date.now())+'</div><button class="ubtn" id="verFull" style="padding:8px 12px">⛶ Tela cheia</button>':'')+'</div>';
+  if(!d){ o.innerHTML=cab+'<div style="padding:30px;color:'+(VER.erro?'var(--danger)':'var(--muted)')+';font-size:15px">'+(VER.erro?uEsc(VER.erro):'Carregando…')+'</div>'; verWire(); return; }
+  var L=d.ped.filter(function(p){ var q=_en(F.q||''); if(q&&_en(p.n+' '+p.cli+' '+p.nf+' '+p.ra).indexOf(q)<0) return false; if(F.rep&&p.rep!==F.rep) return false; if(F.col&&p.f!==F.col) return false;
+    if(F.atr){ var e=dt(p.ent); if(p.f==='env'||!e||e>=hoje) return false; } return true; });
+  var ag=(d.agora||[]).filter(function(a){ return Date.now()-a.ts<20*60000; }), agN={}; ag.forEach(function(a){ agN[a.n]=a; });
+  var cols=[['producao','Em produção','#a78bfa'],['pronto','Pronto para envio','#4ecb8f'],['emb','Em embalagem','#d99a52'],['env','Enviado','#5aa0d0']];
+  var card=function(p){ var e=dt(p.ent), atr=p.f!=='env'&&e&&e<hoje?Math.round((hoje-e)/864e5):0, a=tv?agN[p.n]:null; // quem está fazendo aparece só na TV
+    return '<div style="background:var(--surface2);border:1px solid '+(a?'#f5a524':'var(--line)')+';border-left:3px solid '+(cols.filter(function(c){ return c[0]===p.f; })[0]||[0,0,'#888'])[2]+';border-radius:10px;padding:'+(tv?'10px 12px':'9px 11px')+';display:flex;flex-direction:column;gap:3px'+(a?';box-shadow:0 0 0 2px rgba(245,165,36,.35)':'')+'">'
+      +'<div style="display:flex;justify-content:space-between;gap:6px"><b style="font-size:'+(tv?'16px':'14px')+'">#'+uEsc(p.n)+'</b>'+(atr?'<span style="color:#e5484d;font-weight:700;font-size:12px">'+atr+' dia'+(atr>1?'s':'')+' atrasado</span>':'')+'</div>'
+      +'<div style="font-size:'+(tv?'14px':'13px')+';line-height:1.3">'+uEsc(p.cli||'—')+'</div>'
+      +'<div style="font-size:12px;color:'+(atr?'#e5484d':'var(--muted)')+'">'+(p.f==='env'?'Saiu '+dm(p.sa):(p.ent?'Entrega '+dm(p.ent):'sem data'))+(p.pe?' · pronta entrega':'')+(p.tr?' · '+uEsc(p.tr):'')+'</div>'
+      +((p.nf||p.ra)?'<div style="font-size:12px;color:var(--ink)">'+(p.nf?'NF '+uEsc(p.nf):'')+(p.ra?(p.nf?' · ':'')+'Rastreio: <b>'+uEsc(p.ra)+'</b>':'')+'</div>':'')
+      +(!tv&&p.rep?'<div style="font-size:11.5px;color:var(--muted)">'+uEsc(p.rep)+'</div>':'')
+      +(a?'<div style="font-size:12px;font-weight:700;color:#f5a524">'+(a.area==='fat'?'🧾 Faturamento':'📦 Embalagem')+' em andamento · '+uEsc(a.pessoa)+'</div>':'')+'</div>'; };
+  var reps=[]; d.ped.forEach(function(p){ if(p.rep&&reps.indexOf(p.rep)<0) reps.push(p.rep); }); reps.sort();
+  var sel='background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13.5px';
+  var filtros=tv?'':'<div style="display:flex;gap:8px;flex-wrap:wrap;padding:12px 18px"><input id="verQ" type="search" placeholder="Buscar pedido, cliente, NF, rastreio…" value="'+uEsc(F.q)+'" style="'+sel+';flex:1;min-width:200px">'
+    +'<select id="verRep" style="'+sel+'"><option value="">Vendedor: todos</option>'+reps.map(function(r){ return '<option'+(F.rep===r?' selected':'')+'>'+uEsc(r)+'</option>'; }).join('')+'</select>'
+    +'<select id="verCol" style="'+sel+'"><option value="">Situação: todas</option>'+cols.map(function(c){ return '<option value="'+c[0]+'"'+(F.col===c[0]?' selected':'')+'>'+c[1]+'</option>'; }).join('')+'</select>'
+    +'<label style="display:flex;gap:6px;align-items:center;font-size:13.5px"><input type="checkbox" id="verAtr"'+(F.atr?' checked':'')+'> Só atrasados</label></div>';
+  var on=Object.keys(d.online||{}).filter(function(k){ return Date.now()-d.online[k]<15*60000; });
+  var tira=tv?'<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;padding:12px 26px;border-bottom:1px solid var(--line);font-size:15px">'
+      +'<div><span style="color:var(--muted)">On-line agora:</span> '+(on.length?on.map(function(n){ return '<b style="color:#4ecb8f">● '+uEsc(n)+'</b>'; }).join(' '):'<span style="color:var(--muted)">ninguém com o Kanban aberto</span>')+'</div>'
+      +(ag.length?ag.map(function(a){ return '<div style="background:rgba(245,165,36,.12);border:1px solid rgba(245,165,36,.5);border-radius:9px;padding:6px 12px">'+(a.area==='fat'?'🧾':'📦')+' <b>'+uEsc(a.pessoa)+'</b> — '+(a.area==='fat'?'faturamento':'embalagem')+' do <b>#'+uEsc(a.n)+'</b> <span style="color:var(--muted)">desde '+hm(a.ts)+'</span></div>'; }).join(''):'<div style="color:var(--muted)">Nenhum faturamento ou embalagem aberto agora.</div>')+'</div>':'';
+  var MAX=tv?40:150;
+  var grade='<div style="display:grid;grid-template-columns:repeat(4,minmax(230px,1fr));gap:12px;padding:'+(tv?'14px 26px':'12px 18px')+';overflow-x:auto">'+cols.map(function(c){ var LL=L.filter(function(p){ return p.f===c[0]; }).sort(function(a,b){ return c[0]==='env'?(b.sa||'').localeCompare(a.sa||''):(a.ent||'9').localeCompare(b.ent||'9'); });
+      if(tv) LL.sort(function(a,b){ return (agN[b.n]?1:0)-(agN[a.n]?1:0); });
+      return '<div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;min-height:120px"><div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)"><span style="width:9px;height:9px;border-radius:50%;background:'+c[2]+'"></span><b style="flex:1;font-size:'+(tv?'16px':'14px')+'">'+c[1]+'</b><span style="font-weight:700">'+LL.length+'</span></div>'
+        +'<div style="padding:8px;display:flex;flex-direction:column;gap:7px">'+(LL.length?LL.slice(0,MAX).map(card).join('')+(LL.length>MAX?'<div style="text-align:center;color:var(--muted);font-size:12px">+ '+(LL.length-MAX)+'</div>':''):'<div style="color:var(--muted);text-align:center;padding:12px;font-size:13px">Nenhum.</div>')+'</div></div>'; }).join('')+'</div>';
+  var foco=document.activeElement&&document.activeElement.id==='verQ';
+  o.innerHTML=cab+tira+filtros+grade+(tv?'':'<div style="padding:4px 18px 20px;font-size:12px;color:var(--muted)">Enviados dos últimos 30 dias. Valores não aparecem neste link.</div>'); verWire();
+  if(foco&&$('verQ')){ $('verQ').focus(); var v=$('verQ').value; $('verQ').setSelectionRange(v.length,v.length); } }
+function verWire(){ var F=VER.f;
+  if($('verFull')) $('verFull').onclick=function(){ var el=document.documentElement; (el.requestFullscreen||el.webkitRequestFullscreen||function(){}).call(el); };
+  if($('verQ')) $('verQ').oninput=function(){ F.q=this.value; clearTimeout(VER.tq); VER.tq=setTimeout(verRender,250); };
+  if($('verRep')) $('verRep').onchange=function(){ F.rep=this.value; verRender(); };
+  if($('verCol')) $('verCol').onchange=function(){ F.col=this.value; verRender(); };
+  if($('verAtr')) $('verAtr').onchange=function(){ F.atr=this.checked; verRender(); }; }
 function kbDetalhe(n){ var x=KB._todos&&KB._todos[n]; if(!x) return; if(!KB.itensLido&&(KB.fat||{})[n]&&KB.fat[n].doc==='cpf') kbItensLer().then(function(){ if($('kbDet')) kbDetalhe(n); }); var ops=(KB._ops&&KB._ops[n])||x.ops||[], z=$('kbDet');
   if(!z){ z=document.createElement('div'); z.id='kbDet'; z.style.cssText='position:fixed;inset:0;z-index:96;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:40px 12px;overflow:auto'; document.body.appendChild(z); }
   var fase={producao:'A sair: em produção',pronto:'Pronto para envio',emb:'Em processo de embalagem',env:'Enviado'}[x._mov?x._mov.para:x._o];
@@ -6301,7 +6421,7 @@ function kbPodeMover(){ return !!(_kbKey()&&ghToken()); }
 async function _kbLerRemoto(){ var key=_kbKey(); if(!key) return {sha:null,g:{mov:{}}}; var sha=await _ckHead(), g=null;
   if(sha){ var b=await _ckRead(KB_PATH,sha); if(b){ try{ g=await decJSON(key,JSON.parse(new TextDecoder().decode(b))); }catch(e){ g=null; } } }
   g=g||{}; g.mov=g.mov||{}; return {sha:sha,g:g}; }
-async function kbMovCarregar(){ if(KB_SYNC) return; try{ var r=await _kbLerRemoto(), antes=JSON.stringify(KB.mov||{}), bkAntes=JSON.stringify([KB.bk,!!KB.bkLido]); KB.mov=r.g.mov; KB.bk=r.g.bk||null; KB.bkLido=true; var obsAntes=JSON.stringify([KB.obs||{},KB.fat||{}]); KB.obs=r.g.obs||{}; KB.fat=r.g.fat||{}; KB.itensSnap=r.g.itens||{}; KB.fatIgn=r.g.fatIgn||{}; KB.pessoas=r.g.pessoas||KB.pessoas||null; var hAntes=(KB.hist||[]).length; KB.hist=r.g.hist||[]; if(KB.modo==='hist'&&KB.hist.length!==hAntes) kbRender(); if(JSON.stringify([KB.obs,KB.fat])!==obsAntes) kbRender(); if(r.g.bkPara) KB.bkPara=r.g.bkPara;
+async function kbMovCarregar(){ if(KB_SYNC) return; try{ var r=await _kbLerRemoto(), antes=JSON.stringify(KB.mov||{}), bkAntes=JSON.stringify([KB.bk,!!KB.bkLido]); KB.mov=r.g.mov; KB.bk=r.g.bk||null; KB.bkLido=true; var obsAntes=JSON.stringify([KB.obs||{},KB.fat||{}]); KB.obs=r.g.obs||{}; KB.fat=r.g.fat||{}; KB.itensSnap=r.g.itens||{}; KB.fatIgn=r.g.fatIgn||{}; KB.pessoas=r.g.pessoas||KB.pessoas||null; if(r.g.viewKey) KB.viewKey=r.g.viewKey; var hAntes=(KB.hist||[]).length; KB.hist=r.g.hist||[]; if(KB.modo==='hist'&&KB.hist.length!==hAntes) kbRender(); if(JSON.stringify([KB.obs,KB.fat])!==obsAntes) kbRender(); if(r.g.bkPara) KB.bkPara=r.g.bkPara;
   if(JSON.stringify(KB.mov)!==antes) kbRender();
   if(JSON.stringify([KB.bk,true])!==bkAntes){ try{ sideRender(); }catch(e){} try{ expNavRender(); }catch(e){} kbRender(); } }catch(e){} }
 /* ===== Backup do Kanban: deve ser feito toda sexta às 17h (e nunca passar 7 dias sem).
@@ -6480,7 +6600,8 @@ var _eg=$('expGo'); if(_eg)_eg.addEventListener('click',function(){var sel=[].sl
 var _ec=$('expCancel'); if(_ec)_ec.addEventListener('click',closeExportModal);
 
 // auto-login (Lembrar-me)
-if(SNAPSHOT){ startSnapshot(); }
+if(VER_MODO){ verIniciar(); }
+else if(SNAPSHOT){ startSnapshot(); }
 else { try{ const _ru=localStorage.getItem('painelop_user'), _rk=localStorage.getItem('painelop_ku'); const _uu=_ru&&USERS[_ru];
   if(_uu&&_uu.k&&_uu.k.wk){ if(_rk){ openSession(_uu,b64d(_rk)).then(function(){ return window.BIG_READY; }).then(function(){ currentUserKey=_ru; startApp(_uu); }).catch(function(){ try{localStorage.removeItem('painelop_ku');}catch(e){} }); } }
   else if(_uu&&_uu.pass&&!cryptoOn()){ currentUserKey=_ru; startApp(_uu); } }catch(e){} }
