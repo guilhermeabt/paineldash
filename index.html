@@ -5618,7 +5618,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
       +[['kbFT','transp',[['','Todas transportadoras']].concat(TRANSPS.map(function(t){ return [t,t]; }))],['kbFD','difal',[['','DIFAL: todos'],['diario','DIFAL diário'],['mensal','DIFAL mensal']]],['kbFP','tipo',[['','Tipo: todos'],['pe','Só pronta entrega'],['prod','Só produção']]],['kbFR','trat',[['','Tratado: todos'],['nao','Não tratados'],['sim','Tratados']]]].map(function(z){ return '<select id="'+z[0]+'" data-f="'+z[1]+'" class="kbFiltro" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+z[2].map(function(o){ return '<option value="'+uEsc(o[0])+'"'+((F[z[1]]||'')===o[0]?' selected':'')+'>'+uEsc(o[1])+'</option>'; }).join('')+'</select>'; }).join('')
       +'<select id="kbVisao" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px"><option value="colunas"'+(KB.visao!=='linhas'?' selected':'')+'>Visão: Kanban</option><option value="linhas"'+(KB.visao==='linhas'?' selected':'')+'>Visão: Lista</option></select>'
       +'<button class="ubtn" id="kbExp" style="padding:8px 12px;font-size:13px">'+(KB.exp?'Recolher tudo':'Expandir tudo')+'</button>'
-      +'<button class="ubtn" id="kbBackup" style="padding:8px 12px;font-size:13px" title="Baixa uma planilha com todos os pedidos do Kanban, as OPs, os enviados e os movimentos feitos arrastando">⬇ Baixar backup (Excel)</button>'
+      +'<button class="ubtn" id="kbBackup" style="padding:8px 12px;font-size:13px" title="Gera o Excel com todos os pedidos do Kanban, as OPs, os enviados e os movimentos, baixa e abre o e-mail pronto para a expedição">📦 Criar backup agora</button>'
       +((F.de||F.ate||(F.sem!=null&&F.sem!=='')||F.sit||F.transp||F.difal||F.tipo||F.trat||KB.q)?'<button class="ubtn" id="kbLimpa" style="padding:8px 12px;font-size:13px">Limpar filtros</button>':'')
       +'<select id="kbDias" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+[[7,'Enviados: 7 dias'],[30,'Enviados: 30 dias'],[90,'Enviados: 90 dias'],[0,'Enviados: todos']].map(function(o){ return '<option value="'+o[0]+'"'+(KB.dias===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select></div></div>'
     +(!Object.keys(FILES).length?'<div style="color:var(--muted);margin-bottom:12px">Carregando os dados da expedição…</div>':'')
@@ -5673,14 +5673,65 @@ function kbBackupWB(){ var T=KB._todos||{}, NOME={producao:'A sair: em produçã
   resumo.push([],['Enviados no Controle (todos)',envH.length],['Movimentos feitos arrastando',mov.length],[],['Observação','Na aba Pedidos, os enviados seguem o período escolhido no Kanban; a aba Enviados (Controle) tem todos os enviados da planilha.']);
   var wr=XLSX.utils.aoa_to_sheet(resumo,{cellDates:true}); wr['!cols']=[{wch:32},{wch:24}]; XLSX.utils.book_append_sheet(wb,wr,'Resumo');
   add(ped,'Pedidos','Nenhum pedido no Kanban.'); add(ops,'OPs','Nenhuma OP.'); add(envH,'Enviados (Controle)','O Controle de liberação não foi lido.'); add(mov,'Movimentos','Nenhum movimento feito arrastando.');
-  return {wb:wb,n:ped.length}; }
-function kbBackup(){ var b=$('kbBackup'); if(!b) b=document.querySelector('.kbBkAgora');
+  var cnt={}; ['producao','pronto','emb','env'].forEach(function(c){ cnt[c]=ped.filter(function(r){ return r['Coluna no Kanban']===NOME[c]; }).length; });
+  return {wb:wb,n:ped.length,cnt:cnt,ops:ops.length,mov:mov.length}; }
+function kbBackup(){ var bts=[].slice.call(document.querySelectorAll('#kbBackup,.kbBkAgora')), volta=function(){ bts.forEach(function(x){ x.disabled=false; x.textContent='📦 Criar backup agora'; }); };
   if(!KB._todos||!Object.keys(KB._todos).length){ alert('O Kanban ainda está carregando. Espere os cartões aparecerem e tente de novo.'); return; }
-  document.querySelectorAll('.kbBkAgora').forEach(function(x){ x.disabled=true; x.textContent='Gerando…'; });
-  if(b){ b.disabled=true; b.textContent='Gerando…'; }
+  bts.forEach(function(x){ x.disabled=true; x.textContent='Gerando…'; });
   ensureXLSX(function(){ try{ var r=kbBackupWB(), d=new Date(), nm='Backup_Kanban_Expedicao_'+_calISO(d)+'_'+('0'+d.getHours()).slice(-2)+'h'+('0'+d.getMinutes()).slice(-2)+'.xlsx';
-      XLSX.writeFile(r.wb,nm,{cellDates:true}); kbBkRegistrar(0); }catch(e){ alert('Não consegui gerar o backup: '+((e&&e.message)||e)); }
-    if(b){ b.disabled=false; b.textContent='⬇ Baixar backup (Excel)'; } kbRender(); }, function(){ alert('Não consegui carregar o gerador de Excel. Confira a internet.'); if(b){ b.disabled=false; b.textContent='⬇ Baixar backup (Excel)'; } }); }
+      var buf=XLSX.write(r.wb,{type:'array',bookType:'xlsx',cellDates:true}), blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      _kbBkBaixar(blob,nm); kbBkRegistrar(0); volta(); kbRender(); kbBkEmail({nome:nm,blob:blob,quando:d,r:r}); }
+    catch(e){ volta(); alert('Não consegui gerar o backup: '+((e&&e.message)||e)); } }, function(){ volta(); alert('Não consegui carregar o gerador de Excel. Confira a internet.'); }); }
+function _kbBkBaixar(blob,nm){ var u=URL.createObjectURL(blob), a=document.createElement('a'); a.href=u; a.download=nm; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(u); },60000); }
+/* e-mail do backup: abre pronto (Gmail ou app de e-mail). O navegador não consegue anexar sozinho no Gmail —
+   o arquivo já foi baixado; quem envia arrasta ele para a mensagem. No Windows/celular, "Compartilhar" anexa direto. */
+function kbBkEmail(o){ var d=o.quando, dia=d.toLocaleDateString('pt-BR'), hr=('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2), quem=(current&&current.name)||currentUserKey||'', c=o.r.cnt||{};
+  var para=(KB.bkPara!=null?KB.bkPara:'')||(function(){ try{ return localStorage.getItem('kb_bk_para')||''; }catch(e){ return ''; } })();
+  var from=''; try{ from=localStorage.getItem('painelop_notify_from')||''; }catch(e){}
+  var assunto='Backup do Kanban da Expedição — '+dia+' '+hr;
+  var corpo='Olá!\n\nSegue em anexo o backup do Kanban de pedidos da Expedição, gerado em '+dia+' às '+hr+(quem?' por '+quem:'')+'.\n\n'
+    +'Resumo no momento do backup:\n• A sair: em produção: '+(c.producao||0)+'\n• Prontos para envio: '+(c.pronto||0)+'\n• Em embalagem: '+(c.emb||0)+'\n• Enviados (período do Kanban): '+(c.env||0)+'\n• OPs: '+(o.r.ops||0)+'\n• Movimentos feitos arrastando: '+(o.r.mov||0)+'\n\n'
+    +'Arquivo: '+o.nome+'\n\n'+quem;
+  var podeComp=false; try{ podeComp=!!(navigator.canShare&&navigator.canShare({files:[new File([o.blob],o.nome,{type:o.blob.type})]})); }catch(e){}
+  var inp='width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:7px;padding:7px 9px;font-family:inherit;font-size:13px';
+  var body='<div><h2 style="margin:0 0 4px;color:var(--ink)">✉ Enviar o backup para a expedição</h2>'
+    +'<div style="color:var(--f-green);font-size:13px;margin-bottom:6px">✓ Backup gerado e baixado: <b>'+uEsc(o.nome)+'</b> · registrado para todos.</div>'
+    +'<div style="border:1px solid rgba(245,165,36,.45);background:rgba(245,165,36,.10);border-radius:9px;padding:9px 12px;font-size:12.5px;color:var(--ink);margin:8px 0 4px">📎 <b>Anexar:</b> o Gmail não deixa o painel colocar o anexo sozinho. Quando o e-mail abrir, <b>arraste o arquivo da barra de downloads</b> para dentro da mensagem (ou clique no clipe 📎 e escolha o arquivo na pasta <b>Downloads</b>).'+(podeComp?' Se preferir, <b>Compartilhar</b> abre o Outlook/Mail do computador com o arquivo já anexado.':'')+'</div>'
+    +'<label style="display:block;margin-top:10px;font-size:12px;color:var(--muted)">Para (e-mail da expedição — fica salvo para todos)<input id="bkPara" style="'+inp+';margin-top:4px" placeholder="e-mail da expedição" value="'+uEsc(para)+'"></label>'
+    +'<label style="display:block;margin-top:10px;font-size:12px;color:var(--muted)">Conta do Gmail para enviar <span style="opacity:.8">— o número que aparece depois de <b>/u/</b> no endereço do Gmail dessa conta (ex.: 1) ou o e-mail. Fica salvo neste navegador.</span><input id="bkFrom" style="'+inp+';margin-top:4px" placeholder="ex.: 1" value="'+uEsc(from)+'"></label>'
+    +'<label style="display:block;margin-top:10px;font-size:12px;color:var(--muted)">Assunto<input id="bkSubj" style="'+inp+';margin-top:4px" value="'+uEsc(assunto)+'"></label>'
+    +'<label style="display:block;margin-top:10px;font-size:12px;color:var(--muted)">Mensagem<textarea id="bkBody" rows="13" style="'+inp+';margin-top:4px;resize:vertical">'+uEsc(corpo)+'</textarea></label>'
+    +'<div id="bkErr" style="color:var(--f-amber);font-size:12.5px;min-height:16px;margin-top:8px"></div>'
+    +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px"><button class="ubtn" id="bkGmail" style="background:var(--f-green);color:#0c241a;border:none;font-weight:600;padding:9px 16px">Abrir no Gmail</button>'
+    +(podeComp?'<button class="ubtn" id="bkShare" style="padding:9px 16px">Compartilhar (já anexado)</button>':'')
+    +'<button class="ubtn" id="bkMailto" style="padding:9px 16px">Abrir no Outlook / app de e-mail</button><button class="ubtn" id="bkDown" style="padding:9px 16px">⬇ Baixar o arquivo de novo</button></div></div>';
+  var m=openProgModal(body,null);
+  var lerPara=function(){ var to=[]; ($('bkPara').value||'').split(/[,;\s]+/).forEach(function(e){ e=e.trim(); if(e&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)&&to.indexOf(e)<0) to.push(e); });
+    if(!to.length){ $('bkErr').textContent='Digite o e-mail da expedição.'; return null; } $('bkErr').textContent='';
+    var v=to.join(', '); try{ localStorage.setItem('kb_bk_para',v); }catch(e){} if(v!==(KB.bkPara||'')){ KB.bkPara=v; kbBkSalvarPara(v,0); } return to; };
+  $('bkGmail').onclick=function(){ var to=lerPara(); if(!to) return; var e=encodeURIComponent, fr=($('bkFrom').value||'').trim().toLowerCase();
+    if(fr&&!/^\d{1,2}$/.test(fr)&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fr)){ $('bkErr').textContent='Informe o número da conta (o que aparece depois de /u/ no Gmail) ou o e-mail.'; return; }
+    try{ if(fr) localStorage.setItem('painelop_notify_from',fr); else localStorage.removeItem('painelop_notify_from'); }catch(_){}
+    var acct=!fr?'':(/^\d+$/.test(fr)?'u/'+fr+'/?':'u/'+fr.replace(/[^a-z0-9@._+-]/g,'')+'/?authuser='+e(fr)+'&');
+    window.open('https://mail.google.com/mail/'+(acct||'?')+'view=cm&fs=1&to='+e(to.join(','))+'&su='+e($('bkSubj').value)+'&body='+e($('bkBody').value),'_blank'); };
+  $('bkMailto').onclick=function(){ var to=lerPara(); if(!to) return; var e=encodeURIComponent; location.href='mailto:'+to.map(e).join(',')+'?subject='+e($('bkSubj').value)+'&body='+e($('bkBody').value); };
+  $('bkDown').onclick=function(){ _kbBkBaixar(o.blob,o.nome); };
+  if($('bkShare')) $('bkShare').onclick=function(){ var to=lerPara(); if(!to) return; navigator.share({files:[new File([o.blob],o.nome,{type:o.blob.type})],title:$('bkSubj').value,text:$('bkBody').value}).catch(function(err){ if(err&&err.name!=='AbortError') $('bkErr').textContent='Não consegui compartilhar: '+(err.message||err); }); };
+  return m; }
+// e-mail da expedição: guardado junto com o Kanban (cifrado), vale para todos
+async function kbBkSalvarPara(v,tent){ var key=_kbKey(); if(!key||!ghToken()) return; var outra=false;
+  while(KB_SYNC) await new Promise(function(r){ setTimeout(r,400); });
+  KB_SYNC=true;
+  try{ var r=await _kbLerRemoto(), g=r.g; if(g.bkPara===v) return; g.bkPara=v;
+    var bl=await gh('/git/blobs',{method:'POST',body:{content:JSON.stringify(await encJSON(key,g)),encoding:'utf-8'}});
+    var body={tree:[{path:KB_PATH,mode:'100644',type:'blob',sha:bl.sha}]}; if(r.sha) body.base_tree=(await gh('/git/commits/'+r.sha)).tree.sha;
+    var tr=await gh('/git/trees',{method:'POST',body:body});
+    var nc=await gh('/git/commits',{method:'POST',body:{message:'Kanban: e-mail do backup',tree:tr.sha,parents:r.sha?[r.sha]:[]}});
+    try{ if(r.sha) await gh('/git/refs/heads/'+CK_BRANCH,{method:'PATCH',body:{sha:nc.sha,force:false}}); else await gh('/git/refs',{method:'POST',body:{ref:'refs/heads/'+CK_BRANCH,sha:nc.sha}}); }
+    catch(e){ if(e.status===422&&tent<3) outra=true; else throw e; } }
+  catch(e){}
+  finally{ KB_SYNC=false; }
+  if(outra) return kbBkSalvarPara(v,tent+1); }
 function kbDetalhe(n){ var x=KB._todos&&KB._todos[n]; if(!x) return; var ops=(KB._ops&&KB._ops[n])||x.ops||[], z=$('kbDet');
   if(!z){ z=document.createElement('div'); z.id='kbDet'; z.style.cssText='position:fixed;inset:0;z-index:96;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:40px 12px;overflow:auto'; document.body.appendChild(z); }
   var fase={producao:'A sair: em produção',pronto:'Pronto para envio',emb:'Em processo de embalagem',env:'Enviado'}[x._mov?x._mov.para:x._o];
@@ -5704,7 +5755,7 @@ function kbPodeMover(){ return !!(_kbKey()&&ghToken()); }
 async function _kbLerRemoto(){ var key=_kbKey(); if(!key) return {sha:null,g:{mov:{}}}; var sha=await _ckHead(), g=null;
   if(sha){ var b=await _ckRead(KB_PATH,sha); if(b){ try{ g=await decJSON(key,JSON.parse(new TextDecoder().decode(b))); }catch(e){ g=null; } } }
   g=g||{}; g.mov=g.mov||{}; return {sha:sha,g:g}; }
-async function kbMovCarregar(){ if(KB_SYNC) return; try{ var r=await _kbLerRemoto(), antes=JSON.stringify(KB.mov||{}), bkAntes=JSON.stringify([KB.bk,!!KB.bkLido]); KB.mov=r.g.mov; KB.bk=r.g.bk||null; KB.bkLido=true;
+async function kbMovCarregar(){ if(KB_SYNC) return; try{ var r=await _kbLerRemoto(), antes=JSON.stringify(KB.mov||{}), bkAntes=JSON.stringify([KB.bk,!!KB.bkLido]); KB.mov=r.g.mov; KB.bk=r.g.bk||null; KB.bkLido=true; if(r.g.bkPara) KB.bkPara=r.g.bkPara;
   if(JSON.stringify(KB.mov)!==antes) kbRender();
   if(JSON.stringify([KB.bk,true])!==bkAntes){ try{ sideRender(); }catch(e){} try{ expNavRender(); }catch(e){} kbRender(); } }catch(e){} }
 /* ===== Backup do Kanban: deve ser feito toda sexta às 17h (e nunca passar 7 dias sem).
@@ -5723,7 +5774,7 @@ function kbBkBanner(){ var s=kbBkStatus(), ult=s.ts?'O último foi <b>'+_kbBkQua
   if(s.atraso) return '<div style="border:1px solid rgba(229,72,77,.55);background:rgba(229,72,77,.12);border-radius:12px;padding:12px 16px;margin-bottom:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">'
     +'<span style="font-size:22px;color:#e5484d">⚠</span><div style="flex:1;min-width:240px"><div style="font-weight:700;color:#e5484d;font-size:14.5px">Backup do Kanban em atraso — gere e baixe um novo</div>'
     +'<div style="font-size:13px;color:var(--ink);margin-top:2px">'+ult+'. O backup deve ser feito toda <b>sexta-feira às 17h</b> e nunca passar '+KB_BK_DIAS+' dias sem ser gerado e baixado.</div></div>'
-    +'<button class="ubtn kbBkAgora" style="border-color:rgba(229,72,77,.6);font-weight:700">⬇ Gerar e baixar backup agora</button></div>';
+    +'<button class="ubtn kbBkAgora" style="border-color:rgba(229,72,77,.6);font-weight:700">📦 Criar backup agora</button></div>';
   return '<div style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px">✓ Último backup: '+(s.ts?'<b style="color:var(--ink)">'+_kbBkQuando(s.ts)+'</b>'+(s.por?' por '+uEsc(s.por):''):'—')+' · próximo: <b style="color:var(--ink)">sexta '+_kbDM(new Date(s.prox))+' às 17h</b></div>'; }
 async function kbBkRegistrar(tent){ var reg={ts:Date.now(),por:(current&&current.name)||currentUserKey||''}; tent=tent||0;
   if(!tent){ try{ localStorage.setItem('kb_backup',JSON.stringify(reg)); }catch(e){} KB.bk=reg; try{ sideRender(); }catch(e){} try{ expNavRender(); }catch(e){} kbRender(); }
