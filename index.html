@@ -5480,7 +5480,7 @@ function kbLerControle(file){ return new Promise(function(ok,ko){
   w.onmessage=function(e){ w.terminate(); if(e.data&&e.data.ok) ok(e.data.out); else ko(new Error((e.data&&e.data.err)||'falhou')); };
   w.onerror=function(e){ w.terminate(); ko(new Error((e&&e.message)||'falhou')); };
   if(file.__pre) preGz(file.__pre).then(function(g){ var b=g.buffer.slice(g.byteOffset,g.byteOffset+g.byteLength); w.postMessage({gz:b},[b]); },ko); else file.arrayBuffer().then(function(b){ w.postMessage(b,[b]); },ko); }); }
-function kbMostrar(){ activeView='kanban'; _feedLazy('expedicao'); Object.keys(iframes).forEach(function(k){ iframes[k].classList.remove('show'); }); $('baseView').style.display='none'; $('impView').style.display='none'; $('kanView').style.display='block'; KB.tent=0; kbRender(); }
+function kbMostrar(){ activeView='kanban'; _feedLazy('expedicao'); kbMovCarregar(); clearInterval(KB.iv); KB.iv=setInterval(function(){ if($('kanView').style.display==='none'){ clearInterval(KB.iv); return; } kbMovCarregar(); },60000); Object.keys(iframes).forEach(function(k){ iframes[k].classList.remove('show'); }); $('baseView').style.display='none'; $('impView').style.display='none'; $('kanView').style.display='block'; KB.tent=0; kbRender(); }
 function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none') return;
   var f=FILES.controle; if(f&&KB.ctrlDe!==f&&!KB.lendo){ KB.lendo=true; KB.erro='';
     kbLerControle(f).then(function(o){ KB.ctrl=o; KB.ctrlDe=f; }).catch(function(e){ KB.erro=(e&&e.message)||String(e); }).then(function(){ KB.lendo=false; kbRender(); }); }
@@ -5493,23 +5493,35 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
     env.sort(function(a,b){ return (b.d||0)-(a.d||0); }); emb.sort(function(a,b){ return (a.ent||a.d||0)-(b.ent||b.d||0); }); }
   var pront=(ready||[]).filter(function(p){ var n=_kbNum(p.cod); return !embSet[n]&&!envTodos[n]; }).map(function(p){ return {n:_kbNum(p.cod)||p.cod,cli:p.cliente,prev:_kbData(p.prev),valor:+p.valor||0,transp:p.transp,pe:p.pe,atr:p.status==='atrasado'?p.dias:0}; })
     .sort(function(a,b){ return (b.atr-a.atr)||((a.prev||0)-(b.prev||0)); });
+  // movimentos feitos à mão (arrastar): valem até a planilha mostrar o pedido numa fase diferente da que ele tinha
+  var M=KB.mov||{}, todos={}, dest={pronto:[],emb:[],env:[]};
+  pront.forEach(function(x){ x._o='pronto'; todos[x.n]=x; }); emb.forEach(function(x){ x._o='emb'; todos[x.n]=x; }); env.forEach(function(x){ x._o='env'; todos[x.n]=x; });
+  [pront,emb,env].forEach(function(L){ L.forEach(function(x){ var m=M[x.n], c=x._o; x._mov=null; if(m&&m.base===x._o&&m.para!==x._o&&dest[m.para]){ c=m.para; x._mov=m; } dest[c].push(x); }); });
+  Object.keys(dest).forEach(function(c){ var mv=dest[c].filter(function(x){ return x._mov; }).sort(function(a,b){ return b._mov.ts-a._mov.ts; }); dest[c]=mv.concat(dest[c].filter(function(x){ return !x._mov; })); });
+  KB._todos=todos;
   var q=_en(KB.q||''); var flt=function(L){ return q?L.filter(function(x){ return _en(x.n+' '+x.cli+' '+(x.nf||'')+' '+(x.rastr||'')+' '+(x.modo||x.transp||'')).indexOf(q)>=0; }):L; };
-  var P=flt(pront), E=flt(emb), V=flt(env);
+  var P=flt(dest.pronto), E=flt(dest.emb), V=flt(dest.env), pode=kbPodeMover();
   var chip=function(t,c){ return t?'<span style="font-size:11.5px;border:1px solid '+(c||'var(--line)')+';color:'+(c||'var(--muted)')+';border-radius:999px;padding:2px 8px;white-space:nowrap">'+uEsc(t)+'</span>':''; };
-  var card=function(x,cor,linhas){ return '<div style="background:var(--surface2);border:1px solid var(--line);border-left:3px solid '+cor+';border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px">'
+  var card=function(x,cor,linhas){ var mv=x._mov?'<div style="font-size:11px;color:#c9b38a">↔ movido'+(x._mov.por?' por '+uEsc(String(x._mov.por).split(' ')[0]):'')+' · '+_kbDM(new Date(x._mov.ts))+'</div>':'';
+    return '<div class="kbCard" data-n="'+uEsc(x.n)+'"'+(pode?' draggable="true"':'')+' style="background:var(--surface2);border:1px solid var(--line);border-left:3px solid '+cor+';border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;'+(pode?'cursor:grab':'')+'">'
       +'<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><b style="color:var(--ink);font-size:14px">#'+uEsc(x.n)+'</b>'+linhas.topo+'</div>'
       +'<div style="font-size:13px;color:var(--ink);line-height:1.3">'+uEsc(x.cli||'—')+'</div>'
-      +'<div style="display:flex;gap:5px;flex-wrap:wrap">'+linhas.chips+'</div></div>'; };
+      +'<div style="display:flex;gap:5px;flex-wrap:wrap">'+linhas.chips+'</div>'+mv+'</div>'; };
+  // cada cartão mantém o conteúdo de onde veio; a cor é da coluna em que está
+  var conteudo={
+    pronto:function(x){ return {topo:x.atr?'<span style="font-size:11.5px;color:#e5484d;font-weight:700">'+x.atr+' dia'+(x.atr>1?'s':'')+' atrasado</span>':'',chips:(x.pe?chip('Pronta entrega','#5aa0d0'):'')+chip(x.prev?'Previsão '+_kbDM(x.prev):'')+chip(x.valor?'R$ '+Math.round(x.valor).toLocaleString('pt-BR'):'')+chip(x.transp)}; },
+    emb:function(x){ var atr=x.ent&&x.ent<hoje; return {topo:x.ent?'<span style="font-size:11.5px;color:'+(atr?'#e5484d':'var(--muted)')+';font-weight:'+(atr?700:400)+'">entrega '+_kbDM(x.ent)+'</span>':'',chips:chip(x.d?'Desde '+_kbDM(x.d):'')+chip(x.vol?String(x.vol).trim().slice(0,40):'')+chip(x.modo)+chip(x.nf?String(x.nf).trim().slice(0,30):'')}; },
+    env:function(x){ return {topo:x.d?'<span style="font-size:11.5px;color:var(--muted)">'+_kbDM(x.d)+'</span>':'',chips:chip(x.modo)+chip(x.nf?String(x.nf).trim().slice(0,30):'')+chip(x.rastr?String(x.rastr).trim().slice(0,40):'')}; } };
   var colunas=[
-    {t:'Pedidos prontos para envio',cor:'#4ecb8f',L:P,sub:P.length?'R$ '+Math.round(P.reduce(function(a,x){ return a+x.valor; },0)).toLocaleString('pt-BR'):'',
-     c:function(x){ return card(x,'#4ecb8f',{topo:x.atr?'<span style="font-size:11.5px;color:#e5484d;font-weight:700">'+x.atr+' dia'+(x.atr>1?'s':'')+' atrasado</span>':'',chips:(x.pe?chip('Pronta entrega','#5aa0d0'):'')+chip(x.prev?'Previsão '+_kbDM(x.prev):'')+chip(x.valor?'R$ '+Math.round(x.valor).toLocaleString('pt-BR'):'')+chip(x.transp)}); }},
-    {t:'Pedidos em processo de embalagem',cor:'#d99a52',L:E,sub:'',
-     c:function(x){ var atr=x.ent&&x.ent<hoje; return card(x,'#d99a52',{topo:x.ent?'<span style="font-size:11.5px;color:'+(atr?'#e5484d':'var(--muted)')+';font-weight:'+(atr?700:400)+'">entrega '+_kbDM(x.ent)+'</span>':'',chips:chip(x.d?'Desde '+_kbDM(x.d):'')+chip(x.vol?String(x.vol).trim().slice(0,40):'')+chip(x.modo)+chip(x.nf?String(x.nf).trim().slice(0,30):'')}); }},
-    {t:'Pedidos enviados',cor:'#5aa0d0',L:V,sub:KB.dias?'últimos '+KB.dias+' dias':'todos',
-     c:function(x){ return card(x,'#5aa0d0',{topo:x.d?'<span style="font-size:11.5px;color:var(--muted)">'+_kbDM(x.d)+'</span>':'',chips:chip(x.modo)+chip(x.nf?String(x.nf).trim().slice(0,30):'')+chip(x.rastr?String(x.rastr).trim().slice(0,40):'')}); }}];
+    {k:'pronto',t:'Pedidos prontos para envio',cor:'#4ecb8f',L:P,sub:P.length?'R$ '+Math.round(P.reduce(function(a,x){ return a+(x.valor||0); },0)).toLocaleString('pt-BR'):''},
+    {k:'emb',t:'Pedidos em processo de embalagem',cor:'#d99a52',L:E,sub:''},
+    {k:'env',t:'Pedidos enviados',cor:'#5aa0d0',L:V,sub:KB.dias?'últimos '+KB.dias+' dias':'todos'}];
   var MAX=200;
+  // guarda a rolagem para não pular para o topo a cada atualização
+  var rol={}, rolTop=host.scrollTop; host.querySelectorAll('.kbLista').forEach(function(el){ rol[el.getAttribute('data-c')]=el.scrollTop; });
   host.innerHTML='<div style="padding:22px 24px;box-sizing:border-box;min-height:100%">'
-    +'<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:16px"><div><div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Expedição</div><h1 style="margin:2px 0 0;font-size:24px;font-weight:650;color:var(--ink)">Kanban de pedidos</h1></div>'
+    +'<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:16px"><div><div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Expedição</div><h1 style="margin:2px 0 0;font-size:24px;font-weight:650;color:var(--ink)">Kanban de pedidos</h1>'
+      +'<div style="font-size:12.5px;color:var(--muted);margin-top:4px">'+(pode?'Arraste os cartões entre as colunas. O movimento vale para todos até a planilha mudar a fase do pedido.':'Para arrastar os cartões, este computador precisa do token do GitHub (fale com o administrador).')+(KB.salvo?' <span style="color:'+(KB.salvo.ok?'var(--f-green)':'var(--danger)')+'">'+uEsc(KB.salvo.t)+'</span>':'')+'</div></div>'
       +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input id="kbQ" type="search" autocomplete="off" placeholder="Buscar pedido, cliente, NF, rastreio…" value="'+uEsc(KB.q)+'" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 11px;font-size:13.5px;width:260px">'
       +'<select id="kbDias" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+[[7,'Enviados: 7 dias'],[30,'Enviados: 30 dias'],[90,'Enviados: 90 dias'],[0,'Enviados: todos']].map(function(o){ return '<option value="'+o[0]+'"'+(KB.dias===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select></div></div>'
     +(!Object.keys(FILES).length?'<div style="color:var(--muted);margin-bottom:12px">Carregando os dados da expedição…</div>':'')
@@ -5518,13 +5530,50 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
     +(!f&&Object.keys(FILES).length?'<div style="color:var(--f-amber);font-size:13px;margin-bottom:10px">Sem o arquivo "Controle de liberação de pedidos": as colunas de embalagem e enviados ficam vazias.</div>':'')
     +((!ready||!ready.length)&&Object.keys(FILES).length&&KB.tent<40?'<div style="color:var(--muted);font-size:13px;margin-bottom:10px">Calculando os pedidos prontos para envio…</div>':'')
     +'<div style="display:grid;grid-template-columns:repeat(3,minmax(260px,1fr));gap:14px;align-items:start;overflow-x:auto">'
-    +colunas.map(function(col){ return '<div style="background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;max-height:calc(100vh - 150px);min-width:260px">'
+    +colunas.map(function(col){ return '<div class="kbCol" data-c="'+col.k+'" style="background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;max-height:calc(100vh - 170px);min-width:260px;transition:border-color .15s,background .15s">'
       +'<div style="padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px"><span style="width:9px;height:9px;border-radius:50%;background:'+col.cor+'"></span><b style="color:var(--ink);font-size:13.5px;flex:1">'+col.t+'</b><span style="background:var(--elev);color:var(--ink);border-radius:999px;padding:1px 9px;font-size:12px;font-weight:700">'+col.L.length+'</span></div>'
       +(col.sub?'<div style="padding:6px 14px 0;font-size:12px;color:var(--muted)">'+col.sub+'</div>':'')
-      +'<div style="padding:10px;display:flex;flex-direction:column;gap:8px;overflow-y:auto">'+(col.L.length?col.L.slice(0,MAX).map(col.c).join('')+(col.L.length>MAX?'<div style="text-align:center;color:var(--muted);font-size:12px;padding:6px">+ '+(col.L.length-MAX)+' pedidos (use a busca)</div>':''):'<div style="color:var(--muted);font-size:13px;padding:14px;text-align:center">Nenhum pedido.</div>')+'</div></div>'; }).join('')+'</div></div>';
+      +'<div class="kbLista" data-c="'+col.k+'" style="padding:10px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;min-height:80px">'+(col.L.length?col.L.slice(0,MAX).map(function(x){ return card(x,col.cor,conteudo[x._o](x)); }).join('')+(col.L.length>MAX?'<div style="text-align:center;color:var(--muted);font-size:12px;padding:6px">+ '+(col.L.length-MAX)+' pedidos (use a busca)</div>':''):'<div style="color:var(--muted);font-size:13px;padding:14px;text-align:center">Nenhum pedido.</div>')+'</div></div>'; }).join('')+'</div></div>';
+  host.scrollTop=rolTop; host.querySelectorAll('.kbLista').forEach(function(el){ var v=rol[el.getAttribute('data-c')]; if(v) el.scrollTop=v; });
   var tq; $('kbQ').oninput=function(){ KB.q=this.value; clearTimeout(tq); tq=setTimeout(function(){ kbRender(); var i=$('kbQ'); i.focus(); i.selectionStart=i.selectionEnd=i.value.length; },250); };
   $('kbDias').onchange=function(){ KB.dias=+this.value; kbRender(); };
+  // arrastar e soltar
+  host.querySelectorAll('.kbCard[draggable]').forEach(function(c){
+    c.ondragstart=function(e){ KB.arr=c.getAttribute('data-n'); try{ e.dataTransfer.setData('text/plain',KB.arr); e.dataTransfer.effectAllowed='move'; }catch(x){} c.style.opacity='.45'; };
+    c.ondragend=function(){ c.style.opacity=''; host.querySelectorAll('.kbCol').forEach(function(col){ col.style.borderColor=''; col.style.background=''; }); }; });
+  host.querySelectorAll('.kbCol').forEach(function(col){
+    col.ondragover=function(e){ if(!KB.arr) return; e.preventDefault(); try{ e.dataTransfer.dropEffect='move'; }catch(x){} col.style.borderColor='var(--ink)'; col.style.background='rgba(255,255,255,.05)'; };
+    col.ondragleave=function(e){ if(e.relatedTarget&&col.contains(e.relatedTarget)) return; col.style.borderColor=''; col.style.background=''; };
+    col.ondrop=function(e){ e.preventDefault(); col.style.borderColor=''; col.style.background=''; var n=KB.arr; KB.arr=null; if(n) kbMover(n,col.getAttribute('data-c')); }; });
 }
+/* ---- movimentos do Kanban: guardados no ramo "checklists" (exp/kanban.json), cifrados com a chave do Controle de liberação ---- */
+var KB_PATH='exp/kanban.json', KB_SYNC=false;
+function _kbKey(){ return (SESSION&&SESSION.slots&&SESSION.slots.controle)?b64d(SESSION.slots.controle):null; }
+function kbPodeMover(){ return !!(_kbKey()&&ghToken()); }
+async function _kbLerRemoto(){ var key=_kbKey(); if(!key) return {sha:null,g:{mov:{}}}; var sha=await _ckHead(), g=null;
+  if(sha){ var b=await _ckRead(KB_PATH,sha); if(b){ try{ g=await decJSON(key,JSON.parse(new TextDecoder().decode(b))); }catch(e){ g=null; } } }
+  g=g||{}; g.mov=g.mov||{}; return {sha:sha,g:g}; }
+async function kbMovCarregar(){ if(KB_SYNC) return; try{ var r=await _kbLerRemoto(), antes=JSON.stringify(KB.mov||{}); KB.mov=r.g.mov; if(JSON.stringify(KB.mov)!==antes) kbRender(); }catch(e){} }
+function kbMover(n,para){ var x=KB._todos&&KB._todos[n]; if(!x) return; var atual=x._mov?x._mov.para:x._o; if(atual===para) return;
+  if(!kbPodeMover()){ alert('Para mover os cartões, este computador precisa do token do GitHub. Fale com o administrador.'); return; }
+  var val=(para===x._o)?null:{para:para,base:x._o,ts:Date.now(),por:(current&&current.name)||currentUserKey||''};
+  KB.mov=KB.mov||{}; if(val) KB.mov[n]=val; else delete KB.mov[n];
+  KB.salvo={ok:true,t:'Salvando…'}; kbRender(); kbMovSalvar(n,val,0); }
+async function kbMovSalvar(n,val,tent){ var key=_kbKey(); KB_SYNC=true; var outra=false;
+  try{ var r=await _kbLerRemoto(), g=r.g, lim=Date.now()-120*864e5;
+    if(val) g.mov[n]=val; else delete g.mov[n];
+    Object.keys(g.mov).forEach(function(k){ if((g.mov[k].ts||0)<lim) delete g.mov[k]; }); // movimentos antigos saem sozinhos
+    var bl=await gh('/git/blobs',{method:'POST',body:{content:JSON.stringify(await encJSON(key,g)),encoding:'utf-8'}});
+    var body={tree:[{path:KB_PATH,mode:'100644',type:'blob',sha:bl.sha}]}; if(r.sha) body.base_tree=(await gh('/git/commits/'+r.sha)).tree.sha;
+    var tr=await gh('/git/trees',{method:'POST',body:body});
+    var nc=await gh('/git/commits',{method:'POST',body:{message:'Kanban: pedido '+n+' ('+((current&&current.name)||'')+')',tree:tr.sha,parents:r.sha?[r.sha]:[]}});
+    try{ if(r.sha) await gh('/git/refs/heads/'+CK_BRANCH,{method:'PATCH',body:{sha:nc.sha,force:false}}); else await gh('/git/refs',{method:'POST',body:{ref:'refs/heads/'+CK_BRANCH,sha:nc.sha}}); }
+    catch(e){ if(e.status===422&&tent<3) outra=true; else throw e; }
+    if(!outra){ KB.mov=g.mov; KB.salvo={ok:true,t:'✓ Movimento salvo para todos.'}; } }
+  catch(e){ KB.salvo={ok:false,t:'Não consegui salvar o movimento ('+((e&&e.message)||e)+'). Tente de novo.'}; }
+  finally{ KB_SYNC=false; }
+  if(outra) return kbMovSalvar(n,val,tent+1);
+  kbRender(); setTimeout(function(){ if(KB.salvo&&KB.salvo.ok){ KB.salvo=null; kbRender(); } },4000); }
 window.addEventListener('message',function(ev){ var m=ev.data||{}; if(m.__dash==='fed'&&m.panel==='expedicao'&&$('kanView')&&$('kanView').style.display!=='none') setTimeout(kbRender,1200); });
 function startApp(user){ current=user; if(typeof SNAP_MODE!=='undefined'&&SNAP_MODE){ enterRelatorios(user); return; } showModules(); try{ ckSyncStart(); }catch(e){} }
 (function(){
