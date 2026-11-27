@@ -5600,6 +5600,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
     if(F.difal&&I.difal!==F.difal) return false;
     if(F.tipo==='pe'&&!(x.pe||I.pe)) return false; if(F.tipo==='prod'&&(x.pe||I.pe)) return false;
     if(F.atr&&!kbAtrX(x)) return false;
+    if(F.bol){ var fb=(KB.fat||{})[x.n]; if(F.bol==='emitido'){ if(!fb||fb.boleto!=='emitido') return false; } else if(!fb||fb.boleto!=='emitir'||(F.bol==='atraso'&&!kbBolAtrasado(fb))) return false; }
     if(F.trat==='sim'&&!I.done) return false; if(F.trat==='nao'&&I.done) return false;
     // faturamento/embalagem: "feito" em qualquer coluna; "pendente" = está em embalagem e ainda não terminou
     if(F.fatst||F.embst){ var fz=x._mov?x._mov.para:x._o, fa=(KB.fat||{})[x.n], faOk=!!fa&&(function(g){ return g.ok===g.tot; })(kbFatProg(fa)), emOk=!!(KB.obs||{})[x.n];
@@ -5663,6 +5664,10 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
   var atrOnde=function(){ var c={producao:0,pronto:0,emb:0}; atrasadosTodos.forEach(function(x){ c[x._mov?x._mov.para:x._o]++; }); return [['producao','em produção'],['pronto','prontos'],['emb','em embalagem']].filter(function(z){ return c[z[0]]; }).map(function(z){ return c[z[0]]+' '+z[1]; }).join(' · ')||'nenhum'; };
   var estaSem=A.filter(function(x){ return !x.inv&&x.prev&&x.prev>=hoje&&x.prev<=fimEsta; }), hojeIso=hoje.getTime(), envHoje=V.filter(function(x){ return x.d&&x.d.getTime()>=hojeIso; });
   if(Object.keys(KB.fat||{}).some(function(k){ return _kbNfNum(KB.fat[k].nf); })){ kbF09Ler(); if(!KB.itensLido&&!KB._itRq){ KB._itRq=1; kbItensLer().then(function(){ kbRender(); }); } }
+  var kbBolBanner=function(){ var L=Object.keys(KB.fat||{}).filter(function(k){ return kbBolAtrasado(KB.fat[k]); }); if(!L.length||F.bol) return '';
+    return '<div style="border:1px solid rgba(229,72,77,.55);background:rgba(229,72,77,.10);border-radius:12px;padding:10px 14px;margin-bottom:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span style="font-size:20px;color:#e5484d">⚠</span>'
+      +'<div style="flex:1;min-width:220px;font-size:13.5px;color:var(--ink)"><b style="color:#e5484d">'+L.length+' boleto'+(L.length===1?'':'s')+' ainda não emitido'+(L.length===1?'':'s')+' (marcado'+(L.length===1?'':'s')+' há mais de 24h)</b> — '+L.slice(0,6).map(function(k){ return '#'+uEsc(k); }).join(', ')+(L.length>6?'…':'')+'. Se já emitiu, clique em "Sim, emitido" no cartão.</div>'
+      +'<button class="ubtn" id="kbVerBol" style="padding:7px 12px;font-size:13px">Ver só esses</button></div>'; };
   var kbConfBanner=function(){ var L=Object.keys(KB.fat||{}).filter(function(k){ return kbFatAlertas(k).length; }); if(!L.length||F.fatst==='div') return '';
     return '<div style="border:1px solid rgba(245,165,36,.55);background:rgba(245,165,36,.10);border-radius:12px;padding:10px 14px;margin-bottom:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span style="font-size:20px;color:#f5a524">⚠</span>'
       +'<div style="flex:1;min-width:220px;font-size:13.5px;color:var(--ink)"><b style="color:#f5a524">'+L.length+' faturamento'+(L.length===1?'':'s')+' não confere'+(L.length===1?'':'m')+' com o relatório 09</b> — '+L.slice(0,6).map(function(k){ return '#'+uEsc(k); }).join(', ')+(L.length>6?'…':'')+'. Abra o cartão para corrigir ou ignorar.</div>'
@@ -5695,18 +5700,19 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
       +'<span style="font-size:12.5px;color:var(--muted)">Até</span><input type="date" id="kbAte" value="'+uEsc(F.ate||'')+'" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:7px 9px;font-size:13px">'
       +'<select id="kbSem" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px"><option value="">Semana: todas</option>'+semOffs.map(function(off){ var m0=new Date(segAtual); m0.setDate(m0.getDate()+7*off); var s0=new Date(m0); s0.setDate(m0.getDate()+6); return '<option value="'+off+'"'+(String(F.sem)===String(off)?' selected':'')+'>'+(off===0?'Essa semana':off===1?'Próxima semana':'Em '+off+' semanas')+' ('+_kbDM(m0)+'–'+_kbDM(s0)+') · '+(semCont[off]||0)+'</option>'; }).join('')+'</select>'
       +[['kbFS','sit',[['','Situação: todas'],['fabrica','Fábrica (ainda em produção)'],['expedicao','Expedição (tem OP na expedição)'],['pronto','Pedido pronto (pronto pra sair)']]]].map(function(z){ return '<select id="'+z[0]+'" data-f="'+z[1]+'" class="kbFiltro" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+z[2].map(function(o){ return '<option value="'+uEsc(o[0])+'"'+((F[z[1]]||'')===o[0]?' selected':'')+'>'+uEsc(o[1])+'</option>'; }).join('')+'</select>'; }).join('')
-      +[['kbFT','transp',[['','Todas transportadoras']].concat(TRANSPS.map(function(t){ return [t,t]; }))],['kbFD','difal',[['','DIFAL: todos'],['diario','DIFAL diário'],['mensal','DIFAL mensal']]],['kbFP','tipo',[['','Tipo: todos'],['pe','Só pronta entrega'],['prod','Só produção']]],['kbFR','trat',[['','Tratado: todos'],['nao','Não tratados'],['sim','Tratados']]],['kbFF','fatst',[['','Faturamento: todos'],['pend','Faturamento pendente'],['feito','Faturamento feito'],['div','⚠ Não confere com o 09']]],['kbFE','embst',[['','Embalagem: todos'],['pend','Embalagem pendente'],['feito','Embalagem feita']]]].map(function(z){ return '<select id="'+z[0]+'" data-f="'+z[1]+'" class="kbFiltro" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+z[2].map(function(o){ return '<option value="'+uEsc(o[0])+'"'+((F[z[1]]||'')===o[0]?' selected':'')+'>'+uEsc(o[1])+'</option>'; }).join('')+'</select>'; }).join('')
+      +[['kbFT','transp',[['','Todas transportadoras']].concat(TRANSPS.map(function(t){ return [t,t]; }))],['kbFD','difal',[['','DIFAL: todos'],['diario','DIFAL diário'],['mensal','DIFAL mensal']]],['kbFP','tipo',[['','Tipo: todos'],['pe','Só pronta entrega'],['prod','Só produção']]],['kbFR','trat',[['','Tratado: todos'],['nao','Não tratados'],['sim','Tratados']]],['kbFF','fatst',[['','Faturamento: todos'],['pend','Faturamento pendente'],['feito','Faturamento feito'],['div','⚠ Não confere com o 09']]],['kbFE','embst',[['','Embalagem: todos'],['pend','Embalagem pendente'],['feito','Embalagem feita']]],['kbFB','bol',[['','Boletos: todos'],['emitir','Boletos a emitir'],['atraso','Boletos a emitir há +24h'],['emitido','Boletos emitidos']]]].map(function(z){ return '<select id="'+z[0]+'" data-f="'+z[1]+'" class="kbFiltro" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+z[2].map(function(o){ return '<option value="'+uEsc(o[0])+'"'+((F[z[1]]||'')===o[0]?' selected':'')+'>'+uEsc(o[1])+'</option>'; }).join('')+'</select>'; }).join('')
       +'<select id="kbVisao" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px"><option value="colunas"'+(KB.visao!=='linhas'?' selected':'')+'>Visão: Kanban</option><option value="linhas"'+(KB.visao==='linhas'?' selected':'')+'>Visão: Lista</option></select>'
       +'<button class="ubtn" id="kbExp" style="padding:8px 12px;font-size:13px">'+(KB.exp?'Recolher tudo':'Expandir tudo')+'</button>'
+      +'<button class="ubtn" id="kbDifMail" style="padding:8px 12px;font-size:13px" title="Monta o e-mail do DIFAL diário do dia (NFs lançadas no faturamento) para o financeiro">✉ E-mail DIFAL diário</button>'
       +'<button class="ubtn" id="kbBackup" style="padding:8px 12px;font-size:13px" title="Gera o Excel com todos os pedidos do Kanban, as OPs, os enviados e os movimentos, baixa e abre o e-mail pronto para a expedição">📦 Criar backup agora</button>'
-      +((F.de||F.ate||(F.sem!=null&&F.sem!=='')||F.sit||F.transp||F.difal||F.tipo||F.trat||F.fatst||F.embst||F.atr||KB.q)?'<button class="ubtn" id="kbLimpa" style="padding:8px 12px;font-size:13px">Limpar filtros</button>':'')
+      +((F.de||F.ate||(F.sem!=null&&F.sem!=='')||F.sit||F.transp||F.difal||F.tipo||F.trat||F.fatst||F.embst||F.atr||F.bol||KB.q)?'<button class="ubtn" id="kbLimpa" style="padding:8px 12px;font-size:13px">Limpar filtros</button>':'')
       +'<select id="kbDias" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+[[7,'Enviados: 7 dias'],[30,'Enviados: 30 dias'],[90,'Enviados: 90 dias'],[0,'Enviados: todos']].map(function(o){ return '<option value="'+o[0]+'"'+(KB.dias===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select></div></div>'
     +(!Object.keys(FILES).length?'<div style="color:var(--muted);margin-bottom:12px">Carregando os dados da expedição…</div>':'')
     +(KB.lendo?'<div style="color:var(--muted);font-size:13px;margin-bottom:10px">Lendo o Controle de liberação de pedidos…</div>':'')
     +(KB.erro?'<div style="color:var(--danger);font-size:13px;margin-bottom:10px">Não consegui ler o Controle de liberação: '+uEsc(KB.erro)+'</div>':'')
     +(!f&&Object.keys(FILES).length?'<div style="color:var(--f-amber);font-size:13px;margin-bottom:10px">Sem o arquivo "Controle de liberação de pedidos": as colunas de embalagem e enviados ficam vazias.</div>':'')
     +((!ready||!ready.length)&&Object.keys(FILES).length&&KB.tent<40?'<div style="color:var(--muted);font-size:13px;margin-bottom:10px">Calculando os pedidos prontos para envio…</div>':'')
-    +kbBkBanner()+kbConfBanner()+kbResumo()+(KB.visao==='linhas'?kbLinhasHTML():'<div style="display:grid;grid-template-columns:repeat(4,minmax(250px,1fr));gap:12px;align-items:start;overflow-x:auto">'
+    +kbBkBanner()+kbBolBanner()+kbConfBanner()+kbResumo()+(KB.visao==='linhas'?kbLinhasHTML():'<div style="display:grid;grid-template-columns:repeat(4,minmax(250px,1fr));gap:12px;align-items:start;overflow-x:auto">'
     +colunas.map(function(col){ return '<div class="kbCol" data-c="'+col.k+'" style="background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;max-height:calc(100vh - 250px);min-width:250px;transition:border-color .15s,background .15s">'
       +'<div style="padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px"><span style="width:9px;height:9px;border-radius:50%;background:'+col.cor+'"></span><b style="color:var(--ink);font-size:13.5px;flex:1">'+col.t+'</b><span style="background:var(--elev);color:var(--ink);border-radius:999px;padding:1px 9px;font-size:12px;font-weight:700">'+col.L.length+'</span></div>'
       +(col.sub?'<div style="padding:6px 14px 0;font-size:12px;color:var(--muted)">'+col.sub+'</div>':'')
@@ -5717,7 +5723,9 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
   host.querySelectorAll('.kbFiltro').forEach(function(sel){ sel.onchange=function(){ KB.f[sel.getAttribute('data-f')]=sel.value; kbRender(); }; });
   $('kbDe').onchange=function(){ KB.f.de=this.value; kbRender(); }; $('kbAte').onchange=function(){ KB.f.ate=this.value; kbRender(); };
   $('kbSem').onchange=function(){ KB.f.sem=this.value; kbRender(); }; $('kbVisao').onchange=function(){ KB.visao=this.value; try{ localStorage.setItem('kb_visao',this.value); }catch(e){} kbRender(); };
-  $('kbExp').onclick=function(){ KB.exp=!KB.exp; kbRender(); }; if($('kbVerDiv')) $('kbVerDiv').onclick=function(){ KB.f.fatst='div'; kbRender(); }; if($('kbBoxAtr')) $('kbBoxAtr').onclick=function(){ KB.f.atr=!KB.f.atr; kbRender(); }; if($('kbBackup')) $('kbBackup').onclick=kbBackup; host.querySelectorAll('.kbBkAgora').forEach(function(x){ x.onclick=kbBackup; }); if($('kbLimpa')) $('kbLimpa').onclick=function(){ KB.f={}; KB.q=''; kbRender(); };
+  $('kbExp').onclick=function(){ KB.exp=!KB.exp; kbRender(); }; if($('kbVerDiv')) $('kbVerDiv').onclick=function(){ KB.f.fatst='div'; kbRender(); }; if($('kbBoxAtr')) $('kbBoxAtr').onclick=function(){ KB.f.atr=!KB.f.atr; kbRender(); };
+  if($('kbVerBol')) $('kbVerBol').onclick=function(){ KB.f.bol='atraso'; kbRender(); };
+  host.querySelectorAll('.kbBolOk').forEach(function(b){ b.addEventListener('click',function(ev){ ev.stopPropagation(); b.disabled=true; b.textContent='Salvando…'; kbBolEmitido(b.getAttribute('data-n')); }); b.addEventListener('mousedown',function(ev){ ev.stopPropagation(); }); }); if($('kbBackup')) $('kbBackup').onclick=kbBackup; if($('kbDifMail')) $('kbDifMail').onclick=function(){ kbDifalEmail(_calISO(new Date())); }; host.querySelectorAll('.kbBkAgora').forEach(function(x){ x.onclick=kbBackup; }); if($('kbLimpa')) $('kbLimpa').onclick=function(){ KB.f={}; KB.q=''; kbRender(); };
   // arrastar e soltar
   host.querySelectorAll('.kbCard[draggable]').forEach(function(c){
     c.ondragstart=function(e){ KB.arr=c.getAttribute('data-n'); try{ e.dataTransfer.setData('text/plain',KB.arr); e.dataTransfer.effectAllowed='move'; }catch(x){} c.style.opacity='.45'; };
@@ -5754,7 +5762,7 @@ function kbBackupWB(){ var T=KB._todos||{}, NOME={producao:'A sair: em produçã
   var FA=KB.fat||{}, fatRows=Object.keys(FA).sort().map(function(n){ var f=FA[n], x=T[n]||{}, g=kbFatProg(f), it=(KB.itens||{})[String(n).replace(/\D/g,'')]||(KB.itensSnap||{})[n]||[];
     return {'Pedido':n,'Cliente':tx(x.cli||(x.I||{}).cliente),'Coluna no Kanban':x._o?NOMEF[x._mov?x._mov.para:x._o]:'(fora do Kanban agora)','Situação do faturamento':g.ok===g.tot?'Feito':'Pendente',
       'Código do cliente':tx(f.cod),'Forma de envio':tx(f.envio),'RI (remessa industrialização)':snF(f.ri),'CNPJ/CPF':f.doc==='cnpj'?'CNPJ':f.doc==='cpf'?'CPF':'','IE':snF(f.ie),
-      'DIFAL':f.difal==='diario'?'Diário':f.difal==='mensal'||f.difal==='sim'?'Mensal':f.difal==='nao'?'Não tem':'','Simples faturamento':({nao:'Não precisa',fazer:'A fazer',feita:'Feita'}[f.simples]||''),'Boleto':({nao:'Não tem',emitir:'A emitir',emitido:'Emitido'}[f.boleto]||''),
+      'DIFAL':f.difal==='diario'?'Diário':f.difal==='mensal'||f.difal==='sim'?'Mensal':f.difal==='nao'?'Não tem':'','Simples faturamento':({nao:'Não precisa',fazer:'A fazer',feita:'Feita'}[f.simples]||''),'Boleto':({nao:'Não tem',emitir:'A emitir',emitido:'Emitido'}[f.boleto]||''),'Boleto marcado a emitir em':f.bolTs?_kbQuandoTxt(f.bolTs):'','Boleto emitido em':f.bolEm?_kbQuandoTxt(f.bolEm):'',
       'Faturar':f.fatModo&&f.fatModo!=='tudo'?_kbObsFat({fat:f.fatModo,fatTxt:f.fatTxt}):'Tudo','Nota fiscal':tx(f.nf),'Observações':tx(f.obs),
       'Itens (CPF / transferência)':f.doc==='cpf'?it.map(function(o){ return o.ref+' '+(o.desc||o.cor)+' ['+o.tam.map(function(z){ return z[0]+':'+z[1]; }).join(' ')+'] = '+o.qtd; }).join(' | '):'',
       'Conferência com o relatório 09':(function(){ var c=kbFatConf(n); if(!c) return ''; if(c.st!=='ok') return 'não conferido'; if(c.pend) return 'NF ainda não está no 09'; return c.al.length?'NÃO CONFERE: '+c.al.map(function(a){ return a.t; }).join(' | '):'Confere'+(c.ign?' ('+c.ign+' alerta(s) ignorado(s))':''); })(),
@@ -5886,15 +5894,22 @@ function kbFatProg(f){ var it=[!!(f.cod||'').trim(),!!(f.envio||'').trim(),!!f.r
 function kbFatPend(f){ var p=[]; if(!(f.cod||'').trim()) p.push('código do cliente'); if(!(f.envio||'').trim()) p.push('forma de envio'); if(!f.ri) p.push('RI'); if(!f.doc) p.push('CNPJ/CPF'); if(!f.ie) p.push('IE'); if(!f.difal) p.push('DIFAL');
   if(!f.simples) p.push('simples faturamento'); else if(f.simples==='fazer') p.push('simples faturamento a fazer'); if(!f.boleto) p.push('boleto'); else if(f.boleto==='emitir') p.push('boleto a emitir'); if(!(f.nf||'').trim()) p.push('nota fiscal'); return p; }
 function kbFatTxt(f){ if(!f) return ''; return [f.cod?'cliente '+f.cod:'',f.envio||'',f.ri==='sim'?'RI':'',f.doc?f.doc.toUpperCase():'',f.ie==='sim'?'IE':'',f.difal==='diario'?'DIFAL diário':f.difal==='mensal'||f.difal==='sim'?'DIFAL mensal':'',f.simples==='fazer'?'simples faturamento a fazer':f.simples==='feita'?'simples faturamento feita':'',f.boleto==='emitir'?'boleto a emitir':f.boleto==='emitido'?'boleto emitido':'',f.fatModo&&f.fatModo!=='tudo'?_kbObsFat({fat:f.fatModo,fatTxt:f.fatTxt}):'',f.nf?'NF '+f.nf:'',f.obs||''].filter(Boolean).join(' · '); }
-function kbFatCard(x){ var f=(KB.fat||{})[x.n], nf=f?String(f.nf||'').trim():''; // o checklist é controle de quem fatura; no cartão vai só a NF emitida (e o alerta, se não conferir com o 09)
-  if(!nf) return ''; var al=kbFatAlertas(x.n), cor=al.length?'#f5a524':'#4ecb8f';
-  return '<div style="display:flex;gap:4px;flex-wrap:wrap"><span title="'+uEsc(al.length?'Não confere com o relatório 09: '+al.map(function(a){ return a.t; }).join(' | '):'Nota fiscal emitida')+'" style="font-size:11.5px;font-weight:700;color:'+cor+';background:rgba(255,255,255,.04);border:1px solid '+(al.length?'rgba(245,165,36,.6)':'var(--line)')+';border-radius:6px;padding:1px 6px">'+(al.length?'⚠ ':'')+'NF '+uEsc(nf)+'</span></div>'; }
+function kbBolHoras(f){ return f&&f.boleto==='emitir'?Math.floor((Date.now()-(f.bolTs||f.ts||Date.now()))/36e5):0; }
+function kbBolAtrasado(f){ return !!(f&&f.boleto==='emitir'&&kbBolHoras(f)>=24); }
+function kbBolCard(x){ var f=(KB.fat||{})[x.n]; if(!f||f.boleto!=='emitir') return ''; var h=kbBolHoras(f), atr=h>=24;
+  return '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;border:1px solid '+(atr?'rgba(229,72,77,.6)':'rgba(245,165,36,.5)')+';background:'+(atr?'rgba(229,72,77,.10)':'rgba(245,165,36,.08)')+';border-radius:8px;padding:4px 8px;font-size:12px">'
+    +'<span style="color:'+(atr?'#e5484d':'#f5a524')+';font-weight:700">'+(atr?'⚠ Boleto não emitido há '+(h>=48?Math.floor(h/24)+' dias':h+'h'):'🧾 Boleto a emitir')+'</span><span style="color:var(--ink)">— já foi emitido?</span>'
+    +(kbPodeMover()?'<button class="ubtn kbBolOk" data-n="'+uEsc(x.n)+'" style="padding:2px 9px;font-size:11.5px">Sim, emitido</button>':'')+'</div>'; }
+function kbBolEmitido(n){ var f=(KB.fat||{})[n]; if(!f) return; kbFatSalvar(n,Object.assign({},f,{boleto:'emitido',bolEm:Date.now(),ts:Date.now(),por:(current&&current.name)||currentUserKey||''}),0); }
+function kbFatCard(x){ var f=(KB.fat||{})[x.n], nf=f?String(f.nf||'').trim():''; // o checklist é controle de quem fatura; no cartão vai só a NF emitida (o alerta do 09) e a pergunta do boleto
+  var bol=kbBolCard(x); if(!nf) return bol; var al=kbFatAlertas(x.n), cor=al.length?'#f5a524':'#4ecb8f';
+  return bol+'<div style="display:flex;gap:4px;flex-wrap:wrap"><span title="'+uEsc(al.length?'Não confere com o relatório 09: '+al.map(function(a){ return a.t; }).join(' | '):'Nota fiscal emitida')+'" style="font-size:11.5px;font-weight:700;color:'+cor+';background:rgba(255,255,255,.04);border:1px solid '+(al.length?'rgba(245,165,36,.6)':'var(--line)')+';border-radius:6px;padding:1px 6px">'+(al.length?'⚠ ':'')+'NF '+uEsc(nf)+'</span></div>'; }
 function kbFatDetalhe(x){ var f=(KB.fat||{})[x.n], fase=x._mov?x._mov.para:x._o; if(!f&&fase!=='emb'&&fase!=='env') return '';
   var l=function(r,v){ return v?'<div style="display:flex;gap:10px;padding:4px 0;font-size:13px"><span style="color:var(--muted);min-width:130px">'+r+'</span><span style="color:var(--ink)">'+uEsc(v)+'</span></div>':''; }, sn=function(v){ return v==='sim'?'Sim':v==='nao'?'Não':''; };
   var g=f?kbFatProg(f):null;
   return '<div style="margin-top:12px;padding:10px 12px;border:1px solid rgba(90,160,208,.45);background:rgba(90,160,208,.07);border-radius:10px">'
     +'<div style="display:flex;align-items:center;gap:8px"><b style="flex:1;color:#5aa0d0;font-size:13px">🧾 Faturamento</b>'+(kbPodeMover()?'<button class="ubtn" id="kbFatEd" style="padding:5px 10px;font-size:12.5px">'+(f?'Editar':'Preencher')+'</button>':'')+'</div>'
-    +(f?l('Código do cliente',f.cod)+l('Forma de envio',f.envio)+l('RI',sn(f.ri))+l('CNPJ/CPF',f.doc?f.doc.toUpperCase():'')+l('IE',sn(f.ie))+l('DIFAL',f.difal==='diario'?'Diário':f.difal==='mensal'||f.difal==='sim'?'Mensal':f.difal==='nao'?'Não tem':'')+l('Simples faturamento',{nao:'Não precisa',fazer:'A fazer',feita:'✓ Feita'}[f.simples]||'')+l('Boleto',{nao:'Não tem',emitir:'A emitir',emitido:'✓ Emitido'}[f.boleto]||'')
+    +(f?l('Código do cliente',f.cod)+l('Forma de envio',f.envio)+l('RI',sn(f.ri))+l('CNPJ/CPF',f.doc?f.doc.toUpperCase():'')+l('IE',sn(f.ie))+l('DIFAL',f.difal==='diario'?'Diário':f.difal==='mensal'||f.difal==='sim'?'Mensal':f.difal==='nao'?'Não tem':'')+l('Simples faturamento',{nao:'Não precisa',fazer:'A fazer',feita:'✓ Feita'}[f.simples]||'')+l('Boleto',f.boleto==='emitir'?'A emitir (marcado em '+_kbQuandoTxt(f.bolTs||f.ts)+(kbBolAtrasado(f)?' — ⚠ há mais de 24h':'')+')':f.boleto==='emitido'?'✓ Emitido'+(f.bolEm?' em '+_kbQuandoTxt(f.bolEm):''):({nao:'Não tem'}[f.boleto]||''))
         +l('Faturar',f.fatModo&&f.fatModo!=='tudo'?_kbObsFat({fat:f.fatModo,fatTxt:f.fatTxt}):'')+l('Nota fiscal',f.nf)+(String(f.nf||'').trim()?kbFatConfHTML(x):'')+l('Observação',f.obs)+(f.doc==='cpf'?'<div style="margin-top:6px">'+kbItensHTML(x.n,x,true)+'</div>':'')+l('Preenchido',(f.por||'')+(f.ts?' em '+_kbQuandoTxt(f.ts):''))
       :'<div style="font-size:12.5px;color:var(--muted);margin-top:4px">Ainda não preenchido.</div>')+'</div>'; }
 /* Itens do pedido (referência, cor, tamanhos e quantidades) vêm do 01 – Ops com pedidos (P1..P10 = quantidades, T1..T10 = tamanhos).
@@ -6060,12 +6075,16 @@ function kbFatEditar(n){ var x=KB._todos&&KB._todos[n]; if(!x) return;
   if($('fApagar')) $('fApagar').onclick=function(){ if(!confirm('Apagar o checklist de faturamento do pedido #'+n+'?')) return; fechar(); kbFatSalvar(n,null,0); };
   $('fSalvar').onclick=function(){ var env=val('fEnv'); if(env==='__outro') env=($('fEnvO').value||'').trim().toUpperCase();
     var v={cod:($('fCod').value||'').trim(),envio:env,ri:val('fRi'),doc:val('fDoc'),ie:val('fIe'),difal:val('fDif'),simples:val('fSimp'),boleto:val('fBol'),fatModo:val('fFat')||'tudo',fatTxt:($('fFatT').value||'').trim(),nf:($('fNf').value||'').trim(),obs:($('fObs').value||'').trim(),ts:Date.now(),por:(current&&current.name)||currentUserKey||''};
+    if(v.nf) v.nfTs=(f0&&_kbNfNum(f0.nf)===_kbNfNum(v.nf)&&f0.nfTs)||Date.now();
+    if(v.boleto==='emitir') v.bolTs=(f0&&f0.boleto==='emitir'&&f0.bolTs)||Date.now(); if(v.boleto==='emitido') v.bolEm=(f0&&f0.boleto==='emitido'&&f0.bolEm)||Date.now();
     if(v.fatModo==='tudo') v.fatTxt=''; else if(!v.fatTxt){ $('fErr').textContent='Diga quais referências '+(v.fatModo==='nao'?'não faturar':'faturar')+'.'; return; }
     fechar(); kbFatSalvar(n,v,0); };
   setTimeout(function(){ try{ $('fCod').focus(); }catch(e){} },30); }
 async function kbFatSalvar(n,val,tent){ var key=_kbKey(); if(!key||!ghToken()) return;
   if(!tent){ var _x=(KB._todos||{})[n]||{}, _p=(KB.fat||{})[n], _al=kbFatAlertas(n), _nf0=_p?_kbNfNum(_p.nf):'', _nf1=val?_kbNfNum(val.nf):'';
     kbHistAdd({n:n,cli:_x.cli,tipo:'fat',acao:val?(_p?'editado':'preenchido'):'apagado',det:val?kbFatTxt(val):''});
+    if(val&&val.boleto==='emitido'&&!(_p&&_p.boleto==='emitido')) kbHistAdd({n:n,cli:_x.cli,tipo:'boleto',acao:'emitido',det:'Boleto emitido'+(val.nf?' · NF '+val.nf:'')});
+    if(val&&val.boleto==='emitir'&&!(_p&&_p.boleto==='emitir')) kbHistAdd({n:n,cli:_x.cli,tipo:'boleto',acao:'a emitir',det:'Boleto marcado para emitir'});
     if(_nf1&&_nf1!==_nf0) kbHistAdd({n:n,cli:_x.cli,tipo:'nf',acao:_nf0?'trocada':'lançada',det:'NF '+_nf1+(_nf0?' (antes NF '+_nf0+')':'')});
     if(_al.length) kbHistAdd({n:n,cli:_x.cli,tipo:'alerta',acao:'corrigido',det:'Faturamento editado com alerta aberto: '+_al.map(function(a){ return a.t; }).join(' | ')}); }
   if(!tent){ KB.fat=KB.fat||{}; if(val) KB.fat[n]=val; else delete KB.fat[n]; KB.salvo={ok:true,t:'Salvando o faturamento…'}; kbRender(); }
@@ -6133,6 +6152,7 @@ function kbHistAcao(e){ if(e.tipo==='mov') return 'Movimentou: '+(KB_FASE[e.de]|
   if(e.tipo==='nf') return 'NF '+(e.acao||'');
   if(e.tipo==='alerta') return 'Alerta '+(e.acao||'');
   if(e.tipo==='backup') return 'Backup '+(e.acao||'');
+  if(e.tipo==='boleto') return 'Boleto '+(e.acao||'');
   return e.tipo||''; }
 function kbHistLista(){ var h=(KB.hist||[]).slice(); if(!h.length){ var g0={mov:KB.mov,obs:KB.obs,fat:KB.fat,bk:KB.bk}; _kbHistFlush(g0); h=g0.hist||[]; } // antes da primeira gravação: mostra o que já existia var vis={}; h.forEach(function(e){ vis[e.id]=1; }); (KB.histQ||[]).forEach(function(e){ if(!vis[e.id]) h.push(e); });
   return h.sort(function(a,b){ return (b.ts||0)-(a.ts||0); }); }
@@ -6145,7 +6165,7 @@ function kbHistRender(host){ var H=kbHistLista(), F=KB.hf||(KB.hf={}), T=KB._tod
     if(de&&(e.ts||0)<de) return false; if(ate&&(e.ts||0)>ate) return false; return true; });
   var sel=function(id,val,ops){ return '<select id="'+id+'" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+ops.map(function(o){ return '<option value="'+uEsc(o[0])+'"'+((val||'')===o[0]?' selected':'')+'>'+uEsc(o[1])+'</option>'; }).join('')+'</select>'; };
   var inp='background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:7px 9px;font-size:13px';
-  var cor={mov:'#5aa0d0',emb:'#d99a52',fat:'#9b87f5',nf:'#4ecb8f',alerta:'#f5a524',backup:'#c9b38a'};
+  var cor={mov:'#5aa0d0',emb:'#d99a52',fat:'#9b87f5',nf:'#4ecb8f',alerta:'#f5a524',backup:'#c9b38a',boleto:'#e08a6b'};
   var th='text-align:left;padding:8px 10px;font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface2)', td='padding:8px 10px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink);vertical-align:top';
   var MAX=1000;
   host.innerHTML='<div style="padding:22px 24px;box-sizing:border-box;min-height:100%">'
@@ -6154,7 +6174,7 @@ function kbHistRender(host){ var H=kbHistLista(), F=KB.hf||(KB.hf={}), T=KB._tod
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">'
       +'<input id="hfQ" type="search" autocomplete="off" placeholder="Pedido ou cliente…" value="'+uEsc(F.q||'')+'" style="'+inp+';width:220px">'
       +sel('hfPor',F.por,[['','Quem: todos']].concat(quem.map(function(x){ return [x,x]; })))
-      +sel('hfEt',F.et,[['','Etapa / ação: todas'],['mov','Todas as movimentações'],['mov:producao','→ A sair: em produção'],['mov:pronto','→ Pronto para envio'],['mov:emb','→ Em embalagem'],['mov:env','→ Enviado'],['emb','Embalagem'],['fat','Faturamento'],['nf','NF lançada'],['alerta','Alertas (ignorados / corrigidos)'],['backup','Backup']])
+      +sel('hfEt',F.et,[['','Etapa / ação: todas'],['mov','Todas as movimentações'],['mov:producao','→ A sair: em produção'],['mov:pronto','→ Pronto para envio'],['mov:emb','→ Em embalagem'],['mov:env','→ Enviado'],['emb','Embalagem'],['fat','Faturamento'],['nf','NF lançada'],['alerta','Alertas (ignorados / corrigidos)'],['boleto','Boletos'],['backup','Backup']])
       +'<span style="font-size:12.5px;color:var(--muted)">De</span><input type="date" id="hfDe" value="'+uEsc(F.de||'')+'" style="'+inp+'">'
       +'<span style="font-size:12.5px;color:var(--muted)">Até</span><input type="date" id="hfAte" value="'+uEsc(F.ate||'')+'" style="'+inp+'">'
       +((F.q||F.por||F.et||F.de||F.ate)?'<button class="ubtn" id="hfLimpa" style="padding:8px 12px;font-size:13px">Limpar filtros</button>':'')
@@ -6170,6 +6190,46 @@ function kbHistRender(host){ var H=kbHistLista(), F=KB.hf||(KB.hf={}), T=KB._tod
   $('hfPor').onchange=function(){ F.por=this.value; go(); }; $('hfEt').onchange=function(){ F.et=this.value; go(); };
   $('hfDe').onchange=function(){ F.de=this.value; go(); }; $('hfAte').onchange=function(){ F.ate=this.value; go(); };
   if($('hfLimpa')) $('hfLimpa').onclick=function(){ KB.hf={}; go(); }; }
+/* ===== E-mail do DIFAL diário: todo dia a Valdirene manda ao financeiro as NFs com DIFAL diário emitidas no dia
+   (mesmo modelo do e-mail que ela fazia com print da planilha). Copia formatado para colar no Gmail. */
+function _kbDifalDoDia(iso){ var L=[]; Object.keys(KB.fat||{}).forEach(function(n){ var f=KB.fat[n], nf=_kbNfNum(f.nf); if(f.difal!=='diario'||!nf) return;
+    var t=f.nfTs||f.ts||0; if(!t||_calISO(new Date(t))!==iso) return;
+    var cod=String(f.cod||'').replace(/\D/g,'').replace(/^0+/,''), cad=CLI.st==='ok'?CLI.map[cod]:null, r09=(KB_F09.map&&KB_F09.map[nf]||[])[0];
+    L.push({n:n,nf:nf,uf:(cad&&cad.uf)||(r09&&r09.uf)||'',cli:((KB._todos||{})[n]||{}).cli||(cad&&cad.nome)||'',t:t}); });
+  return L.sort(function(a,b){ return a.t-b.t; }); }
+function _kbDifalHtml(L,iso){ var e=function(x){ return uEsc(String(x==null?'':x)); }, h=new Date().getHours(), oi=h<12?'bom dia':h<18?'boa tarde':'boa noite';
+  var bd='border:1px solid #9aa8b8;padding:4px 10px;font-family:Arial,sans-serif;font-size:13px;color:#1f2937', hd=bd+';background:#b8bec8;font-weight:bold;text-align:center';
+  var hoje=iso===_calISO(new Date());
+  return '<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;line-height:1.5">'
+    +'<p style="margin:0 0 12px">Ana, '+oi+'!</p>'
+    +'<p style="margin:0">Segue o Difal diário '+(hoje?'do dia':'do dia '+_calBRs(iso))+'.</p><p style="margin:0 0 10px">Obrigada.</p>'
+    +'<table cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:6px 0 12px">'
+    +'<tr><td style="'+hd+'">DIFAL</td><td style="'+hd+'">NOTA FISCAL</td><td style="'+hd+';min-width:260px">OBSERVAÇÕES</td></tr>'
+    +L.map(function(o){ return '<tr><td style="'+bd+';text-align:center">SIM</td><td style="'+bd+';white-space:nowrap">DIFAL NF '+e(o.nf)+'</td><td style="'+bd+';text-align:center;color:#e11d2e;font-weight:bold">DIFAL DIÁRIO'+(o.uf?' - '+e(o.uf):'')+'</td></tr>'; }).join('')
+    +'</table></div>'; }
+function kbDifalEmail(iso){ var old=$('difMailBox'); if(old) old.remove(); if(_cliSig()&&CLI.st!=='ok') cliLer().then(function(){ if($('difMailBox')) kbDifalEmail(iso); });
+  var L=_kbDifalDoDia(iso), assunto='DIFAL DIÁRIO — '+_calBRs(iso);
+  var ov=document.createElement('div'); ov.id='difMailBox'; ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:30px 12px;overflow:auto';
+  ov.innerHTML='<div style="background:var(--surface2);border:1px solid var(--line);border-radius:14px;max-width:760px;width:100%;padding:18px 20px;box-sizing:border-box">'
+    +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap"><div style="font-weight:600;color:var(--ink);font-size:16px;flex:1">✉ E-mail do DIFAL diário · '+L.length+' NF'+(L.length===1?'':'s')+'</div>'
+      +'<span style="font-size:12.5px;color:var(--muted)">Dia</span><input type="date" id="dmDia" value="'+uEsc(iso)+'" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:6px 8px;font-size:13px"><button class="ubtn" id="dmFechar">Fechar</button></div>'
+    +(L.length?'':'<div style="border:1px solid rgba(245,165,36,.5);background:rgba(245,165,36,.08);border-radius:9px;padding:9px 12px;font-size:13px;color:var(--ink);margin-bottom:10px">Nenhuma NF com <b>DIFAL diário</b> lançada no faturamento em '+_calBRs(iso)+'. O e-mail usa as NFs lançadas no checklist do faturamento com DIFAL marcado como <b>Diário</b>.</div>')
+    +'<div style="font-size:12.5px;color:var(--muted);margin-bottom:4px">Assunto</div>'
+    +'<div style="display:flex;gap:8px;margin-bottom:12px"><input id="dmAssunto" value="'+uEsc(assunto)+'" style="flex:1;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px"><button class="ubtn" id="dmCopAss">Copiar assunto</button></div>'
+    +'<div style="font-size:12.5px;color:var(--muted);margin-bottom:4px">Mensagem (dá para editar aqui antes de copiar)</div>'
+    +'<div id="dmCorpo" contenteditable="true" style="background:#fff;border-radius:10px;padding:16px 18px;max-height:56vh;overflow:auto;outline:none">'+_kbDifalHtml(L,iso)+'</div>'
+    +(L.length?'<div style="font-size:12px;color:var(--muted);margin-top:6px">Pedidos: '+L.map(function(o){ return '#'+uEsc(o.n)+(o.cli?' '+uEsc(o.cli):''); }).join(' · ')+'</div>':'')
+    +'<div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap"><button class="ubtn" id="dmCopiar" style="background:var(--f-green);color:#0c241a;border:none;font-weight:600">📋 Copiar e-mail</button><span id="dmSt" style="font-size:13px;color:var(--muted)">Depois, no Gmail: Escrever → para a Ana do financeiro → cole o assunto e a mensagem (Ctrl+V).</span></div></div>';
+  document.body.appendChild(ov);
+  var fechar=function(){ ov.remove(); document.removeEventListener('keydown',esc); }, esc=function(ev){ if(ev.key==='Escape') fechar(); };
+  document.addEventListener('keydown',esc); ov.onclick=function(ev){ if(ev.target===ov) fechar(); }; $('dmFechar').onclick=fechar;
+  $('dmDia').onchange=function(){ if(this.value){ fechar(); kbDifalEmail(this.value); } };
+  var st=function(t,ok){ var x=$('dmSt'); x.textContent=t; x.style.color=ok?'var(--f-green)':'var(--danger)'; };
+  $('dmCopAss').onclick=async function(){ try{ await navigator.clipboard.writeText($('dmAssunto').value); st('✓ Assunto copiado.',1); }catch(e){ $('dmAssunto').select(); document.execCommand('copy'); st('✓ Assunto copiado.',1); } };
+  $('dmCopiar').onclick=async function(){ var c=$('dmCorpo'), html=c.innerHTML, txt=c.innerText;
+    try{ await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([txt],{type:'text/plain'})})]); st('✓ E-mail copiado. Agora é só colar no Gmail (Ctrl+V).',1); }
+    catch(e){ try{ var r=document.createRange(); r.selectNodeContents(c); var sel=getSelection(); sel.removeAllRanges(); sel.addRange(r); var ok=document.execCommand('copy'); sel.removeAllRanges(); st(ok?'✓ E-mail copiado. Agora é só colar no Gmail (Ctrl+V).':'Não consegui copiar: selecione a mensagem e use Ctrl+C.',ok); }
+      catch(x){ st('Não consegui copiar: selecione a mensagem e use Ctrl+C.',0); } } }; }
 function kbDetalhe(n){ var x=KB._todos&&KB._todos[n]; if(!x) return; if(!KB.itensLido&&(KB.fat||{})[n]&&KB.fat[n].doc==='cpf') kbItensLer().then(function(){ if($('kbDet')) kbDetalhe(n); }); var ops=(KB._ops&&KB._ops[n])||x.ops||[], z=$('kbDet');
   if(!z){ z=document.createElement('div'); z.id='kbDet'; z.style.cssText='position:fixed;inset:0;z-index:96;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:40px 12px;overflow:auto'; document.body.appendChild(z); }
   var fase={producao:'A sair: em produção',pronto:'Pronto para envio',emb:'Em processo de embalagem',env:'Enviado'}[x._mov?x._mov.para:x._o];
