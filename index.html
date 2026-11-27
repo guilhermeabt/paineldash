@@ -210,6 +210,61 @@
 .ubtn.danger{color:var(--danger)}
 #modUsers input,#modUsers select{background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:7px;padding:7px 9px;font-family:inherit}
 #usersTbody td{padding:6px;border-bottom:1px solid var(--line)}
+
+/* ===== BARRA LATERAL (estilo Shopify): menu fixo à esquerda, trabalho à direita ===== */
+#sideNav{display:none}
+body.hasSide #sideNav{display:flex;position:fixed;left:0;top:0;bottom:0;width:232px;flex-direction:column;background:#141210;border-right:1px solid var(--line);z-index:60;padding:14px 10px 10px;box-sizing:border-box}
+body.hasSide{padding-left:232px}
+#sideNav .sideBrand{display:flex;align-items:center;justify-content:space-between;padding:4px 8px 14px}
+#sideNav .sideBrand .logo-dash{font-size:26px}
+#sideNav .sideList{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:2px;min-height:0}
+#sideNav .sideItem{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:none;color:#d8d3cb;font:inherit;font-size:13.5px;font-weight:550;padding:7px 10px;border-radius:8px;cursor:pointer}
+#sideNav .sideItem:hover{background:#221f1c;color:var(--ink)}
+#sideNav .sideItem.on{background:#2b2825;color:#fff}
+#sideNav .sideItem svg{width:17px;height:17px;flex:0 0 auto;opacity:.85}
+#sideNav .sideItem .sideAl{margin-left:auto}
+#sideNav .sideSub{padding:2px 0 6px 18px}
+#sideNav .sideSub > *{position:static!important;transform:none!important;width:auto!important;box-shadow:none!important;border:none!important;background:none!important;padding:0!important;margin:0!important;display:flex!important;flex-direction:column!important;gap:1px!important;overflow:visible!important;height:auto!important}
+#sideNav .sideSub button{display:flex!important;align-items:center;gap:8px;width:100%!important;padding:6px 10px!important;margin:0!important;border:none!important;border-left:none!important;border-radius:7px!important;background:none!important;color:#a8a299!important;font-size:12.8px!important;font-weight:500!important;text-align:left}
+#sideNav .sideSub button:hover{background:#221f1c!important;color:var(--ink)!important}
+#sideNav .sideSub button.active,#sideNav .sideSub button[style*="var(--elev)"]{background:#2b2825!important;color:#fff!important;font-weight:600!important}
+#sideNav .sideSub .navlabel{margin:8px 10px 4px!important;font-size:10px!important}
+#sideNav .sideSub svg.ico{width:14px;height:14px}
+#sideNav .sideFoot{border-top:1px solid var(--line);padding-top:8px;margin-top:8px;display:flex;flex-direction:column;gap:2px}
+#sideNav .sideUser{display:flex;align-items:center;gap:9px;padding:7px 8px;font-size:13px;color:var(--ink)}
+#sideNav .sideAv{width:24px;height:24px;border-radius:6px;background:#5b4bd6;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+#sideNav .sideNm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+#sideNav .sideSair{background:none;border:1px solid var(--line);color:var(--muted);border-radius:7px;padding:4px 8px;font-size:11px;cursor:pointer}
+#sideNav .sideSair:hover{color:var(--ink);border-color:var(--muted)}
+#sideTop{display:none}
+#sideBack{display:none}
+/* cada módulo ocupa a área da direita, sem o cabeçalho antigo (voltar/Sair ficam na barra) */
+body.hasSide .backMod,body.hasSide #modLogout{display:none!important}
+body.hasSide #modProd>header,body.hasSide #modGest>header,body.hasSide #modOrc>header{display:none!important}
+body.hasSide #app{grid-template-columns:1fr!important;grid-template-rows:1fr!important}
+body.hasSide #app>header{display:none!important}
+body.hasSide #app>main{grid-column:1!important;grid-row:1!important}
+body.hasSide #modProd>div,body.hasSide #modGest>div{min-height:100vh}
+/* Início */
+body.hasSide #modules{align-items:stretch!important;justify-content:flex-start!important;padding:48px 40px!important;gap:22px!important}
+body.hasSide #modules .modLogo{display:none}
+body.hasSide #modules .modOla{display:none}
+#homeHello{display:none}
+body.hasSide #homeHello{display:block;max-width:900px;width:100%;margin:0 auto}
+body.hasSide #modGrid{justify-content:flex-start!important;max-width:900px!important;width:100%;margin:0 auto}
+body.hasSide .appInstall{max-width:900px;width:100%;margin:0 auto;text-align:left!important}
+@media(max-width:820px){
+  body.hasSide{padding-left:0;padding-top:52px}
+  body.hasSide #sideTop{display:flex;position:fixed;top:0;left:0;right:0;height:52px;align-items:center;gap:12px;padding:0 12px;background:#141210;border-bottom:1px solid var(--line);z-index:59}
+  body.hasSide #sideTop .logo-dash{font-size:22px}
+  body.hasSide #sideTop button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:8px;width:38px;height:34px;font-size:18px;cursor:pointer}
+  body.hasSide #sideNav{transform:translateX(-100%);transition:transform .2s ease;width:min(82vw,280px);box-shadow:6px 0 24px rgba(0,0,0,.35)}
+  body.sideOpen #sideNav{transform:none}
+  body.sideOpen #sideBack{display:block;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:58}
+  body.hasSide #app{height:calc(100vh - 52px)!important}
+  body.hasSide #modules{padding:24px 16px!important}
+  body.hasSide #modProd>div>main,body.hasSide #gestContent{padding:16px!important}
+}
 </style>
 </head>
 <body>
@@ -243,12 +298,17 @@
     </form>
   </div>
 </div>
+<aside id="sideNav" aria-label="Menu"></aside>
+<div id="sideTop"><button type="button" id="sideBurger" aria-label="Abrir menu">☰</button><span class="logo-dash">Dash<sup>&reg;</sup></span></div>
+<div id="sideBack"></div>
+<div id="sideHold" style="display:none"></div>
 <div id="modules" style="display:none;min-height:100vh;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;gap:26px">
-  <div style="text-align:center">
+  <div id="homeHello"></div>
+  <div class="modLogo" style="text-align:center">
     <div class="logo-dash" style="font-size:36px">Dash<sup>&reg;</sup></div>
     <div class="subtag" style="color:var(--muted);letter-spacing:2px;font-size:12px;text-transform:uppercase">Painel Operacional</div>
   </div>
-  <div style="color:var(--muted)">Olá, <b id="modWho" style="color:var(--ink)"></b> — escolha um módulo</div>
+  <div class="modOla" style="color:var(--muted)">Olá, <b id="modWho" style="color:var(--ink)"></b> — escolha um módulo</div>
   <div id="modGrid" style="display:flex;gap:20px;flex-wrap:wrap;justify-content:center;max-width:860px"></div>
   <div class="appInstall" style="margin-top:18px;text-align:center"></div>
   <button id="modLogout" style="background:none;border:1px solid var(--line);color:var(--muted);padding:8px 16px;border-radius:8px;cursor:pointer">Sair</button>
@@ -1159,7 +1219,7 @@ function showModules(){
   if(APPMODE==='base') BASE_STASH=Object.assign({},FILES); else if(APPMODE==='rel') REL_STASH=Object.assign({},FILES);
   APPMODE='';
   hideAllScreens();
-  var mods=userModules(current), todos=mods;
+  SIDE.ativo='inicio'; var mods=userModules(current), todos=mods;
   if(APP_MODE){ mods=mods.filter(function(k){ return APP_MODULES.indexOf(k)>=0; });
     if(mods.length===1&&!showModules._ja){ showModules._ja=1; openModule(mods[0]); return; } } // no app, vai direto para o que existe nele
   var w=$('modWho'); if(w)w.textContent=current?current.name:'';
@@ -1174,10 +1234,12 @@ function showModules(){
       +'</button>';
   }).join('');
   box.querySelectorAll('.modcard').forEach(function(b){ b.onclick=function(){ openModule(b.dataset.mod); }; });
-  $('modules').style.display='flex';
+  $('modules').style.display='flex'; homeRender(); sideRender();
 }
 function openModule(k){
   if(userModules(current).indexOf(k)<0){ showModules(); return; }
+  if(APPMODE==='base') BASE_STASH=Object.assign({},FILES); else if(APPMODE==='rel') REL_STASH=Object.assign({},FILES); // trocou de módulo direto pela barra
+  APPMODE=''; hideAllScreens(); SIDE.ativo=k; sideRender();
   $('modules').style.display='none';
   if(k==='relatorios'){ enterRelatorios(current); }
   else if(k==='producao'){ $('modProd').style.display='flex'; enterProd(); }
@@ -4984,6 +5046,48 @@ function appInstallUI(){ var toque=false; try{ toque=matchMedia('(pointer: coars
 window.addEventListener('beforeinstallprompt',function(e){ e.preventDefault(); APP_PROMPT=e; appInstallUI(); });
 window.addEventListener('appinstalled',function(){ APP_PROMPT=null; appInstallUI(); });
 if('serviceWorker' in navigator&&/^https:|^http:\/\/localhost/.test(location.href)&&!SNAP_MODE) window.addEventListener('load',function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); appInstallUI(); });
+
+/* ===== barra lateral ===== */
+var SIDE={ativo:'inicio'}, SIDE_SUB={relatorios:'nav',producao:'prodNav',gestao:'gestNav'};
+var SIDE_NOME={relatorios:'Relatórios',producao:'Programação',gestao:'Gestão',faccao:'Facção',estoque:'Estoque',base:'Base de Dados',orcamento:'Orçamento 2027',usuarios:'Configurações'};
+var SIDE_ICO=(function(){ var w=function(d){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'+d+'</svg>'; };
+  return { inicio:w('<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>'),
+    relatorios:w('<path d="M3 3v18h18"/><path d="M8 17v-5M13 17V8M18 17v-9"/>'),
+    producao:w('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>'),
+    gestao:w('<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h4"/>'),
+    faccao:w('<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/>'),
+    estoque:w('<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>'),
+    base:w('<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/>'),
+    orcamento:w('<path d="M22 7 13.5 15.5 8.5 10.5 2 17"/><path d="M16 7h6v6"/>'),
+    usuarios:w('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/>') }; })();
+function sideOn(){ return !!(current&&!SNAP_MODE); }
+function sideClose(){ document.body.classList.remove('sideOpen'); }
+function sideRender(){
+  var sb=$('sideNav'), hold=$('sideHold'); if(!sb||!hold) return;
+  if(!sideOn()){ document.body.classList.remove('hasSide','sideOpen'); return; }
+  document.body.classList.add('hasSide');
+  Object.keys(SIDE_SUB).forEach(function(k){ var e=$(SIDE_SUB[k]); if(e&&e.parentNode!==hold) hold.appendChild(e); });
+  var mods=userModules(current); if(APP_MODE) mods=mods.filter(function(k){ return APP_MODULES.indexOf(k)>=0; });
+  var temCfg=mods.indexOf('usuarios')>=0, lista=mods.filter(function(k){ return k!=='usuarios'; });
+  var alerta=function(k){ try{ if(k==='gestao'&&_concStatus('gest').atraso) return _concIcone(); }catch(e){} return ''; };
+  var item=function(k){ return '<button type="button" class="sideItem'+(SIDE.ativo===k?' on':'')+'" data-k="'+k+'">'+(SIDE_ICO[k]||'')+'<span>'+(k==='inicio'?'Início':SIDE_NOME[k]||(MODMETA[k]&&MODMETA[k].name)||k)+'</span><span class="sideAl">'+alerta(k)+'</span></button>'
+    +(SIDE.ativo===k&&SIDE_SUB[k]?'<div class="sideSub" data-sub="'+k+'"></div>':''); };
+  var nm=(current&&current.name)||currentUserKey||'', ini=nm.split(/\s+/).map(function(x){ return x.charAt(0); }).join('').slice(0,2).toUpperCase()||'?';
+  sb.innerHTML='<div class="sideBrand"><span class="logo-dash">Dash<sup>&reg;</sup></span></div>'
+    +'<div class="sideList">'+item('inicio')+lista.map(item).join('')+'</div>'
+    +'<div class="sideFoot">'+(temCfg?item('usuarios'):'')+'<div class="sideUser"><span class="sideAv">'+uEsc(ini)+'</span><span class="sideNm">'+uEsc(nm)+'</span><button type="button" class="sideSair" title="Sair do painel">Sair</button></div></div>';
+  var slot=sb.querySelector('.sideSub'); if(slot){ var sub=$(SIDE_SUB[SIDE.ativo]); if(sub) slot.appendChild(sub); }
+  sb.querySelectorAll('.sideItem').forEach(function(b){ b.onclick=function(){ var k=b.getAttribute('data-k'); sideClose(); if(k==='inicio') showModules(); else openModule(k); }; });
+  if(slot) slot.addEventListener('click',function(e){ if(e.target.closest('button')) setTimeout(sideClose,50); });
+  sb.querySelector('.sideSair').onclick=function(){ sideClose(); var lb=$('logoutBtn'); if(lb) lb.click(); };
+}
+function homeRender(){ var el=$('homeHello'); if(!el||!current) return; var h=new Date().getHours(), oi=h<12?'Bom dia':h<18?'Boa tarde':'Boa noite';
+  var hoje=new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
+  el.innerHTML='<div style="font-size:13px;color:var(--muted);text-transform:capitalize">'+uEsc(hoje)+'</div>'
+    +'<h1 style="margin:4px 0 6px;font-size:28px;font-weight:650;color:var(--ink)">'+oi+', '+uEsc(((current.name||currentUserKey||'').split(/\s+/)[0]))+'!</h1>'
+    +'<div style="color:var(--muted);font-size:14px">Escolha por onde começar — os mesmos módulos estão sempre no menu à esquerda.</div>'; }
+(function(){ var bg=$('sideBurger'); if(bg) bg.onclick=function(){ document.body.classList.toggle('sideOpen'); };
+  var bk=$('sideBack'); if(bk) bk.onclick=sideClose; }());
 function startApp(user){ current=user; if(typeof SNAP_MODE!=='undefined'&&SNAP_MODE){ enterRelatorios(user); return; } showModules(); try{ ckSyncStart(); }catch(e){} }
 (function(){
   var nb=document.getElementById('newUserBtn'); if(nb)nb.onclick=function(){ openUserForm(null); };
@@ -5082,7 +5186,7 @@ document.getElementById('logoutBtn').addEventListener('click',function(){
   try{ localStorage.removeItem('painelop_user'); localStorage.removeItem('painelop_ku'); }catch(e){}
   $('app').style.display='none';
   ['modules','modProd','modGest','modUsers','modFaccao','modEstoque'].forEach(function(id){var e=$(id);if(e)e.style.display='none';});
-  $('login').style.display='flex';
+  $('login').style.display='flex'; sideRender();
   Object.keys(iframes).forEach(k=>{ iframes[k].remove(); delete iframes[k]; delete ready[k]; delete pending[k]; delete urlCache[k]; });
   $('u').value='';pInput.value='';pInput.type='password';eyeBtn.innerHTML=EYE_OFF;
   $('u').focus();
