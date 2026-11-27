@@ -5160,7 +5160,7 @@ function sideRender(){
   Object.keys(SIDE_SUB).forEach(function(k){ var e=$(SIDE_SUB[k]); if(e&&e.parentNode!==hold) hold.appendChild(e); });
   var mods=navModules(current); if(APP_MODE) mods=mods.filter(function(k){ return APP_MODULES.indexOf(k)>=0; });
   var temCfg=mods.indexOf('usuarios')>=0, lista=mods.filter(function(k){ return k!=='usuarios'; });
-  var alerta=function(k){ try{ if(k==='gestao'&&_concStatus('gest').atraso) return _concIcone(); }catch(e){} return ''; };
+  var alerta=function(k){ try{ if(k==='gestao'&&_concStatus('gest').atraso) return _concIcone(); if(k==='expedicao'&&kbBkAlerta()) return '<span title="Backup do Kanban em atraso" style="margin-left:auto;color:#e5484d;font-size:15px;font-weight:700">⚠</span>'; }catch(e){} return ''; };
   var item=function(k){ return '<button type="button" class="sideItem'+(SIDE.ativo===k?' on':'')+'" data-k="'+k+'">'+(SIDE_ICO[k]||'')+'<span>'+(k==='inicio'?'Início':SIDE_NOME[k]||(MODMETA[k]&&MODMETA[k].name)||k)+'</span><span class="sideAl">'+alerta(k)+'</span></button>'
     +(SIDE.ativo===k&&SIDE_SUB[k]?'<div class="sideSub" data-sub="'+k+'"></div>':''); };
   var nm=(current&&current.name)||currentUserKey||'', ini=nm.split(/\s+/).map(function(x){ return x.charAt(0); }).join('').slice(0,2).toUpperCase()||'?';
@@ -5452,7 +5452,7 @@ var EXP_ABA='';
 function expNavRender(){ var nav=$('expNav'); if(!nav) return; var it=[];
   if(_temExpRel(current)){ it.push(['kanban','Kanban de pedidos']); it.push(['rel','Relatório de expedição']); if(canLocalUp(current)||isAdmin(current)) it.push(['dados','Dados do relatório']); }
   if(userModules(current).indexOf('estoque')>=0) it.push(['estoque','Localização do estoque']);
-  nav.innerHTML=it.map(function(x){ return '<button class="'+(EXP_ABA===x[0]?'active':'')+'" data-a="'+x[0]+'">'+x[1]+'</button>'; }).join('');
+  nav.innerHTML=it.map(function(x){ return '<button class="'+(EXP_ABA===x[0]?'active':'')+'" data-a="'+x[0]+'">'+x[1]+(x[0]==='kanban'&&kbBkAlerta()?' <span title="Backup do Kanban em atraso" style="color:#e5484d;font-weight:700">⚠</span>':'')+'</button>'; }).join('');
   nav.querySelectorAll('button').forEach(function(b){ b.onclick=function(){ expAbrir(b.getAttribute('data-a')); }; }); }
 function expAbrir(aba){ EXP_ABA=aba; SIDE.ativo='expedicao';
   if(aba==='estoque'){ if(APPMODE==='rel'){ REL_STASH=Object.assign({},FILES); REL_STASH_SCOPE=REL_SCOPE; } else if(APPMODE==='base') BASE_STASH=Object.assign({},FILES);
@@ -5626,7 +5626,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
     +(KB.erro?'<div style="color:var(--danger);font-size:13px;margin-bottom:10px">Não consegui ler o Controle de liberação: '+uEsc(KB.erro)+'</div>':'')
     +(!f&&Object.keys(FILES).length?'<div style="color:var(--f-amber);font-size:13px;margin-bottom:10px">Sem o arquivo "Controle de liberação de pedidos": as colunas de embalagem e enviados ficam vazias.</div>':'')
     +((!ready||!ready.length)&&Object.keys(FILES).length&&KB.tent<40?'<div style="color:var(--muted);font-size:13px;margin-bottom:10px">Calculando os pedidos prontos para envio…</div>':'')
-    +kbResumo()+(KB.visao==='linhas'?kbLinhasHTML():'<div style="display:grid;grid-template-columns:repeat(4,minmax(250px,1fr));gap:12px;align-items:start;overflow-x:auto">'
+    +kbBkBanner()+kbResumo()+(KB.visao==='linhas'?kbLinhasHTML():'<div style="display:grid;grid-template-columns:repeat(4,minmax(250px,1fr));gap:12px;align-items:start;overflow-x:auto">'
     +colunas.map(function(col){ return '<div class="kbCol" data-c="'+col.k+'" style="background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;max-height:calc(100vh - 250px);min-width:250px;transition:border-color .15s,background .15s">'
       +'<div style="padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px"><span style="width:9px;height:9px;border-radius:50%;background:'+col.cor+'"></span><b style="color:var(--ink);font-size:13.5px;flex:1">'+col.t+'</b><span style="background:var(--elev);color:var(--ink);border-radius:999px;padding:1px 9px;font-size:12px;font-weight:700">'+col.L.length+'</span></div>'
       +(col.sub?'<div style="padding:6px 14px 0;font-size:12px;color:var(--muted)">'+col.sub+'</div>':'')
@@ -5637,7 +5637,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
   host.querySelectorAll('.kbFiltro').forEach(function(sel){ sel.onchange=function(){ KB.f[sel.getAttribute('data-f')]=sel.value; kbRender(); }; });
   $('kbDe').onchange=function(){ KB.f.de=this.value; kbRender(); }; $('kbAte').onchange=function(){ KB.f.ate=this.value; kbRender(); };
   $('kbSem').onchange=function(){ KB.f.sem=this.value; kbRender(); }; $('kbVisao').onchange=function(){ KB.visao=this.value; try{ localStorage.setItem('kb_visao',this.value); }catch(e){} kbRender(); };
-  $('kbExp').onclick=function(){ KB.exp=!KB.exp; kbRender(); }; if($('kbBackup')) $('kbBackup').onclick=kbBackup; if($('kbLimpa')) $('kbLimpa').onclick=function(){ KB.f={}; KB.q=''; kbRender(); };
+  $('kbExp').onclick=function(){ KB.exp=!KB.exp; kbRender(); }; if($('kbBackup')) $('kbBackup').onclick=kbBackup; host.querySelectorAll('.kbBkAgora').forEach(function(x){ x.onclick=kbBackup; }); if($('kbLimpa')) $('kbLimpa').onclick=function(){ KB.f={}; KB.q=''; kbRender(); };
   // arrastar e soltar
   host.querySelectorAll('.kbCard[draggable]').forEach(function(c){
     c.ondragstart=function(e){ KB.arr=c.getAttribute('data-n'); try{ e.dataTransfer.setData('text/plain',KB.arr); e.dataTransfer.effectAllowed='move'; }catch(x){} c.style.opacity='.45'; };
@@ -5674,12 +5674,13 @@ function kbBackupWB(){ var T=KB._todos||{}, NOME={producao:'A sair: em produçã
   var wr=XLSX.utils.aoa_to_sheet(resumo,{cellDates:true}); wr['!cols']=[{wch:32},{wch:24}]; XLSX.utils.book_append_sheet(wb,wr,'Resumo');
   add(ped,'Pedidos','Nenhum pedido no Kanban.'); add(ops,'OPs','Nenhuma OP.'); add(envH,'Enviados (Controle)','O Controle de liberação não foi lido.'); add(mov,'Movimentos','Nenhum movimento feito arrastando.');
   return {wb:wb,n:ped.length}; }
-function kbBackup(){ var b=$('kbBackup');
+function kbBackup(){ var b=$('kbBackup'); if(!b) b=document.querySelector('.kbBkAgora');
   if(!KB._todos||!Object.keys(KB._todos).length){ alert('O Kanban ainda está carregando. Espere os cartões aparecerem e tente de novo.'); return; }
+  document.querySelectorAll('.kbBkAgora').forEach(function(x){ x.disabled=true; x.textContent='Gerando…'; });
   if(b){ b.disabled=true; b.textContent='Gerando…'; }
   ensureXLSX(function(){ try{ var r=kbBackupWB(), d=new Date(), nm='Backup_Kanban_Expedicao_'+_calISO(d)+'_'+('0'+d.getHours()).slice(-2)+'h'+('0'+d.getMinutes()).slice(-2)+'.xlsx';
-      XLSX.writeFile(r.wb,nm,{cellDates:true}); }catch(e){ alert('Não consegui gerar o backup: '+((e&&e.message)||e)); }
-    if(b){ b.disabled=false; b.textContent='⬇ Baixar backup (Excel)'; } }, function(){ alert('Não consegui carregar o gerador de Excel. Confira a internet.'); if(b){ b.disabled=false; b.textContent='⬇ Baixar backup (Excel)'; } }); }
+      XLSX.writeFile(r.wb,nm,{cellDates:true}); kbBkRegistrar(0); }catch(e){ alert('Não consegui gerar o backup: '+((e&&e.message)||e)); }
+    if(b){ b.disabled=false; b.textContent='⬇ Baixar backup (Excel)'; } kbRender(); }, function(){ alert('Não consegui carregar o gerador de Excel. Confira a internet.'); if(b){ b.disabled=false; b.textContent='⬇ Baixar backup (Excel)'; } }); }
 function kbDetalhe(n){ var x=KB._todos&&KB._todos[n]; if(!x) return; var ops=(KB._ops&&KB._ops[n])||x.ops||[], z=$('kbDet');
   if(!z){ z=document.createElement('div'); z.id='kbDet'; z.style.cssText='position:fixed;inset:0;z-index:96;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:40px 12px;overflow:auto'; document.body.appendChild(z); }
   var fase={producao:'A sair: em produção',pronto:'Pronto para envio',emb:'Em processo de embalagem',env:'Enviado'}[x._mov?x._mov.para:x._o];
@@ -5703,7 +5704,43 @@ function kbPodeMover(){ return !!(_kbKey()&&ghToken()); }
 async function _kbLerRemoto(){ var key=_kbKey(); if(!key) return {sha:null,g:{mov:{}}}; var sha=await _ckHead(), g=null;
   if(sha){ var b=await _ckRead(KB_PATH,sha); if(b){ try{ g=await decJSON(key,JSON.parse(new TextDecoder().decode(b))); }catch(e){ g=null; } } }
   g=g||{}; g.mov=g.mov||{}; return {sha:sha,g:g}; }
-async function kbMovCarregar(){ if(KB_SYNC) return; try{ var r=await _kbLerRemoto(), antes=JSON.stringify(KB.mov||{}); KB.mov=r.g.mov; if(JSON.stringify(KB.mov)!==antes) kbRender(); }catch(e){} }
+async function kbMovCarregar(){ if(KB_SYNC) return; try{ var r=await _kbLerRemoto(), antes=JSON.stringify(KB.mov||{}), bkAntes=JSON.stringify([KB.bk,!!KB.bkLido]); KB.mov=r.g.mov; KB.bk=r.g.bk||null; KB.bkLido=true;
+  if(JSON.stringify(KB.mov)!==antes) kbRender();
+  if(JSON.stringify([KB.bk,true])!==bkAntes){ try{ sideRender(); }catch(e){} try{ expNavRender(); }catch(e){} kbRender(); } }catch(e){} }
+/* ===== Backup do Kanban: deve ser feito toda sexta às 17h (e nunca passar 7 dias sem).
+   Quem baixa o backup registra para todos (exp/kanban.json); sem token do GitHub fica registrado só neste computador. */
+var KB_BK_DIAS=7;
+function _kbBkLocal(){ try{ return JSON.parse(localStorage.getItem('kb_backup')||'null'); }catch(e){ return null; } }
+function _kbBkPrazo(agora){ var d=new Date(agora), dow=d.getDay(), back=(dow-5+7)%7, f=new Date(d.getFullYear(),d.getMonth(),d.getDate()-back,17,0,0,0); if(f>d) f.setDate(f.getDate()-7); var prox=new Date(f); prox.setDate(f.getDate()+7); return {ult:f.getTime(),prox:prox.getTime()}; }
+function kbBkStatus(){ var G=KB.bk||null, L=_kbBkLocal(), b=G; if(L&&L.ts>((b&&b.ts)||0)) b=L;
+  var now=Date.now(), P=_kbBkPrazo(now), ts=(b&&b.ts)||0;
+  // o backup da semana vale se foi feito a partir de quinta às 17h (até 24h antes do prazo de sexta)
+  var atraso=!ts||now-ts>=KB_BK_DIAS*864e5||ts<P.ult-864e5;
+  return {ts:ts,por:(b&&b.por)||'',atraso:atraso,dias:ts?Math.floor((now-ts)/864e5):null,prazo:P.ult,prox:(ts>=P.prox-864e5?P.prox+7*864e5:P.prox)}; }
+function kbBkAlerta(){ try{ return !!(current&&_temExpRel(current)&&_kbKey()&&KB.bkLido&&kbBkStatus().atraso); }catch(e){ return false; } }
+function _kbBkQuando(ts){ var d=new Date(ts); return ['dom','seg','ter','qua','qui','sex','sáb'][d.getDay()]+' '+_kbDM(d)+' às '+('0'+d.getHours()).slice(-2)+'h'+(d.getMinutes()?('0'+d.getMinutes()).slice(-2):''); }
+function kbBkBanner(){ var s=kbBkStatus(), ult=s.ts?'O último foi <b>'+_kbBkQuando(s.ts)+'</b>'+(s.por?' por '+uEsc(s.por):'')+' (há '+s.dias+' dia'+(s.dias===1?'':'s')+')':'Ainda não há registro de backup';
+  if(s.atraso) return '<div style="border:1px solid rgba(229,72,77,.55);background:rgba(229,72,77,.12);border-radius:12px;padding:12px 16px;margin-bottom:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">'
+    +'<span style="font-size:22px;color:#e5484d">⚠</span><div style="flex:1;min-width:240px"><div style="font-weight:700;color:#e5484d;font-size:14.5px">Backup do Kanban em atraso — gere e baixe um novo</div>'
+    +'<div style="font-size:13px;color:var(--ink);margin-top:2px">'+ult+'. O backup deve ser feito toda <b>sexta-feira às 17h</b> e nunca passar '+KB_BK_DIAS+' dias sem ser gerado e baixado.</div></div>'
+    +'<button class="ubtn kbBkAgora" style="border-color:rgba(229,72,77,.6);font-weight:700">⬇ Gerar e baixar backup agora</button></div>';
+  return '<div style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px">✓ Último backup: '+(s.ts?'<b style="color:var(--ink)">'+_kbBkQuando(s.ts)+'</b>'+(s.por?' por '+uEsc(s.por):''):'—')+' · próximo: <b style="color:var(--ink)">sexta '+_kbDM(new Date(s.prox))+' às 17h</b></div>'; }
+async function kbBkRegistrar(tent){ var reg={ts:Date.now(),por:(current&&current.name)||currentUserKey||''}; tent=tent||0;
+  if(!tent){ try{ localStorage.setItem('kb_backup',JSON.stringify(reg)); }catch(e){} KB.bk=reg; try{ sideRender(); }catch(e){} try{ expNavRender(); }catch(e){} kbRender(); }
+  var key=_kbKey(); if(!key||!ghToken()) return; var outra=false;
+  while(KB_SYNC) await new Promise(function(r){ setTimeout(r,400); });
+  KB_SYNC=true;
+  try{ var r=await _kbLerRemoto(), g=r.g; if(g.bk&&g.bk.ts>=reg.ts){ KB.bk=g.bk; return; } g.bk=reg;
+    var bl=await gh('/git/blobs',{method:'POST',body:{content:JSON.stringify(await encJSON(key,g)),encoding:'utf-8'}});
+    var body={tree:[{path:KB_PATH,mode:'100644',type:'blob',sha:bl.sha}]}; if(r.sha) body.base_tree=(await gh('/git/commits/'+r.sha)).tree.sha;
+    var tr=await gh('/git/trees',{method:'POST',body:body});
+    var nc=await gh('/git/commits',{method:'POST',body:{message:'Kanban: backup baixado ('+reg.por+')',tree:tr.sha,parents:r.sha?[r.sha]:[]}});
+    try{ if(r.sha) await gh('/git/refs/heads/'+CK_BRANCH,{method:'PATCH',body:{sha:nc.sha,force:false}}); else await gh('/git/refs',{method:'POST',body:{ref:'refs/heads/'+CK_BRANCH,sha:nc.sha}}); }
+    catch(e){ if(e.status===422&&tent<3) outra=true; else throw e; }
+    if(!outra){ KB.bk=reg; KB.mov=g.mov; } }
+  catch(e){ KB.salvo={ok:false,t:'O backup foi baixado, mas não consegui registrar para todos ('+((e&&e.message)||e)+'). Ficou registrado neste computador.'}; kbRender(); }
+  finally{ KB_SYNC=false; }
+  if(outra) return kbBkRegistrar(tent+1); }
 function kbPodeSoltar(n,para){ var x=KB._todos&&KB._todos[n]; return !!x&&!((para==='pronto'||para==='producao')&&x._o!==para); }
 function kbMover(n,para){ var x=KB._todos&&KB._todos[n]; if(!x) return; var atual=x._mov?x._mov.para:x._o; if(atual===para) return;
   if(!kbPodeSoltar(n,para)){ KB.salvo={ok:false,t:(para==='producao'?'"A sair: em produção"':'"Prontos para envio"')+' vem só dos relatórios.'}; kbRender(); return; }
@@ -5727,7 +5764,7 @@ async function kbMovSalvar(n,val,tent){ var key=_kbKey(); KB_SYNC=true; var outr
   if(outra) return kbMovSalvar(n,val,tent+1);
   kbRender(); setTimeout(function(){ if(KB.salvo&&KB.salvo.ok){ KB.salvo=null; kbRender(); } },4000); }
 window.addEventListener('message',function(ev){ var m=ev.data||{}; if(m.__dash==='fed'&&m.panel==='expedicao'&&$('kanView')&&$('kanView').style.display!=='none') setTimeout(kbRender,1200); });
-function startApp(user){ current=user; if(typeof SNAP_MODE!=='undefined'&&SNAP_MODE){ enterRelatorios(user); return; } showModules(); try{ ckSyncStart(); }catch(e){} }
+function startApp(user){ current=user; if(typeof SNAP_MODE!=='undefined'&&SNAP_MODE){ enterRelatorios(user); return; } showModules(); try{ ckSyncStart(); }catch(e){} try{ if(_kbKey()&&_temExpRel(current)){ setTimeout(kbMovCarregar,3000); clearInterval(window.__kbBkIv); window.__kbBkIv=setInterval(function(){ kbMovCarregar(); try{ sideRender(); }catch(e){} },36e5); } }catch(e){} }
 (function(){
   var nb=document.getElementById('newUserBtn'); if(nb)nb.onclick=function(){ openUserForm(null); };
   var sf=document.getElementById('saveFileBtn'); if(sf)sf.onclick=downloadUsersFile;
