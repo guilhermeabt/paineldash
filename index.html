@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Painel Operacional — Dash Uniformes</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1c1a18">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Dash">
 <style>
   :root{
     --bg:#1c1a18; --surface:#232120; --surface2:#2b2926; --elev:#33302c;
@@ -47,6 +55,7 @@
   header{grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid var(--line);background:var(--surface)}
   header .frow .fdup{display:block;font-size:11px;color:#ffb547;margin-top:2px}
 .frow .fname{display:block;font-size:11px;color:#5d6a86;margin-top:2px;max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,Menlo,Consolas,monospace}
+@media(max-width:520px){header .who .hello{display:none}}
 .verstamp{font-size:10px;letter-spacing:.5px;color:#5d6a86;border:1px solid #2c3650;border-radius:6px;padding:2px 7px;font-variant-numeric:tabular-nums}
 .verlogin{margin-top:14px;text-align:center;font-size:11px;color:#5d6a86;font-variant-numeric:tabular-nums}
 .brand{display:flex;align-items:baseline;gap:12px}
@@ -178,6 +187,8 @@
     #app{grid-template-columns:1fr!important}
     header{padding:0 12px}
     header .who{font-size:12px;gap:8px}
+    header .verstamp{display:none}
+    header .logout{padding:6px 10px;font-size:11px}
     header .brand .subtag{display:none}
     header .logo-dash{font-size:22px}
     .navtoggle{display:inline-flex;align-items:center}
@@ -219,6 +230,7 @@
       <button class="login-btn" type="submit">Entrar</button>
       <div class="verlogin">versão 2026-09-14 · v16</div>
       <div id="loginErr"></div>
+      <div class="appInstall" style="margin-top:12px"></div>
       <div style="margin-top:10px"><button type="button" id="recToggle" style="background:none;border:none;color:var(--muted);font-size:11.5px;cursor:pointer;text-decoration:underline">Esqueci a senha (administrador)</button></div>
     </form>
     <form id="recForm" autocomplete="off" style="display:none;margin-top:14px;text-align:left">
@@ -238,6 +250,7 @@
   </div>
   <div style="color:var(--muted)">Olá, <b id="modWho" style="color:var(--ink)"></b> — escolha um módulo</div>
   <div id="modGrid" style="display:flex;gap:20px;flex-wrap:wrap;justify-content:center;max-width:860px"></div>
+  <div class="appInstall" style="margin-top:18px;text-align:center"></div>
   <button id="modLogout" style="background:none;border:1px solid var(--line);color:var(--muted);padding:8px 16px;border-radius:8px;cursor:pointer">Sair</button>
 </div>
 <div id="modProd" style="display:none;min-height:100vh;flex-direction:column">
@@ -376,7 +389,7 @@
   <header>
     <button class="navtoggle" id="navToggle" aria-label="Menu">☰</button>
     <div class="brand"><span class="logo-dash">Dash<sup>&reg;</sup></span><span class="subtag">Painel Operacional</span><span class="verstamp" id="verStamp" title="Versão do arquivo. Se duas pessoas veem números diferentes, estão em arquivos diferentes.">2026-09-14 · v16</span></div>
-    <div class="who">Olá, <b id="whoName"></b> <button class="logout" id="toModules" style="margin-right:6px">Módulos</button><button class="logout" id="logoutBtn">Sair</button></div>
+    <div class="who"><span class="hello">Olá, <b id="whoName"></b></span> <button class="logout" id="toModules" style="margin-right:6px">Módulos</button><button class="logout" id="logoutBtn">Sair</button></div>
   </header>
   <nav id="nav"></nav>
   <div class="navbackdrop" id="navBackdrop"></div>
@@ -459,6 +472,11 @@ const PANELCFG = {"expedicao": {"name": "Expedição", "required": ["ops", "sist
 var SNAPSHOT=null;/*__SNAP__*/
 const PRISTINE='<!DOCTYPE html>\n'+document.documentElement.outerHTML;
 const SNAP_MODE=!!SNAPSHOT;
+/* App no celular: aberto pelo ícone instalado (start_url ?app=1) ou em tela cheia num aparelho de toque.
+   Nesta primeira versão o app mostra só os Relatórios → Faturamento (baixa só os 3 arquivos dele). O site no navegador continua igual. */
+const APP_STANDALONE=(function(){ try{ return /[?&]app=1/.test(location.search)||matchMedia('(display-mode: standalone)').matches||navigator.standalone===true; }catch(e){ return false; } })();
+const APP_MODE=APP_STANDALONE&&(function(){ try{ return matchMedia('(pointer: coarse)').matches||Math.min(screen.width,screen.height)<900; }catch(e){ return true; } })();
+const APP_PANELS=['faturamento'], APP_MODULES=['relatorios'];
 const SNAP_PANELS=(SNAPSHOT&&SNAPSHOT.panels)||null;
 let currentUserKey='';
 function fileToB64(f){return new Promise(function(res){
@@ -585,6 +603,15 @@ async function xcFlush(){ var p=XC.pend; XC.pend={};
 // apaga leituras de arquivos que não estão mais em uso (versões antigas)
 async function xcPrune(){ try{ var keep={}; for(const k of Object.keys(FILES)){ for(const f of filesArr(k)){ keep['xc:'+await xcHashFile(f)]=1; } }
   var ks=await idbKeys(); for(const k of ks){ if(String(k).indexOf('xc:')===0&&!keep[k]) await idbDel(k); } }catch(e){} }
+// ajustes de tela pequena para os painéis (só valem em telas estreitas; no computador nada muda)
+const PANEL_MOBILE_CSS='<style>@media (max-width:700px){'
+  +'header{padding:14px 14px!important;flex-wrap:wrap;gap:10px}header h1{font-size:17px!important}'
+  +'.wrap{padding:14px 12px!important}'
+  +'.kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}.kpi{padding:12px!important;min-width:0}.kpi .value{font-size:18px!important;word-break:break-word}'
+  +'.mgrid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.mgrid .mi input{min-width:0;width:100%;box-sizing:border-box}'
+  +'.card{padding:14px!important;overflow-x:auto}.tabs{flex-wrap:wrap}.row-actions{flex-wrap:wrap}'
+  +'table{font-size:12px}th,td{padding:6px 7px!important}'
+  +'}@media (max-width:380px){.kpis{grid-template-columns:1fr!important}}</style>';
 function panelURL(key){
   if(urlCache[key])return urlCache[key];
   const bin=atob(PANELS[key].b64);
@@ -593,10 +620,11 @@ function panelURL(key){
   try{ let html=new TextDecoder().decode(bytes); const tag=/<script[^>]*xlsx[^>]*\.js["'][^>]*><\/script>/i.exec(html);
     if(tag){ const inj='<script>var XC_HASH='+XC_HASH.toString()+';('+XC_IFRAME.toString()+')();<\/script>';
       html=html.slice(0,tag.index+tag[0].length)+inj+html.slice(tag.index+tag[0].length); bytes=new TextEncoder().encode(html); } }catch(e){}
+  try{ const html2=new TextDecoder().decode(bytes), hi=html2.search(/<\/head>/i); if(hi>0) bytes=new TextEncoder().encode(html2.slice(0,hi)+PANEL_MOBILE_CSS+html2.slice(hi)); }catch(e){}
   const blob=new Blob([bytes],{type:'text/html'});
   const url=URL.createObjectURL(blob);urlCache[key]=url;return url;
 }
-function allowedPanels(u){const p=u.panels;let ks=(p==='*'||(APPMODE==='base'&&u===current))?Object.keys(PANELS):p;ks=ks.filter(k=>PANELS[k]);if(SNAP_PANELS)ks=ks.filter(k=>SNAP_PANELS.indexOf(k)>=0);return ks;}
+function allowedPanels(u){const p=u.panels;let ks=(p==='*'||(APPMODE==='base'&&u===current))?Object.keys(PANELS):p;ks=ks.filter(k=>PANELS[k]);if(SNAP_PANELS)ks=ks.filter(k=>SNAP_PANELS.indexOf(k)>=0);if(APP_MODE&&APPMODE==='rel')ks=ks.filter(k=>APP_PANELS.indexOf(k)>=0);return ks;}
 function dynAllowed(u){return allowedPanels(u).filter(k=>!(PANELCFG[k]&&PANELCFG[k].static));}
 function visibleSlots(u){const alp=allowedPanels(u);return SLOTS.filter(s=>s.panels.some(p=>alp.indexOf(p)>-1));}
 function relevantSlots(pk){return SLOTS.filter(s=>s.panels.indexOf(pk)>-1);}
@@ -930,6 +958,7 @@ function renderRelStatus(){
   let html='<div class="base-head"><h1>Dados do painel</h1><p>'+(up
     ?'Os relatórios usam os dados publicados pelo administrador. Para atualizar mais rápido, aponte a <b>sua pasta</b> de arquivos e clique em <b>Atualizar pela pasta</b>: vale <b>só no seu painel</b>, e só para arquivos mais novos que os publicados.'
     :'Os relatórios usam os dados publicados na Base de Dados. Quando avisarem que o painel foi atualizado, é só dar F5.')+'</p>'
+    +(APP_MODE?'<p style="margin-top:6px">📱 No app do celular, por enquanto, aparece só o <b>Faturamento</b> (carrega mais rápido). Os demais relatórios continuam no site.</p>':'')
     +((up&&PUB.stale&&PUB.stale.length)?'<p style="margin-top:6px;color:var(--f-amber)">Saiu uma publicação mais nova de: <b>'+escapeHtml(PUB.stale.map(slotLabel).join(', '))+'</b> — o seu arquivo foi substituído por ela.</p>':'')+'</div>';
   if(SNAP_MODE){
     html+='<div class="update-bar" style="border-left:3px solid var(--f-green)"><div class="folder-info">📎 <b>Painel compartilhado</b> — dados já vêm preenchidos, enviado por '+escapeHtml((USERS[SNAPSHOT.user]&&USERS[SNAPSHOT.user].name)||SNAPSHOT.user)+' em '+new Date(SNAPSHOT.ts).toLocaleDateString('pt-BR')+'.</div></div>';
@@ -1130,10 +1159,12 @@ function showModules(){
   if(APPMODE==='base') BASE_STASH=Object.assign({},FILES); else if(APPMODE==='rel') REL_STASH=Object.assign({},FILES);
   APPMODE='';
   hideAllScreens();
-  var mods=userModules(current);
+  var mods=userModules(current), todos=mods;
+  if(APP_MODE){ mods=mods.filter(function(k){ return APP_MODULES.indexOf(k)>=0; });
+    if(mods.length===1&&!showModules._ja){ showModules._ja=1; openModule(mods[0]); return; } } // no app, vai direto para o que existe nele
   var w=$('modWho'); if(w)w.textContent=current?current.name:'';
   var box=$('modGrid');
-  box.innerHTML=mods.length?'':'<div style="color:var(--muted);padding:20px">Nenhum módulo liberado para este usuário. Fale com o administrador.</div>';
+  box.innerHTML=mods.length?'':'<div style="color:var(--muted);padding:20px">'+(APP_MODE&&todos.length?'Por enquanto o app do celular tem só os <b>Relatórios (Faturamento)</b>. Os seus módulos continuam no site, pelo navegador.':'Nenhum módulo liberado para este usuário. Fale com o administrador.')+'</div>';
   box.innerHTML+=mods.map(function(k){var m=MODMETA[k];
     return '<button class="modcard" data-mod="'+k+'" style="width:240px;text-align:left;background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:22px;cursor:pointer;color:var(--ink);transition:.15s;display:flex;flex-direction:column;gap:8px">'
       +'<div style="font-size:30px">'+m.icon+'</div>'
@@ -4941,6 +4972,18 @@ function gestExportar(){ ensureXLSX(function(){ var rows=_gestFiltradas(); if(!r
     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rr.map(toRow)),sn); });
   XLSX.writeFile(wb,'gestao_nao_aprovados_'+_calISO(new Date())+'.xlsx'); }); }
 
+/* ---- app instalável ---- */
+var APP_PROMPT=null;
+function appInstallUI(){ var toque=false; try{ toque=matchMedia('(pointer: coarse)').matches; }catch(e){}
+  var ios=/iphone|ipad|ipod/i.test(navigator.userAgent), h='';
+  if(APP_STANDALONE) h='';
+  else if(APP_PROMPT) h='<button type="button" class="appInstBtn" style="background:var(--f-green);color:#0c241a;border:none;border-radius:9px;padding:9px 16px;font-weight:600;cursor:pointer;font-size:13px">📲 Instalar o app no celular</button>';
+  else if(ios&&toque) h='<div style="font-size:12px;color:var(--muted);line-height:1.5">📲 Para instalar o app no iPhone: no Safari, toque em <b>Compartilhar</b> → <b>Adicionar à Tela de Início</b>.</div>';
+  document.querySelectorAll('.appInstall').forEach(function(el){ el.innerHTML=h; var b=el.querySelector('.appInstBtn');
+    if(b) b.onclick=async function(){ if(!APP_PROMPT) return; APP_PROMPT.prompt(); try{ await APP_PROMPT.userChoice; }catch(e){} APP_PROMPT=null; appInstallUI(); }; }); }
+window.addEventListener('beforeinstallprompt',function(e){ e.preventDefault(); APP_PROMPT=e; appInstallUI(); });
+window.addEventListener('appinstalled',function(){ APP_PROMPT=null; appInstallUI(); });
+if('serviceWorker' in navigator&&/^https:|^http:\/\/localhost/.test(location.href)&&!SNAP_MODE) window.addEventListener('load',function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); appInstallUI(); });
 function startApp(user){ current=user; if(typeof SNAP_MODE!=='undefined'&&SNAP_MODE){ enterRelatorios(user); return; } showModules(); try{ ckSyncStart(); }catch(e){} }
 (function(){
   var nb=document.getElementById('newUserBtn'); if(nb)nb.onclick=function(){ openUserForm(null); };
