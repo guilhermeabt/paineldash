@@ -2341,9 +2341,9 @@ var CONTACTS_KEY='__contatos', CONTACTS={};
 async function loadContacts(){ CONTACTS={}; try{ if(KEYS&&KEYS.ct&&SESSION.slots[CONTACTS_KEY]) CONTACTS=await decJSON(b64d(SESSION.slots[CONTACTS_KEY]),KEYS.ct)||{}; }catch(e){ CONTACTS={}; } }
 async function saveContacts(){ if(SESSION.m&&SESSION.sk&&!SESSION.sk[CONTACTS_KEY]) await adminMaintain(); if(!SESSION.sk||!SESSION.sk[CONTACTS_KEY]) throw new Error('sem a chave dos contatos — entre de novo como administrador.'); KEYS.ct=await encJSON(b64d(SESSION.sk[CONTACTS_KEY]),CONTACTS); USERS_DIRTY=true; }
 // token do GitHub guardado no painel (KEYS.gt): quem grava no GitHub recebe a chave GT_KEY no pacote —
-// administrador/Base, quem movimenta o estoque e quem usa a Produção (checklist compartilhado)
+// administrador/Base, quem movimenta o estoque, quem usa a Produção/Gestão (checklist compartilhado) e quem usa o Kanban da Expedição
 var GT_KEY='__ghtoken', GH_PANEL_TOKEN='', GH_PANEL_INFO=null;
-function userNeedsGT(u){ var m=Array.isArray(u&&u.modules)?u.modules:[]; return isAdmin(u)||userCanBase(u)||!!(u&&u.estMov)||m.indexOf('producao')>=0||m.indexOf('gestao')>=0||m.indexOf('estoque')>=0; }
+function userNeedsGT(u){ var m=Array.isArray(u&&u.modules)?u.modules:[]; return isAdmin(u)||userCanBase(u)||!!(u&&u.estMov)||m.indexOf('producao')>=0||m.indexOf('gestao')>=0||m.indexOf('estoque')>=0||_temExpRel(u); } // _temExpRel: quem usa o Kanban da Expedição (arrastar, embalagem, faturamento, backup)
 var PROC_KEY='__processos', PROC_BRANCH='processos';
 function userSlotList(u){ var l=_userSlotList(u); if(userNeedsGT(u)) l=l.concat([GT_KEY]); if(userModules(u).indexOf('processos')>=0) l=l.concat([PROC_KEY]); return l.sort(); }
 function _userSlotList(u){
@@ -2629,7 +2629,7 @@ var GH_TOK_BAD={};
 function ghTokens(){ return [GH_PANEL_TOKEN,ghTokenLocal()].filter(function(t,i,a){ return t&&a.indexOf(t)===i; }); }
 function ghToken(){ var l=ghTokens(), ok=l.filter(function(t){return !GH_TOK_BAD[t];}); return ok[0]||l[0]||''; }
 function ghTokenUI(){ var s=$('ghTokenState'); if(!s)return; var t=ghToken(), lo=ghTokenLocal();
-  s.innerHTML=(GH_PANEL_TOKEN?'<span style="color:var(--f-green)">&#10003; Token guardado no painel'+(GH_PANEL_INFO&&GH_PANEL_INFO.ts?' (por '+uEsc(GH_PANEL_INFO.by||'')+' em '+fmtTs(GH_PANEL_INFO.ts).split(' ')[0]+')':'')+' — vale para todos que movimentam o estoque e usam a Produção.</span><br>':'<span style="color:var(--f-amber)">Nenhum token guardado no painel: cada computador precisa do seu.</span><br>')
+  s.innerHTML=(GH_PANEL_TOKEN?'<span style="color:var(--f-green)">&#10003; Token guardado no painel'+(GH_PANEL_INFO&&GH_PANEL_INFO.ts?' (por '+uEsc(GH_PANEL_INFO.by||'')+' em '+fmtTs(GH_PANEL_INFO.ts).split(' ')[0]+')':'')+' — vale para todos que movimentam o estoque, usam a Produção/Gestão ou o Kanban da Expedição.</span><br>':'<span style="color:var(--f-amber)">Nenhum token guardado no painel: cada computador precisa do seu.</span><br>')
     +(lo?'<span style="color:var(--f-green)">&#10003; Token configurado neste navegador.</span>':'<span style="color:var(--muted)">Nenhum token só deste navegador.</span>');
   var bp=$('ghTokenPanel'); if(bp) bp.style.display=SESSION.m?'':'none';
   var b=$('ghTokenBox'); if(b&&!t)b.open=true; }
