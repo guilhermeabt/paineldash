@@ -572,7 +572,7 @@ async function doExport(selPanels){
     toast('Preparando painel preenchido…');
     var need=new Set(); (selPanels||[]).forEach(function(pk){ (relevantSlots(pk)||[]).forEach(function(s){need.add(s.key);}); });
     var out={},ks=Object.keys(FILES);
-    for(var i=0;i<ks.length;i++){ if(need.size&&!need.has(ks[i]))continue; var arr=filesArr(ks[i]);out[ks[i]]=[];for(var j=0;j<arr.length;j++){out[ks[i]].push({name:arr[j].name,b64:await fileToB64(arr[j]),lastModified:arr[j].lastModified||Date.now()});}}
+    for(var i=0;i<ks.length;i++){ if(need.size&&!need.has(ks[i]))continue; var arr=filesArr(ks[i]);out[ks[i]]=[];for(var j=0;j<arr.length;j++){out[ks[i]].push({name:arr[j].name,b64:await fileToB64(await preReal(arr[j])),lastModified:arr[j].lastModified||Date.now()});}}
     var _miss=[]; Object.keys(out).forEach(function(k){ (out[k]||[]).forEach(function(o){ if(!o.b64)_miss.push(o.name); }); });
     if(_miss.length){ toast(''); alert('Não consegui ler o conteúdo de: '+_miss.join(', ')+'.\n\nEsses arquivos podem estar apenas na nuvem (OneDrive). Abra a pasta, garanta que eles estejam baixados localmente (ícone de "disponível neste dispositivo"), clique em Atualizar e exporte de novo.'); return; }
     var _st=await collectStates((selPanels&&selPanels.length)?selPanels:allowedPanels(current));
@@ -624,9 +624,51 @@ function $(id){return document.getElementById(id);}
 function XC_HASH(u){ var h1=0x811c9dc5|0, h2=0x9747b28c|0, n=u.length;
   for(var i=0;i<n;i++){ var c=u[i]; h1=Math.imul(h1^c,16777619); h2=Math.imul(h2^c,0x5bd1e995); h2^=h2>>>15; }
   return n.toString(36)+'.'+(h1>>>0).toString(36)+'.'+(h2>>>0).toString(36); }
+/* ===== DADOS PRONTOS (pré-leitura): o Excel é lido uma vez só, na publicação, e vira um "pacote" com todas as células.
+   Quem abre o painel recebe esse pacote; o relatório pede XLSX.read como sempre, e recebe o livro montado do pacote. ===== */
+// worker: Excel (bytes) → pacote {SheetNames, S:[{n,ref,mg,c:[[r,c,t,v,w,z],…]}]}
+var PRE_WORKER_SRC="self.onmessage=function(e){try{importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');"
+  +"var u=new Uint8Array(e.data),wb=XLSX.read(u,{type:'array',cellNF:true,cellDates:false}),wd=XLSX.read(u,{type:'array',cellDates:true});"
+  +"var S=wb.SheetNames.map(function(n){var ws=wb.Sheets[n]||{},wsd=wd.Sheets[n]||{},cs=[];"
+  +"Object.keys(ws).forEach(function(a){if(a.charAt(0)==='!')return;var c=ws[a];if(!c)return;var p=XLSX.utils.decode_cell(a),v=c.v,w=c.w,z=c.z,cd=wsd[a],iso=null;"
+  +"if(c.t==='d'&&v instanceof Date)v=v.toISOString();if(cd&&cd.t==='d'&&cd.v instanceof Date&&!isNaN(cd.v))iso=cd.v.toISOString();"
+  +"var dw=(c.t==='b')?(v?'TRUE':'FALSE'):String(v==null?'':v);var q=[p.r,p.c,c.t,v,(w!=null&&w!==dw)?w:null,(z&&z!=='General')?z:null];if(iso||(cd&&cd.w!=null&&cd.w!==w)){q.push(iso);q.push(cd&&cd.w!==w?cd.w:null);}cs.push(q);});"
+  +"return {n:n,ref:ws['!ref']||null,mg:ws['!merges']||null,c:cs};});postMessage({ok:1,pre:{v:2,SheetNames:wb.SheetNames,S:S}});}catch(err){postMessage({ok:0,err:String(err&&err.message||err)});}};";
+function preParse(bytes){ return new Promise(function(ok,ko){ var w; try{ w=new Worker(URL.createObjectURL(new Blob([PRE_WORKER_SRC],{type:'text/javascript'}))); }catch(e){ ko(e); return; }
+  var t=setTimeout(function(){ w.terminate(); ko(new Error('demorou demais')); },600000);
+  w.onmessage=function(e){ clearTimeout(t); w.terminate(); if(e.data&&e.data.ok) ok(e.data.pre); else ko(new Error((e.data&&e.data.err)||'falhou')); };
+  w.onerror=function(e){ clearTimeout(t); w.terminate(); ko(new Error((e&&e.message)||'falhou')); };
+  var b=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength); w.postMessage(b,[b]); }); }
+// pacote → livro do XLSX (mesmo formato que XLSX.read devolveria com essas opções)
+function PRE_WB(pre,opts,X){ opts=opts||{}; var wb={SheetNames:pre.SheetNames.slice(),Sheets:{}}, cd=!!opts.cellDates;
+  pre.S.forEach(function(sh){ var ws={}; if(sh.ref) ws['!ref']=sh.ref; if(sh.mg) ws['!merges']=sh.mg;
+    for(var i=0;i<sh.c.length;i++){ var q=sh.c[i], t=q[2], v=q[3], w=q[4], z=q[5], cell;
+      if(cd&&q[6]) cell={t:'d',v:new Date(q[6])}; else if(t==='d') cell={t:'d',v:new Date(v)}; else cell={t:t,v:v};
+      cell.w=(cd&&q.length>7&&q[7]!=null)?q[7]:(w!=null?w:(t==='b'?(v?'TRUE':'FALSE'):String(v==null?'':v)));
+      if(z&&opts.cellNF) cell.z=z;
+      ws[X.utils.encode_cell({r:q[0],c:q[1]})]=cell; }
+    wb.Sheets[sh.n]=ws; });
+  return wb; }
+// pacote guardado no painel: o arquivo vira um "marcador" pequeno; o relatório recebe o pacote antes dos dados
+var PRE_STORE={};
+function preMarcador(id,nome,lm){ var f=new File(['DASHPRE:'+id],nome,{lastModified:lm||0}); try{ Object.defineProperty(f,'__pre',{value:id}); }catch(e){} return f; }
+
+var PRE_META={}, PRE_MEMO={}, PRE_SENT={}, LAZY={};
+// abre o pacote (baixado e guardado no navegador) só quando um relatório precisa dele
+function preLoad(id){ if(PRE_MEMO[id]) return PRE_MEMO[id]; var M=PRE_META[id];
+  PRE_MEMO[id]=(async function(){ if(!M) throw new Error('pacote desconhecido'); var ct=await getEncBlob(id); var plain=await decBytes(b64d(SESSION.slots[M.k]),M.piv,ct); return JSON.parse(await _ckGz(plain,false)); })();
+  PRE_MEMO[id].then(function(){ setTimeout(function(){ delete PRE_MEMO[id]; },60000); },function(){ delete PRE_MEMO[id]; });
+  return PRE_MEMO[id]; }
+// arquivo original (para quem precisa do Excel de verdade: exportar, etc.)
+async function preReal(f){ if(!f||!f.__pre) return f; var M=PRE_META[f.__pre]; var ct=await getEncBlob(M.p); var plain=await decBytes(b64d(SESSION.slots[M.k]),M.iv,ct); return new File([plain],M.n,{type:M.t||'',lastModified:M.lm||0}); }
 function XC_IFRAME(){ var X=window.XLSX; if(!X||X.__xc) return; X.__xc=1;
   var CACHE={}, USED={}, MARK='__xcStub', r0=X.read, s0=X.utils.sheet_to_json, ts=Object.prototype.toString;
-  window.addEventListener('message',function(e){ var m=e.data||{}; if(m.__dash==='xcache'&&e.source===window.parent){ CACHE=m.entries||{}; USED={}; } });
+  window.addEventListener('message',function(e){ var m=e.data||{}; if(m.__dash==='xcache'&&e.source===window.parent){ CACHE=m.entries||{}; USED={}; }
+    if(m.__dash==='pre'&&e.source===window.parent){ (window.__PRE=window.__PRE||{})[m.id]=m.data; if(m.fp){ m.fp.id=m.id; (window.__PREFP=window.__PREFP||[]).push(m.fp); } } });
+  function preFp(u){ var L=window.__PREFP; if(!L||!u) return null; for(var i=0;i<L.length;i++){ var f=L[i]; if(f.len!==u.length) continue; var ok=true;
+      for(var j=0;j<f.a.length&&ok;j++) if(u[j]!==f.a.charCodeAt(j)) ok=false; for(var k=0;k<f.b.length&&ok;k++) if(u[u.length-f.b.length+k]!==f.b.charCodeAt(k)) ok=false; if(ok) return f.id; } return null; }
+  function preId(d){ var t=ts.call(d), s0=''; if(typeof d==='string') s0=d.slice(0,80); else if(t==='[object ArrayBuffer]'||t==='[object Uint8Array]'){ var u=t==='[object ArrayBuffer]'?new Uint8Array(d):d; if(u.length>200) return null; for(var i=0;i<u.length;i++) s0+=String.fromCharCode(u[i]); } else return null;
+    return s0.indexOf('DASHPRE:')===0?s0.slice(8).trim():null; }
   function put(k,v){ try{ window.parent.postMessage({__dash:'xput',fh:k.split('|')[0],k:k,v:v},'*'); }catch(e){} }
   function bytes(d){ var t=ts.call(d); if(t==='[object ArrayBuffer]') return new Uint8Array(d); if(t==='[object Uint8Array]') return d; return null; }
   var ADDR=/^([A-Z]{1,3})([0-9]+)$/, GRAV={};
@@ -645,11 +687,14 @@ function XC_IFRAME(){ var X=window.XLSX; if(!X||X.__xc) return; X.__xc=1;
       return W()[p]; },
     has:function(t,p){ return p===MARK||(p in W()); }, ownKeys:function(){ return Reflect.ownKeys(W()); },
     getOwnPropertyDescriptor:function(t,p){ var d=Object.getOwnPropertyDescriptor(W(),p); if(d) d.configurable=true; return d; } }); }
-  X.read=function(data,opts){ var u=bytes(data); if(!u) return r0.apply(this,arguments);
-    var rk=XC_HASH(u)+'|'+JSON.stringify(opts||{}), meta=CACHE[rk+'|wb'], real=null, self=this;
-    if(!meta){ real=r0.apply(this,arguments); meta={SheetNames:real.SheetNames.slice()}; put(rk+'|wb',meta); }
-    // já lido antes: devolve um "livro" leve; só lê o Excel de verdade se o painel pedir algo que não está guardado
-    function R(){ if(!real) real=r0.call(self,data,opts); return real; }
+  X.read=function(data,opts){ var self=this, args=arguments, pid=preId(data), u=null;
+    if(!(pid&&window.__PRE&&window.__PRE[pid])){ pid=null; u=bytes(data); if(!u) return r0.apply(this,arguments); var fp=(opts&&opts.raw)?null:preFp(u); if(fp&&window.__PRE&&window.__PRE[fp]) pid=fp; } // CSV lido com raw: usa o arquivo original
+    // dados prontos (pacote) ou Excel: a leitura de cada aba fica guardada até a próxima publicação
+    var ler=pid?function(){ return PRE_WB(window.__PRE[pid],opts,X); }:function(){ return r0.apply(self,args); };
+    var rk=(pid?'P'+pid:XC_HASH(u))+'|'+JSON.stringify(opts||{}), meta=CACHE[rk+'|wb'], real=null;
+    if(!meta){ real=ler(); meta={SheetNames:real.SheetNames.slice()}; put(rk+'|wb',meta); }
+    // já lido antes: devolve um "livro" leve; só monta as abas de verdade se o painel pedir algo que não está guardado
+    function R(){ if(!real) real=ler(); return real; }
     var sheets={}; meta.SheetNames.forEach(function(n){ sheets[n]=aba(rk+'|'+n,function(){ return R().Sheets[n]||{}; }); });
     return {SheetNames:meta.SheetNames.slice(),Sheets:sheets,get Props(){ return R().Props; },get Workbook(){ return R().Workbook; },get Custprops(){ return R().Custprops; }}; };
   X.utils.sheet_to_json=function(ws,o){ var st=null; try{ st=ws&&ws[MARK]; }catch(e){}
@@ -660,7 +705,7 @@ function XC_IFRAME(){ var X=window.XLSX; if(!X||X.__xc) return; X.__xc=1;
   // outras funções do XLSX recebem a aba de verdade (mais rápido que pelo Proxy)
   ['sheet_to_csv','sheet_to_formulae','sheet_to_html','sheet_to_txt'].forEach(function(f){ var o0=X.utils[f]; if(o0) X.utils[f]=function(ws){ var st=null; try{ st=ws&&ws[MARK]; }catch(e){} var a=[].slice.call(arguments); if(st) a[0]=st.real(); return o0.apply(this,a); }; }); }
 var XC={hashes:new WeakMap(),pend:{},t:null};
-async function xcHashFile(f){ if(XC.hashes.has(f)) return XC.hashes.get(f); var h=XC_HASH(new Uint8Array(await f.arrayBuffer())); XC.hashes.set(f,h); return h; }
+async function xcHashFile(f){ if(f&&f.__pre) return 'P'+f.__pre; if(f&&f.__prefp) return 'P'+f.__prefp; if(XC.hashes.has(f)) return XC.hashes.get(f); var h=XC_HASH(new Uint8Array(await f.arrayBuffer())); XC.hashes.set(f,h); return h; }
 async function xcEntries(items){ var out={}, vistos={};
   for(const it of items){ try{ var h=await xcHashFile(it.file); if(vistos[h]) continue; vistos[h]=1; var g=await idbGet('xc:'+h); if(g) Object.assign(out,g); if(XC.pend[h]) Object.assign(out,XC.pend[h]); }catch(e){} }
   return out; }
@@ -669,6 +714,7 @@ async function xcFlush(){ var p=XC.pend; XC.pend={};
   for(const h of Object.keys(p)){ try{ var g=(await idbGet('xc:'+h))||{}; Object.assign(g,p[h]); await idbSet('xc:'+h,g); }catch(e){} } }
 // apaga leituras de arquivos que não estão mais em uso (versões antigas)
 async function xcPrune(){ try{ var keep={}; for(const k of Object.keys(FILES)){ for(const f of filesArr(k)){ keep['xc:'+await xcHashFile(f)]=1; } }
+  var man=PUB.manifest; if(man&&man.slots) Object.keys(man.slots).forEach(function(k){ (man.slots[k].ps||[]).forEach(function(p){ keep['xc:P'+p]=1; }); }); // dados prontos de outros módulos também ficam
   var ks=await idbKeys(); for(const k of ks){ if(String(k).indexOf('xc:')===0&&!keep[k]) await idbDel(k); } }catch(e){} }
 // ajustes de tela pequena para os painéis (só valem em telas estreitas; no computador nada muda)
 const PANEL_MOBILE_CSS='<style>@media (max-width:700px){'
@@ -685,7 +731,7 @@ function panelURL(key){
   let bytes=new Uint8Array(bin.length);
   for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
   try{ let html=new TextDecoder().decode(bytes); const tag=/<script[^>]*xlsx[^>]*\.js["'][^>]*><\/script>/i.exec(html);
-    if(tag){ const inj='<script>var XC_HASH='+XC_HASH.toString()+';('+XC_IFRAME.toString()+')();<\/script>';
+    if(tag){ const inj='<script>var XC_HASH='+XC_HASH.toString()+';var PRE_WB='+PRE_WB.toString()+';('+XC_IFRAME.toString()+')();<\/script>';
       html=html.slice(0,tag.index+tag[0].length)+inj+html.slice(tag.index+tag[0].length); bytes=new TextEncoder().encode(html); } }catch(e){}
   try{ const html2=new TextDecoder().decode(bytes), hi=html2.search(/<\/head>/i); if(hi>0) bytes=new TextEncoder().encode(html2.slice(0,hi)+PANEL_MOBILE_CSS+html2.slice(hi)); }catch(e){}
   const blob=new Blob([bytes],{type:'text/html'});
@@ -861,12 +907,15 @@ function computeStates(){
 function statTxt(st){return st==='incompleto'?(APPMODE==='base'?'Faltam arquivos':'Sem dados'):st==='pronto'?(APPMODE==='base'?'Carregado':'Pronto p/ atualizar'):st==='atualizado'?'Atualizado':'Estático';}
 
 /* ---- iframes / feed ---- */
-function ensureIframe(pk){ if(iframes[pk])return; const f=document.createElement('iframe'); f.src=panelURL(pk); $('frames').appendChild(f); iframes[pk]=f; }
+function ensureIframe(pk){ if(iframes[pk])return; delete PRE_SENT[pk]; const f=document.createElement('iframe'); f.src=panelURL(pk); $('frames').appendChild(f); iframes[pk]=f; }
 // antes dos arquivos, manda ao painel as leituras já guardadas desses arquivos (a ordem das mensagens é mantida)
 const feedSeq={};
 async function sendFeed(pk,items){ const n=feedSeq[pk]=(feedSeq[pk]||0)+1; let ent={}; try{ ent=await xcEntries(items); }catch(e){}
+  const pre=[]; for(const it of items){ const id=it.file&&(it.file.__pre||it.file.__prefp); if(id&&!(PRE_SENT[pk]&&PRE_SENT[pk][id])){ try{ var fp=null;
+        if(it.file.__prefp){ var u8=new Uint8Array(await it.file.arrayBuffer()), sa=function(x){ return Array.prototype.map.call(x,function(c){ return String.fromCharCode(c); }).join(''); }; fp={len:u8.length,a:sa(u8.subarray(0,64)),b:sa(u8.subarray(Math.max(0,u8.length-64)))}; }
+        pre.push({id:id,data:await preLoad(id),fp:fp}); }catch(e){} } }
   if(feedSeq[pk]!==n) return; // chegou um envio mais novo enquanto preparava
-  const f=iframes[pk]; if(f&&f.contentWindow){ try{ f.contentWindow.postMessage({__dash:'xcache',entries:ent},'*'); }catch(e){} f.contentWindow.postMessage({__dash:'feed',items:items},'*'); } }
+  const f=iframes[pk]; if(f&&f.contentWindow){ pre.forEach(function(x){ try{ f.contentWindow.postMessage({__dash:'pre',id:x.id,data:x.data,fp:x.fp},'*'); (PRE_SENT[pk]=PRE_SENT[pk]||{})[x.id]=1; }catch(e){} }); try{ f.contentWindow.postMessage({__dash:'xcache',entries:ent},'*'); }catch(e){} f.contentWindow.postMessage({__dash:'feed',items:items},'*'); } }
 let updExpSet=null,updSet=null,updExp=0,updHideT=null,updSafeT=null;
 function startUpdProgress(pks){ updExpSet=new Set(pks); updSet=new Set(); updExp=pks.length; clearTimeout(updHideT); clearTimeout(updSafeT); const el=$('updProg'); if(el)el.classList.add('show'); renderUpdProgress(); updSafeT=setTimeout(function(){ const e2=$('updProg'); if(e2)e2.classList.remove('show'); updSet=null;updExpSet=null; },40000); }
 function renderUpdProgress(){ if(!updSet)return; const pct=updExp?Math.round(updSet.size/updExp*100):100; const f=$('upfill'); if(f)f.style.width=pct+'%'; const tx=$('uptext'); if(tx)tx.textContent='Atualizando painéis\u2026 '+updSet.size+' de '+updExp+' ('+pct+'%)'; }
@@ -876,14 +925,16 @@ window.addEventListener('message',function(ev){
   if(m.__dash==='xput'&&m.fh&&m.k&&Object.keys(iframes).some(function(k){ return iframes[k].contentWindow===ev.source; })){ xcPut(m); return; }
   if(m.__dash==='ready'){ ready[m.panel]=true; if(m.base) baseInfo[m.panel]=m.base; if(pending[m.panel]){ sendFeed(m.panel,pending[m.panel]); delete pending[m.panel]; } if(current&&activeView==='base'&&APPMODE==='base') renderBase(); }
   if(m.__dash==='fed'){ updTick(m.panel); const nm=(PANELCFG[m.panel]&&PANELCFG[m.panel].name)||m.panel; if(fedNames.indexOf(nm)<0)fedNames.push(nm); clearTimeout(fedT); fedT=setTimeout(function(){ toast('✓ Dados entregues: '+fedNames.join(', ')); fedNames=[]; },600); }
-  if(m.__dash==='printReport'&&m.panel){ try{ensureIframe(m.panel);}catch(e){} var _tf=iframes[m.panel]; if(_tf&&_tf.contentWindow){ setTimeout(function(){ try{_tf.contentWindow.postMessage({__dash:'printReport',which:m.which,reqId:m.reqId},'*');}catch(e){} },80); } }
+  if(m.__dash==='printReport'&&m.panel){ try{ensureIframe(m.panel);}catch(e){} var _lz=_feedLazy(m.panel); var _tf=iframes[m.panel]; if(_tf&&_tf.contentWindow){ setTimeout(function(){ try{_tf.contentWindow.postMessage({__dash:'printReport',which:m.which,reqId:m.reqId},'*');}catch(e){} },_lz?8000:80); } }
   if(m.__dash==='reportHTML'){ var _ef=iframes['expedicao']; if(_ef&&_ef.contentWindow){ try{_ef.contentWindow.postMessage(m,'*');}catch(e){} } }
 });
 
 /* ---- navigation ---- */
 function setActive(v){activeView=v;renderNav();}
 function showBase(){ try{$('app').classList.remove('navopen');}catch(e){} if(APPMODE==='rel') renderBase(); $('impView').style.display='none'; $('kanView').style.display='none'; $('baseView').style.display='block'; Object.keys(iframes).forEach(k=>iframes[k].classList.remove('show')); setActive('base'); }
-function openPanel(pk){ try{$('app').classList.remove('navopen');}catch(e){} ensureIframe(pk); $('baseView').style.display='none'; $('kanView').style.display='none'; $('impView').style.display='none'; Object.keys(iframes).forEach(k=>iframes[k].classList.toggle('show',k===pk)); setActive('panel:'+pk); }
+function _painelAlvo(){ if(String(activeView).indexOf('panel:')===0) return activeView.slice(6); if(activeView==='kanban') return 'expedicao'; var a=allowedPanels(current); return a[0]; }
+function _feedLazy(pk){ var it=LAZY[pk]; if(!it) return false; delete LAZY[pk]; ensureIframe(pk); if(ready[pk]) sendFeed(pk,it); else pending[pk]=it; return true; }
+function openPanel(pk){ try{$('app').classList.remove('navopen');}catch(e){} ensureIframe(pk); _feedLazy(pk); $('baseView').style.display='none'; $('kanView').style.display='none'; $('impView').style.display='none'; Object.keys(iframes).forEach(k=>iframes[k].classList.toggle('show',k===pk)); setActive('panel:'+pk); }
 
 const ICO_DB='<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>';
 const PANEL_ICONS={prontaentrega:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>',vendas:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>',expedicao:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="6" width="13" height="10" rx="1.5"/><path d="M14 9h4l3 3v4h-7z"/><circle cx="5.5" cy="18" r="1.7"/><circle cx="17.5" cy="18" r="1.7"/></svg>',producao:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M4 21V10l5 3.5V10l5 3.5V10l5 3.5V21"/><path d="M8 21v-4h4v4"/></svg>',conciliacao:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h13"/><path d="M14 4l3 3-3 3"/><path d="M20 17H7"/><path d="M10 14l-3 3 3 3"/></svg>',sac:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13v-1a8 8 0 0 1 16 0v1"/><rect x="2" y="13" width="4" height="6" rx="1.2"/><rect x="18" y="13" width="4" height="6" rx="1.2"/><path d="M20 19v1a3 3 0 0 1-3 3h-3"/></svg>',executivo:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/><circle cx="7" cy="14" r="1"/><circle cx="11" cy="10" r="1"/><circle cx="14" cy="13" r="1"/></svg>',financeiro:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V4"/><path d="M4 20h16"/><rect x="7" y="12" width="3" height="5"/><rect x="12" y="8" width="3" height="9"/><rect x="17" y="5" width="3" height="12"/></svg>',faturamento:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>',precificacao:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0l-7-7A2 2 0 0 1 3 12.2V5a2 2 0 0 1 2-2h7.2a2 2 0 0 1 1.4.6l7 7a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.3"/></svg>' }
@@ -1185,7 +1236,7 @@ function applyAll(){
     const canApply=relevantSlots(pk).some(s=>filesArr(s.key).length>0);
     if(!canApply){ falt.push(cfg.name); return; }
     const items=[];relevantSlots(pk).forEach(s=>filesArr(s.key).forEach(f=>items.push({slot:s.key,file:f})));
-    ensureIframe(pk); if(ready[pk]) sendFeed(pk,items); else pending[pk]=items; fedPks.push(pk);
+    ensureIframe(pk); if(pk===_painelAlvo()){ delete LAZY[pk]; if(ready[pk]) sendFeed(pk,items); else pending[pk]=items; fedPks.push(pk); } else LAZY[pk]=items;
     applied[pk]=sig(pk); panelState[pk]='atualizado';
     const keys=cfg.base?relevantSlots(pk).map(s=>s.key).filter(k=>filesArr(k).length):reqOf(pk);
     const allFresh=keys.length&&keys.every(k=>{const n=slotNewest(k);return n&&isToday(n);});
@@ -2414,8 +2465,12 @@ async function loadPublished(){
       PUB.pubLm[k]=Math.max.apply(null,meta.files.map(function(f){return f.lm||0;}).concat([0])); }
     var got={}, done=0, mb=0;
     PUB.prog='Baixando os dados… 0 de '+jobs.length+' arquivos'; renderBase();
-    await pool(jobs,4,async function(j,ix){ var ct=await getEncBlob(j.f.p); var plain=await decBytes(b64d(SESSION.slots[j.k]),j.f.iv,ct);
-      (got[j.k]=got[j.k]||[])[ix]=new File([plain],j.f.n,{type:j.f.t||'',lastModified:j.f.lm||0}); done++; mb+=ct.length/1048576;
+    await pool(jobs,4,async function(j,ix){ var ct;
+      if(j.f.pp&&j.f.pv===2&&/\.csv$/i.test(j.f.n)){ ct=await getEncBlob(j.f.p); var plainc=await decBytes(b64d(SESSION.slots[j.k]),j.f.iv,ct); PRE_META[j.f.pp]={k:j.k,piv:j.f.piv,p:j.f.p,iv:j.f.iv,n:j.f.n,t:j.f.t,lm:j.f.lm};
+        var fc=new File([plainc],j.f.n,{type:j.f.t||'',lastModified:j.f.lm||0}); try{ Object.defineProperty(fc,'__prefp',{value:j.f.pp}); }catch(e){} (got[j.k]=got[j.k]||[])[ix]=fc; }
+      else if(j.f.pp&&j.f.pv===2){ ct=await getEncBlob(j.f.pp); PRE_META[j.f.pp]={k:j.k,piv:j.f.piv,p:j.f.p,iv:j.f.iv,n:j.f.n,t:j.f.t,lm:j.f.lm}; (got[j.k]=got[j.k]||[])[ix]=preMarcador(j.f.pp,j.f.n,j.f.lm); }
+      else { ct=await getEncBlob(j.f.p); var plain=await decBytes(b64d(SESSION.slots[j.k]),j.f.iv,ct); (got[j.k]=got[j.k]||[])[ix]=new File([plain],j.f.n,{type:j.f.t||'',lastModified:j.f.lm||0}); }
+      done++; mb+=ct.length/1048576;
       PUB.prog='Baixando os dados… '+done+' de '+jobs.length+' arquivos ('+mb.toFixed(1)+' MB)';
       // só o texto do progresso muda: redesenhar a tela inteira tiraria o botão "trocar" da mão de quem está escolhendo um arquivo
       var pe=$('pubProg'); if(pe) pe.textContent=PUB.prog; });
@@ -2453,7 +2508,7 @@ async function publishData(){
     if(ref){ var pc=await gh('/git/commits/'+ref.object.sha); var pt=await gh('/git/trees/'+pc.tree.sha+'?recursive=1');
       (pt.tree||[]).forEach(function(t){ if(t.type==='blob')prevSha[t.path]=t.sha; });
       try{ prev=JSON.parse(await gh('/contents/manifest.json?ref='+ref.object.sha,{accept:'application/vnd.github.raw+json'})); }catch(e){ prev=null; } }
-    var slots=Object.assign({},prev&&prev.slots||{}), newBlobs={}, miss=[], nUp=0, nSame=0;
+    var slots=Object.assign({},prev&&prev.slots||{}), newBlobs={}, miss=[], nUp=0, nSame=0, nPre=0;
     var total=0; loaded.forEach(function(s){ total+=filesArr(s.key).length; }); var step=0;
     for(var i=0;i<loaded.length;i++){ var s=loaded[i], raw=b64d(SESSION.slots[s.key]);
       var old=[]; if(slots[s.key]){ try{ old=(await decJSON(raw,slots[s.key].m)).files||[]; }catch(e){ old=[]; } }
@@ -2466,13 +2521,21 @@ async function publishData(){
         if(!bytes){ miss.push(f.name); continue; }
         var h=hexOf(await crypto.subtle.digest('SHA-256',bytes));
         var same=old.filter(function(x){return x.h===h&&prevSha[x.p];})[0];
-        if(same){ meta.push(Object.assign({},same,{n:f.name,lm:f.lastModified||same.lm})); nSame++; continue; }
-        var enc=await encBytes(raw,bytes); var p='f/'+hexOf(rnd(16))+'.bin';
-        pubDataStatus('Enviando '+step+' de '+total+': '+uEsc(f.name)+' ('+(f.size/1048576).toFixed(1)+' MB)…');
-        var bl=await gh('/git/blobs',{method:'POST',body:{content:b64e(enc.ct),encoding:'base64'}});
-        newBlobs[p]=bl.sha; nUp++;
-        meta.push({n:f.name,t:f.type||'',lm:f.lastModified||0,sz:f.size,h:h,p:p,iv:enc.iv}); }
-      if(meta.length) slots[s.key]={ts:Date.now(),n:meta.length,ps:meta.map(function(x){return x.p;}),m:await encJSON(raw,{files:meta})}; }
+        var ent;
+        if(same){ ent=Object.assign({},same,{n:f.name,lm:f.lastModified||same.lm}); nSame++; }
+        else { var enc=await encBytes(raw,bytes); var p='f/'+hexOf(rnd(16))+'.bin';
+          pubDataStatus('Enviando '+step+' de '+total+': '+uEsc(f.name)+' ('+(f.size/1048576).toFixed(1)+' MB)…');
+          var bl=await gh('/git/blobs',{method:'POST',body:{content:b64e(enc.ct),encoding:'base64'}});
+          newBlobs[p]=bl.sha; nUp++;
+          ent={n:f.name,t:f.type||'',lm:f.lastModified||0,sz:f.size,h:h,p:p,iv:enc.iv}; }
+        // dados prontos: o Excel é lido aqui, uma vez, e quem abre o painel recebe o resultado (não lê Excel nenhum)
+        if(/\.(xlsx|xls|xlsm|csv)$/i.test(f.name)&&!(ent.pp&&prevSha[ent.pp]&&ent.pv===2)){
+          pubDataStatus('Preparando os dados prontos '+step+' de '+total+': '+uEsc(f.name)+'…');
+          try{ var pk0=await preParse(bytes), gz=await _ckGz(JSON.stringify(pk0),true), pe=await encBytes(raw,gz), pp='f/'+hexOf(rnd(16))+'.bin';
+            var bl2=await gh('/git/blobs',{method:'POST',body:{content:b64e(pe.ct),encoding:'base64'}}); newBlobs[pp]=bl2.sha; ent.pp=pp; ent.piv=pe.iv; ent.pv=2; ent.psz=pe.ct.length; nPre++; }
+          catch(e){ delete ent.pp; delete ent.piv; delete ent.pv; } }
+        meta.push(ent); }
+      if(meta.length) slots[s.key]={ts:Date.now(),n:meta.length,ps:[].concat.apply([],meta.map(function(x){ return x.pp?[x.p,x.pp]:[x.p]; })),m:await encJSON(raw,{files:meta})}; }
     if(miss.length) throw new Error('não consegui ler: '+miss.join(', ')+'. Isso acontece quando o arquivo é salvo de novo (ou o OneDrive o atualiza) depois de ler a pasta, ou quando ele está só na nuvem. Clique em Ler a pasta / Atualizar e publique de novo; se continuar, abra a pasta no Windows e escolha "Sempre manter neste dispositivo".');
     var who=(current&&current.name)||currentUserKey;
     var man={v:1,ts:Date.now(),by:who,slots:slots,up:loaded.map(function(s){return s.key;})};
@@ -2485,7 +2548,7 @@ async function publishData(){
       await gh('/git/refs/heads/'+GH_DATA_BRANCH,{method:'PATCH',body:{sha:nc.sha,force:true}}); }
     else await gh('/git/refs',{method:'POST',body:{ref:'refs/heads/'+GH_DATA_BRANCH,sha:nc.sha}});
     PUB.manifest=man; renderBase();
-    pubDataStatus('&#10003; Dados publicados ('+nUp+' arquivo(s) enviado(s)'+(nSame?', '+nSame+' sem mudança':'')+'). Avise o pessoal: é só dar F5 no painel (ou clicar em "Buscar dados novos").','var(--f-green)');
+    pubDataStatus('&#10003; Dados publicados ('+nUp+' arquivo(s) enviado(s)'+(nSame?', '+nSame+' sem mudança':'')+(nPre?', '+nPre+' com dados prontos':'')+'). Avise o pessoal: é só dar F5 no painel (ou clicar em "Buscar dados novos").','var(--f-green)');
     openNotify(man);
   }catch(e){
     var m=e&&e.message||String(e);
@@ -5400,7 +5463,7 @@ function _kbNum(v){ return String(v==null?'':v).replace(/\.0+$/,'').replace(/\D/
 function _kbData(v){ if(!v) return null; var d=v instanceof Date?v:new Date(v); return isNaN(d)||d.getFullYear()<2000?null:d; }
 function _kbDM(d){ return d?('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2):''; }
 function kbLerControle(file){ return new Promise(function(ok,ko){
-  var src="self.onmessage=function(e){try{importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');var wb=XLSX.read(new Uint8Array(e.data),{type:'array',cellDates:true});var out={};"
+  var src="var PRE_WB="+PRE_WB.toString()+";self.onmessage=function(e){try{importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');var wb=(e.data&&e.data.pre)?PRE_WB(e.data.pre,{cellDates:true},XLSX):XLSX.read(new Uint8Array(e.data),{type:'array',cellDates:true});var out={};"
     +"wb.SheetNames.forEach(function(n){var k=/entregar/i.test(n)?'emb':(/enviad/i.test(n)?'env':null);if(!k)return;var R=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:null});"
     +"var hi=R.findIndex(function(r){return r&&r.some(function(v){return /^pedido$/i.test(String(v==null?'':v).trim());});});if(hi<0)return;var H=R[hi].map(function(v){return String(v==null?'':v).trim().toLowerCase();});"
     +"var c=function(re,d){var i=H.findIndex(function(h){return re.test(h);});return i<0?d:i;};var ip=c(/^pedido$/,2),ic=c(/^cliente$/,4),ie=c(/data entrega/,3),iv=c(/^volumes$/,5),im=c(/modo de envio/,6),inf=c(/nota fiscal/,7),ir=c(/rastreio/,8),is=c(/data de sa|finaliza/,9);"
@@ -5408,8 +5471,8 @@ function kbLerControle(file){ return new Promise(function(ok,ko){
   var w; try{ w=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'}))); }catch(e){ ko(e); return; }
   w.onmessage=function(e){ w.terminate(); if(e.data&&e.data.ok) ok(e.data.out); else ko(new Error((e.data&&e.data.err)||'falhou')); };
   w.onerror=function(e){ w.terminate(); ko(new Error((e&&e.message)||'falhou')); };
-  file.arrayBuffer().then(function(b){ w.postMessage(b,[b]); },ko); }); }
-function kbMostrar(){ activeView='kanban'; Object.keys(iframes).forEach(function(k){ iframes[k].classList.remove('show'); }); $('baseView').style.display='none'; $('impView').style.display='none'; $('kanView').style.display='block'; KB.tent=0; kbRender(); }
+  if(file.__pre) preLoad(file.__pre).then(function(pk){ w.postMessage({pre:pk}); },ko); else file.arrayBuffer().then(function(b){ w.postMessage(b,[b]); },ko); }); }
+function kbMostrar(){ activeView='kanban'; _feedLazy('expedicao'); Object.keys(iframes).forEach(function(k){ iframes[k].classList.remove('show'); }); $('baseView').style.display='none'; $('impView').style.display='none'; $('kanView').style.display='block'; KB.tent=0; kbRender(); }
 function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none') return;
   var f=FILES.controle; if(f&&KB.ctrlDe!==f&&!KB.lendo){ KB.lendo=true; KB.erro='';
     kbLerControle(f).then(function(o){ KB.ctrl=o; KB.ctrlDe=f; }).catch(function(e){ KB.erro=(e&&e.message)||String(e); }).then(function(){ KB.lendo=false; kbRender(); }); }
