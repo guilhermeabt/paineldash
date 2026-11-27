@@ -6129,7 +6129,7 @@ function kbHistAcao(e){ if(e.tipo==='mov') return 'Movimentou: '+(KB_FASE[e.de]|
   if(e.tipo==='alerta') return 'Alerta '+(e.acao||'');
   if(e.tipo==='backup') return 'Backup '+(e.acao||'');
   return e.tipo||''; }
-function kbHistLista(){ var h=(KB.hist||[]).slice(); var vis={}; h.forEach(function(e){ vis[e.id]=1; }); (KB.histQ||[]).forEach(function(e){ if(!vis[e.id]) h.push(e); });
+function kbHistLista(){ var h=(KB.hist||[]).slice(); if(!h.length){ var g0={mov:KB.mov,obs:KB.obs,fat:KB.fat,bk:KB.bk}; _kbHistFlush(g0); h=g0.hist||[]; } // antes da primeira gravação: mostra o que já existia var vis={}; h.forEach(function(e){ vis[e.id]=1; }); (KB.histQ||[]).forEach(function(e){ if(!vis[e.id]) h.push(e); });
   return h.sort(function(a,b){ return (b.ts||0)-(a.ts||0); }); }
 function kbHistRender(host){ var H=kbHistLista(), F=KB.hf||(KB.hf={}), T=KB._todos||{};
   var cliDe=function(e){ return e.cli||((T[e.n]||{}).cli)||''; };
