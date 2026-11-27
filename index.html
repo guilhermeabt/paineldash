@@ -5517,11 +5517,18 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
     {k:'emb',t:'Pedidos em processo de embalagem',cor:'#d99a52',L:E,sub:''},
     {k:'env',t:'Pedidos enviados',cor:'#5aa0d0',L:V,sub:KB.dias?'últimos '+KB.dias+' dias':'todos'}];
   var MAX=200;
+  var cartoes=function(L,cor){ return L.slice(0,MAX).map(function(x){ return card(x,cor,conteudo[x._o](x)); }).join('')+(L.length>MAX?'<div style="text-align:center;color:var(--muted);font-size:12px;padding:6px">+ '+(L.length-MAX)+' pedidos (use a busca)</div>':''); };
+  var grupo=function(t,L,cor,ico){ var v=L.reduce(function(a,x){ return a+(x.valor||0); },0);
+    return '<div style="display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:'+cor+';padding:4px 2px 2px"><span>'+ico+'</span><span style="flex:1">'+t+'</span><span style="color:var(--muted);font-weight:600;text-transform:none;letter-spacing:0">'+L.length+(v?' · R$ '+Math.round(v).toLocaleString('pt-BR'):'')+'</span></div>'
+      +(L.length?cartoes(L,cor):'<div style="color:var(--muted);font-size:12.5px;padding:6px 4px 10px">Nenhum.</div>'); };
+  var kbListaHTML=function(col){ if(!col.L.length) return '<div style="color:var(--muted);font-size:13px;padding:14px;text-align:center">Nenhum pedido.</div>';
+    if(col.k!=='pronto') return cartoes(col.L,col.cor);
+    return grupo('Pronta entrega',col.L.filter(function(x){ return x.pe; }),'#5aa0d0','📦')+'<div style="height:6px"></div>'+grupo('Produção concluída',col.L.filter(function(x){ return !x.pe; }),'#4ecb8f','🏭'); };
   // guarda a rolagem para não pular para o topo a cada atualização
   var rol={}, rolTop=host.scrollTop; host.querySelectorAll('.kbLista').forEach(function(el){ rol[el.getAttribute('data-c')]=el.scrollTop; });
   host.innerHTML='<div style="padding:22px 24px;box-sizing:border-box;min-height:100%">'
     +'<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:16px"><div><div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Expedição</div><h1 style="margin:2px 0 0;font-size:24px;font-weight:650;color:var(--ink)">Kanban de pedidos</h1>'
-      +'<div style="font-size:12.5px;color:var(--muted);margin-top:4px">'+(pode?'Arraste os cartões entre as colunas. O movimento vale para todos até a planilha mudar a fase do pedido.':'Para arrastar os cartões, este computador precisa do token do GitHub (fale com o administrador).')+(KB.salvo?' <span style="color:'+(KB.salvo.ok?'var(--f-green)':'var(--danger)')+'">'+uEsc(KB.salvo.t)+'</span>':'')+'</div></div>'
+      +'<div style="font-size:12.5px;color:var(--muted);margin-top:4px">'+(pode?'Arraste os cartões entre as colunas. O movimento vale para todos até a planilha mudar a fase do pedido. "Prontos para envio" vem só dos relatórios.':'Para arrastar os cartões, este computador precisa do token do GitHub (fale com o administrador).')+(KB.salvo?' <span style="color:'+(KB.salvo.ok?'var(--f-green)':'var(--danger)')+'">'+uEsc(KB.salvo.t)+'</span>':'')+'</div></div>'
       +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input id="kbQ" type="search" autocomplete="off" placeholder="Buscar pedido, cliente, NF, rastreio…" value="'+uEsc(KB.q)+'" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 11px;font-size:13.5px;width:260px">'
       +'<select id="kbDias" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 10px;font-size:13px">'+[[7,'Enviados: 7 dias'],[30,'Enviados: 30 dias'],[90,'Enviados: 90 dias'],[0,'Enviados: todos']].map(function(o){ return '<option value="'+o[0]+'"'+(KB.dias===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select></div></div>'
     +(!Object.keys(FILES).length?'<div style="color:var(--muted);margin-bottom:12px">Carregando os dados da expedição…</div>':'')
@@ -5533,7 +5540,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
     +colunas.map(function(col){ return '<div class="kbCol" data-c="'+col.k+'" style="background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;max-height:calc(100vh - 170px);min-width:260px;transition:border-color .15s,background .15s">'
       +'<div style="padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px"><span style="width:9px;height:9px;border-radius:50%;background:'+col.cor+'"></span><b style="color:var(--ink);font-size:13.5px;flex:1">'+col.t+'</b><span style="background:var(--elev);color:var(--ink);border-radius:999px;padding:1px 9px;font-size:12px;font-weight:700">'+col.L.length+'</span></div>'
       +(col.sub?'<div style="padding:6px 14px 0;font-size:12px;color:var(--muted)">'+col.sub+'</div>':'')
-      +'<div class="kbLista" data-c="'+col.k+'" style="padding:10px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;min-height:80px">'+(col.L.length?col.L.slice(0,MAX).map(function(x){ return card(x,col.cor,conteudo[x._o](x)); }).join('')+(col.L.length>MAX?'<div style="text-align:center;color:var(--muted);font-size:12px;padding:6px">+ '+(col.L.length-MAX)+' pedidos (use a busca)</div>':''):'<div style="color:var(--muted);font-size:13px;padding:14px;text-align:center">Nenhum pedido.</div>')+'</div></div>'; }).join('')+'</div></div>';
+      +'<div class="kbLista" data-c="'+col.k+'" style="padding:10px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;min-height:80px">'+kbListaHTML(col)+'</div></div>'; }).join('')+'</div></div>';
   host.scrollTop=rolTop; host.querySelectorAll('.kbLista').forEach(function(el){ var v=rol[el.getAttribute('data-c')]; if(v) el.scrollTop=v; });
   var tq; $('kbQ').oninput=function(){ KB.q=this.value; clearTimeout(tq); tq=setTimeout(function(){ kbRender(); var i=$('kbQ'); i.focus(); i.selectionStart=i.selectionEnd=i.value.length; },250); };
   $('kbDias').onchange=function(){ KB.dias=+this.value; kbRender(); };
@@ -5542,9 +5549,10 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
     c.ondragstart=function(e){ KB.arr=c.getAttribute('data-n'); try{ e.dataTransfer.setData('text/plain',KB.arr); e.dataTransfer.effectAllowed='move'; }catch(x){} c.style.opacity='.45'; };
     c.ondragend=function(){ c.style.opacity=''; host.querySelectorAll('.kbCol').forEach(function(col){ col.style.borderColor=''; col.style.background=''; }); }; });
   host.querySelectorAll('.kbCol').forEach(function(col){
-    col.ondragover=function(e){ if(!KB.arr) return; e.preventDefault(); try{ e.dataTransfer.dropEffect='move'; }catch(x){} col.style.borderColor='var(--ink)'; col.style.background='rgba(255,255,255,.05)'; };
+    col.ondragover=function(e){ if(!KB.arr) return; if(!kbPodeSoltar(KB.arr,col.getAttribute('data-c'))){ try{ e.dataTransfer.dropEffect='none'; }catch(x){} col.style.borderColor='rgba(229,72,77,.6)'; return; } e.preventDefault(); try{ e.dataTransfer.dropEffect='move'; }catch(x){} col.style.borderColor='var(--ink)'; col.style.background='rgba(255,255,255,.05)'; };
     col.ondragleave=function(e){ if(e.relatedTarget&&col.contains(e.relatedTarget)) return; col.style.borderColor=''; col.style.background=''; };
     col.ondrop=function(e){ e.preventDefault(); col.style.borderColor=''; col.style.background=''; var n=KB.arr; KB.arr=null; if(n) kbMover(n,col.getAttribute('data-c')); }; });
+  host.querySelectorAll('.kbCard[draggable]').forEach(function(c){ c.addEventListener('dragend',function(){ KB.arr=null; }); });
 }
 /* ---- movimentos do Kanban: guardados no ramo "checklists" (exp/kanban.json), cifrados com a chave do Controle de liberação ---- */
 var KB_PATH='exp/kanban.json', KB_SYNC=false;
@@ -5554,7 +5562,9 @@ async function _kbLerRemoto(){ var key=_kbKey(); if(!key) return {sha:null,g:{mo
   if(sha){ var b=await _ckRead(KB_PATH,sha); if(b){ try{ g=await decJSON(key,JSON.parse(new TextDecoder().decode(b))); }catch(e){ g=null; } } }
   g=g||{}; g.mov=g.mov||{}; return {sha:sha,g:g}; }
 async function kbMovCarregar(){ if(KB_SYNC) return; try{ var r=await _kbLerRemoto(), antes=JSON.stringify(KB.mov||{}); KB.mov=r.g.mov; if(JSON.stringify(KB.mov)!==antes) kbRender(); }catch(e){} }
+function kbPodeSoltar(n,para){ var x=KB._todos&&KB._todos[n]; return !!x&&!(para==='pronto'&&x._o!=='pronto'); }
 function kbMover(n,para){ var x=KB._todos&&KB._todos[n]; if(!x) return; var atual=x._mov?x._mov.para:x._o; if(atual===para) return;
+  if(!kbPodeSoltar(n,para)){ KB.salvo={ok:false,t:'"Prontos para envio" vem só dos relatórios (pronta entrega ou produção com todas as OPs concluídas).'}; kbRender(); return; }
   if(!kbPodeMover()){ alert('Para mover os cartões, este computador precisa do token do GitHub. Fale com o administrador.'); return; }
   var val=(para===x._o)?null:{para:para,base:x._o,ts:Date.now(),por:(current&&current.name)||currentUserKey||''};
   KB.mov=KB.mov||{}; if(val) KB.mov[n]=val; else delete KB.mov[n];
