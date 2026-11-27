@@ -5602,7 +5602,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
     if(F.transp&&(x.transp||I.transp||'')!==F.transp) return false;
     if(F.difal&&I.difal!==F.difal) return false;
     if(F.tipo==='pe'&&!(x.pe||I.pe)) return false; if(F.tipo==='prod'&&(x.pe||I.pe)) return false;
-    if(F.atr&&!kbAtrX(x)) return false;
+    if(F.atr&&!kbAtrX(x)) return false; if(F.inv&&!x.inv) return false;
     if(F.bol){ var fb=(KB.fat||{})[x.n]; if(F.bol==='emitido'){ if(!fb||fb.boleto!=='emitido') return false; } else if(!fb||fb.boleto!=='emitir'||(F.bol==='atraso'&&!kbBolAtrasado(fb))) return false; }
     if(F.trat==='sim'&&!I.done) return false; if(F.trat==='nao'&&I.done) return false;
     // faturamento/embalagem: "feito" em qualquer coluna; "pendente" = está em embalagem e ainda não terminou
@@ -5667,15 +5667,19 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
   var atrOnde=function(){ var c={producao:0,pronto:0,emb:0}; atrasadosTodos.forEach(function(x){ c[x._mov?x._mov.para:x._o]++; }); return [['producao','em produção'],['pronto','prontos'],['emb','em embalagem']].filter(function(z){ return c[z[0]]; }).map(function(z){ return c[z[0]]+' '+z[1]; }).join(' · ')||'nenhum'; };
   var estaSem=A.filter(function(x){ return !x.inv&&x.prev&&x.prev>=hoje&&x.prev<=fimEsta; }), hojeIso=hoje.getTime(), envHoje=V.filter(function(x){ return x.d&&x.d.getTime()>=hojeIso; });
   if(Object.keys(KB.fat||{}).some(function(k){ return _kbNfNum(KB.fat[k].nf); })){ kbF09Ler(); if(!KB.itensLido&&!KB._itRq){ KB._itRq=1; kbItensLer().then(function(){ kbRender(); }); } }
-  var kbAvisos=function(){ var bk=kbBkStatus(), bolN=Object.keys(KB.fat||{}).filter(function(k){ return kbBolAtrasado(KB.fat[k]); }).length, confN=Object.keys(KB.fat||{}).filter(function(k){ return kbFatAlertas(k).length; }).length;
+  var kbAvisos=function(){ var bk=kbBkStatus(), bolN=Object.keys(KB.fat||{}).filter(function(k){ return kbBolAtrasado(KB.fat[k]); }).length, confN=Object.keys(KB.fat||{}).filter(function(k){ return kbFatAlertas(k).length; }).length, invL=prod.filter(function(x){ return x.inv; });
     var chip=function(t,c){ return '<span style="font-size:12.5px;font-weight:600;color:'+c+';border:1px solid '+c+'55;background:'+c+'14;border-radius:999px;padding:2px 10px;white-space:nowrap">'+t+'</span>'; };
-    var urg=(bk.atraso?1:0)+(bolN?1:0)+(confN?1:0);
+    var urg=(bk.atraso?1:0)+(bolN?1:0)+(confN?1:0)+(invL.length?1:0);
     var chips=(bk.atraso?chip('⚠ Backup em atraso','#e5484d'):chip('✓ Backup em dia · próximo sex '+_kbDM(new Date(bk.prox)),'#4ecb8f'))
       +(bolN?chip('⚠ '+bolN+' boleto'+(bolN===1?'':'s')+' não emitido'+(bolN===1?'':'s'),'#e5484d'):'')
-      +(confN?chip('⚠ '+confN+' faturamento'+(confN===1?'':'s')+' não confere'+(confN===1?'':'m')+' com o 09','#f5a524'):'');
+      +(confN?chip('⚠ '+confN+' faturamento'+(confN===1?'':'s')+' não confere'+(confN===1?'':'m')+' com o 09','#f5a524'):'')
+      +(invL.length?chip('⚠ '+invL.length+' pedido'+(invL.length===1?'':'s')+' para investigar (sem OP)','#f5a524'):'');
     var corpo=KB.avisosAbertos?'<div style="padding:10px 2px 0">'
       +'<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">'+(pode?'Arraste os cartões entre as colunas. O movimento vale para todos até a planilha mudar a fase do pedido. "Em produção" e "Prontos" vêm só dos relatórios. Clique num cartão para ver as OPs, a embalagem e o faturamento.':'Para arrastar os cartões, este computador precisa do token do GitHub (fale com o administrador).')+'</div>'
-      +kbBkBanner()+kbBolBanner()+kbConfBanner()+'</div>':'';
+      +kbBkBanner()+kbBolBanner()+kbConfBanner()
+      +(invL.length&&!F.inv?'<div style="border:1px solid rgba(245,165,36,.55);background:rgba(245,165,36,.10);border-radius:12px;padding:10px 14px;margin-bottom:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span style="font-size:20px;color:#f5a524">⚠</span>'
+        +'<div style="flex:1;min-width:220px;font-size:13.5px;color:var(--ink)"><b style="color:#f5a524">'+invL.length+' pedido'+(invL.length===1?'':'s')+' para investigar</b> — '+invL.slice(0,8).map(function(x){ return '#'+uEsc(x.n); }).join(', ')+(invL.length>8?'…':'')+'. São pedidos de produção que não aparecem com OP em nenhum relatório (01, 03) nem no Controle de liberação.</div>'
+        +'<button class="ubtn" id="kbVerInv" style="padding:7px 12px;font-size:13px">Ver só esses</button></div>':'')+'</div>':'';
     return '<div style="border:1px solid '+(urg?'rgba(229,72,77,.45)':'var(--line)')+';border-radius:12px;padding:8px 12px;margin-bottom:12px;background:var(--surface2)">'
       +'<div id="kbAvTog" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;cursor:pointer"><b style="font-size:13px;color:var(--ink)">🔔 Avisos'+(urg?' <span style="color:#e5484d">('+urg+')</span>':'')+'</b>'+chips+'<span style="margin-left:auto;font-size:12px;color:var(--muted)">'+(KB.avisosAbertos?'fechar ▴':'abrir ▾')+'</span></div>'+corpo+'</div>'; };
   var kbBolBanner=function(){ var L=Object.keys(KB.fat||{}).filter(function(k){ return kbBolAtrasado(KB.fat[k]); }); if(!L.length||F.bol) return '';
@@ -5710,8 +5714,8 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
     +'<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:16px"><div><div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Expedição</div><h1 style="margin:2px 0 0;font-size:24px;font-weight:650;color:var(--ink)">Kanban de pedidos</h1>'
       +'<div style="font-size:12.5px;color:var(--muted);margin-top:4px;min-height:16px">'+(KB.salvo?'<span style="color:'+(KB.salvo.ok?'var(--f-green)':'var(--danger)')+'">'+uEsc(KB.salvo.t)+'</span>':'')+'</div></div>'
       +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input id="kbQ" type="search" autocomplete="off" placeholder="Buscar pedido, cliente, NF, rastreio…" value="'+uEsc(KB.q)+'" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 11px;font-size:13.5px;width:260px">'
-      +'<button class="ubtn" id="kbFilt" style="padding:8px 12px;font-size:13px'+(KB.filtAberto?';border-color:var(--f-green)':'')+'">⚙ Filtros'+((function(){ var n=0; ['de','ate','sit','transp','difal','tipo','trat','fatst','embst','bol','atr'].forEach(function(k){ if(F[k]) n++; }); if(F.sem!=null&&F.sem!=='') n++; return n; })()?' <b style="color:var(--f-green)">('+(function(){ var n=0; ['de','ate','sit','transp','difal','tipo','trat','fatst','embst','bol','atr'].forEach(function(k){ if(F[k]) n++; }); if(F.sem!=null&&F.sem!=='') n++; return n; })()+')</b>':'')+' '+(KB.filtAberto?'▴':'▾')+'</button>'
-      +((F.de||F.ate||(F.sem!=null&&F.sem!=='')||F.sit||F.transp||F.difal||F.tipo||F.trat||F.fatst||F.embst||F.atr||F.bol||KB.q)?'<button class="ubtn" id="kbLimpa" style="padding:8px 12px;font-size:13px">Limpar filtros</button>':'')
+      +'<button class="ubtn" id="kbFilt" style="padding:8px 12px;font-size:13px'+(KB.filtAberto?';border-color:var(--f-green)':'')+'">⚙ Filtros'+((function(){ var n=0; ['de','ate','sit','transp','difal','tipo','trat','fatst','embst','bol','atr','inv'].forEach(function(k){ if(F[k]) n++; }); if(F.sem!=null&&F.sem!=='') n++; return n; })()?' <b style="color:var(--f-green)">('+(function(){ var n=0; ['de','ate','sit','transp','difal','tipo','trat','fatst','embst','bol','atr','inv'].forEach(function(k){ if(F[k]) n++; }); if(F.sem!=null&&F.sem!=='') n++; return n; })()+')</b>':'')+' '+(KB.filtAberto?'▴':'▾')+'</button>'
+      +((F.de||F.ate||(F.sem!=null&&F.sem!=='')||F.sit||F.transp||F.difal||F.tipo||F.trat||F.fatst||F.embst||F.atr||F.bol||F.inv||KB.q)?'<button class="ubtn" id="kbLimpa" style="padding:8px 12px;font-size:13px">Limpar filtros</button>':'')
       +'<button class="ubtn" id="kbExp" style="padding:8px 12px;font-size:13px">'+(KB.exp?'Recolher tudo':'Expandir tudo')+'</button>'
       +'<button class="ubtn" id="kbLinks" style="padding:8px 12px;font-size:13px" title="Links sem login, só para ver: um para a TV e um para os vendedores">🔗 Links de visualização</button>'
       +'<button class="ubtn" id="kbDifMail" style="padding:8px 12px;font-size:13px" title="Monta o e-mail do DIFAL diário do dia (NFs lançadas no faturamento) para o financeiro">✉ E-mail DIFAL diário</button>'
@@ -5742,6 +5746,7 @@ function kbRender(){ var host=$('kanView'); if(!host||host.style.display==='none
   $('kbDe').onchange=function(){ KB.f.de=this.value; kbRender(); }; $('kbAte').onchange=function(){ KB.f.ate=this.value; kbRender(); };
   $('kbSem').onchange=function(){ KB.f.sem=this.value; kbRender(); }; $('kbVisao').onchange=function(){ KB.visao=this.value; try{ localStorage.setItem('kb_visao',this.value); }catch(e){} kbRender(); };
   $('kbExp').onclick=function(){ KB.exp=!KB.exp; kbRender(); }; if($('kbVerDiv')) $('kbVerDiv').onclick=function(){ KB.f.fatst='div'; kbRender(); }; if($('kbFilt')) $('kbFilt').onclick=function(){ KB.filtAberto=!KB.filtAberto; try{ localStorage.setItem('kb_filt',KB.filtAberto?'1':''); }catch(e){} kbRender(); };
+  if($('kbVerInv')) $('kbVerInv').onclick=function(){ KB.f.inv=1; kbRender(); };
   if($('kbAvTog')) $('kbAvTog').onclick=function(){ KB.avisosAbertos=!KB.avisosAbertos; kbRender(); };
   if($('kbVerBol')) $('kbVerBol').onclick=function(){ KB.f.bol='atraso'; kbRender(); };
   host.querySelectorAll('.kbBolOk').forEach(function(b){ b.addEventListener('click',function(ev){ ev.stopPropagation(); var nb=b.getAttribute('data-n'); kbQuem('fat',nb,function(){ b.disabled=true; b.textContent='Salvando…'; kbBolEmitido(nb); }); }); b.addEventListener('mousedown',function(ev){ ev.stopPropagation(); }); }); if($('kbBackup')) $('kbBackup').onclick=kbBackup; if($('kbLinks')) $('kbLinks').onclick=kbLinksModal; if($('kbDifMail')) $('kbDifMail').onclick=function(){ kbDifalEmail(_calISO(new Date())); }; host.querySelectorAll('.kbBkAgora').forEach(function(x){ x.onclick=kbBackup; }); if($('kbLimpa')) $('kbLimpa').onclick=function(){ KB.f={}; KB.q=''; kbRender(); };
@@ -6373,7 +6378,9 @@ function verRender(){ var o=$('verApp'); if(!o) return; var tv=VER_MODO.modo==='
   var dm=function(iso){ var x=dt(iso); return x?('0'+x.getDate()).slice(-2)+'/'+('0'+(x.getMonth()+1)).slice(-2):''; };
   var hm=function(ts){ var x=new Date(ts); return ('0'+x.getHours()).slice(-2)+':'+('0'+x.getMinutes()).slice(-2); };
   var cab='<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:'+(tv?'18px 26px':'16px 18px')+';border-bottom:1px solid var(--line)"><span class="logo-dash" style="font-size:'+(tv?'30px':'24px')+'">Dash<sup>&reg;</sup></span><div style="flex:1"><div style="font-size:'+(tv?'22px':'18px')+';font-weight:700">'+(tv?'Expedição ao vivo':'Onde está o pedido')+'</div><div style="font-size:12.5px;color:var(--muted)">'+(d?'Atualizado às '+hm(d.ts)+' · só para visualização':'')+'</div></div>'
-    +(tv?'<div style="font-size:34px;font-weight:700;font-variant-numeric:tabular-nums">'+hm(Date.now())+'</div><button class="ubtn" id="verFull" style="padding:8px 12px">⛶ Tela cheia</button>':'')+'</div>';
+    +'<div style="text-align:right;line-height:1.15"><div style="font-size:'+(tv?'26px':'17px')+';font-weight:600">'+uEsc((function(){ var x=new Date(), t=x.toLocaleDateString('pt-BR',{weekday:'long'})+', '+x.getDate()+' de '+x.toLocaleDateString('pt-BR',{month:'long'})+' de '+x.getFullYear(); return t.charAt(0).toUpperCase()+t.slice(1); })())+'</div>'
+      +'<div style="font-size:'+(tv?'44px':'28px')+';font-weight:700;font-variant-numeric:tabular-nums">'+hm(Date.now())+'</div></div>'
+    +(tv?'<button class="ubtn" id="verFull" style="padding:8px 12px">⛶ Tela cheia</button>':'')+'</div>';
   if(!d){ o.innerHTML=cab+'<div style="padding:30px;color:'+(VER.erro?'var(--danger)':'var(--muted)')+';font-size:15px">'+(VER.erro?uEsc(VER.erro):'Carregando…')+'</div>'; verWire(); return; }
   var L=d.ped.filter(function(p){ var q=_en(F.q||''); if(q&&_en(p.n+' '+p.cli+' '+p.nf+' '+p.ra).indexOf(q)<0) return false; if(F.rep&&p.rep!==F.rep) return false; if(F.col&&p.f!==F.col) return false;
     if(F.atr){ var e=dt(p.ent); if(p.f==='env'||!e||e>=hoje) return false; } return true; });
@@ -6397,13 +6404,24 @@ function verRender(){ var o=$('verApp'); if(!o) return; var tv=VER_MODO.modo==='
   var tira=tv?'<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;padding:12px 26px;border-bottom:1px solid var(--line);font-size:15px">'
       +'<div><span style="color:var(--muted)">On-line agora:</span> '+(on.length?on.map(function(n){ return '<b style="color:#4ecb8f">● '+uEsc(n)+'</b>'; }).join(' '):'<span style="color:var(--muted)">ninguém com o Kanban aberto</span>')+'</div>'
       +(ag.length?ag.map(function(a){ return '<div style="background:rgba(245,165,36,.12);border:1px solid rgba(245,165,36,.5);border-radius:9px;padding:6px 12px">'+(a.area==='fat'?'🧾':'📦')+' <b>'+uEsc(a.pessoa)+'</b> — '+(a.area==='fat'?'faturamento':'embalagem')+' do <b>#'+uEsc(a.n)+'</b> <span style="color:var(--muted)">desde '+hm(a.ts)+'</span></div>'; }).join(''):'<div style="color:var(--muted)">Nenhum faturamento ou embalagem aberto agora.</div>')+'</div>':'';
+  var tot='';
+  if(!tv){ var B=d.ped.filter(function(p){ var q=_en(F.q||''); if(q&&_en(p.n+' '+p.cli+' '+p.nf+' '+p.ra).indexOf(q)<0) return false; if(F.rep&&p.rep!==F.rep) return false; return true; }), hojeIso=_calISO(new Date());
+    var envH=B.filter(function(p){ return p.f==='env'&&p.sa===hojeIso; }), envAtr=envH.filter(function(p){ return p.ent&&p.ent<p.sa; }).length;
+    var atr=B.filter(function(p){ var e=dt(p.ent); return p.f!=='env'&&e&&e<hoje; }).length;
+    var box=function(t,v,sub,cor){ return '<div style="flex:1;min-width:150px;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:10px 14px"><div style="font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">'+t+'</div><div style="font-size:28px;font-weight:700;color:'+cor+'">'+v+'</div><div style="font-size:12px;color:var(--muted)">'+sub+'</div></div>'; };
+    tot='<div style="display:flex;gap:10px;flex-wrap:wrap;padding:4px 18px 4px">'
+      +box('Enviados hoje',envH.length,envH.length?(envH.length-envAtr)+' no prazo · '+envAtr+' com atraso':'nenhum ainda hoje','#5aa0d0')
+      +box('Na fila da embalagem',B.filter(function(p){ return p.f==='emb'; }).length,'sendo embalados','#d99a52')
+      +box('Prontos para envio',B.filter(function(p){ return p.f==='pronto'; }).length,'aguardando a embalagem','#4ecb8f')
+      +box('Em produção',B.filter(function(p){ return p.f==='producao'; }).length,'a sair: atrasados, esta semana e a próxima','#a78bfa')
+      +box('Atrasados',atr,'ainda não enviados','#e5484d')+'</div>'; }
   var MAX=tv?40:150;
   var grade='<div style="display:grid;grid-template-columns:repeat(4,minmax(230px,1fr));gap:12px;padding:'+(tv?'14px 26px':'12px 18px')+';overflow-x:auto">'+cols.map(function(c){ var LL=L.filter(function(p){ return p.f===c[0]; }).sort(function(a,b){ return c[0]==='env'?(b.sa||'').localeCompare(a.sa||''):(a.ent||'9').localeCompare(b.ent||'9'); });
       if(tv) LL.sort(function(a,b){ return (agN[b.n]?1:0)-(agN[a.n]?1:0); });
       return '<div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;min-height:120px"><div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)"><span style="width:9px;height:9px;border-radius:50%;background:'+c[2]+'"></span><b style="flex:1;font-size:'+(tv?'16px':'14px')+'">'+c[1]+'</b><span style="font-weight:700">'+LL.length+'</span></div>'
         +'<div style="padding:8px;display:flex;flex-direction:column;gap:7px">'+(LL.length?LL.slice(0,MAX).map(card).join('')+(LL.length>MAX?'<div style="text-align:center;color:var(--muted);font-size:12px">+ '+(LL.length-MAX)+'</div>':''):'<div style="color:var(--muted);text-align:center;padding:12px;font-size:13px">Nenhum.</div>')+'</div></div>'; }).join('')+'</div>';
   var foco=document.activeElement&&document.activeElement.id==='verQ';
-  o.innerHTML=cab+tira+filtros+grade+(tv?'':'<div style="padding:4px 18px 20px;font-size:12px;color:var(--muted)">Enviados dos últimos 30 dias. Valores não aparecem neste link.</div>'); verWire();
+  o.innerHTML=cab+tira+filtros+tot+grade+(tv?'':'<div style="padding:4px 18px 20px;font-size:12px;color:var(--muted)">Enviados dos últimos 30 dias. Valores não aparecem neste link.</div>'); verWire();
   if(foco&&$('verQ')){ $('verQ').focus(); var v=$('verQ').value; $('verQ').setSelectionRange(v.length,v.length); } }
 function verWire(){ var F=VER.f;
   if($('verFull')) $('verFull').onclick=function(){ var el=document.documentElement; (el.requestFullscreen||el.webkitRequestFullscreen||function(){}).call(el); };
